@@ -2,10 +2,10 @@
 //!
 //! Persisted in settings.json (`systemProxyEnabled` / `systemProxyUrl`) and
 //! applied to this process's own environment: every child spawned afterwards
-//! (engine CLIs, terminals, the dsh host) inherits HTTP(S)_PROXY/ALL_PROXY,
-//! and reqwest clients pick env proxies up by default. Applying restores the
-//! launch-time environment first, so disabling returns the process to exactly
-//! what the user had outside the app.
+//! (the CLI engine, terminals) inherits HTTP(S)_PROXY/ALL_PROXY, and reqwest
+//! clients pick env proxies up by default. Applying restores the launch-time
+//! environment first, so disabling returns the process to exactly what the
+//! user had outside the app.
 
 use std::sync::LazyLock;
 
@@ -86,8 +86,8 @@ fn append_no_proxy_values(values: &mut Vec<String>, raw: &str) {
     }
 }
 
-/// User's launch-time NO_PROXY plus the loopback defaults: dsh host probing
-/// and any local service must never be routed through the proxy.
+/// User's launch-time NO_PROXY plus the loopback defaults: local service
+/// probing must never be routed through the proxy.
 fn merged_no_proxy_value(snapshot: &[(&'static str, Option<String>)]) -> String {
     let mut values = Vec::new();
     for key in ["NO_PROXY", "no_proxy"] {

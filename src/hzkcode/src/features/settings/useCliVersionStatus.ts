@@ -4,11 +4,11 @@ import type { EngineId } from "./providers";
 
 /**
  * Session-local store for managed-CLI version status, one entry per engine.
- * The CLI 管理 header and the DSH host card both read it, so probes are
- * deduped: switching engine pages repaints from cache instantly and only
- * soft-refreshes in the background, and concurrent consumers share one
- * in-flight probe. No polling — refresh happens on page mount and explicit
- * user action only (each probe spawns `<bin> --version` + `npm view`).
+ * The CLI 管理 header reads it, so probes are deduped: switching engine pages
+ * repaints from cache instantly and only soft-refreshes in the background,
+ * and concurrent consumers share one in-flight probe. No polling — refresh
+ * happens on page mount and explicit user action only (each probe spawns
+ * `<bin> --version` + `npm view`).
  */
 
 interface Entry {

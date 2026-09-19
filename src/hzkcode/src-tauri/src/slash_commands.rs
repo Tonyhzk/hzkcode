@@ -4,9 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Catalog discovery for the composer's `/` picker (ported from
-/// desktop-cc-gui's claude_commands.rs, extended past the two Claude
-/// scopes to the global skill roots of the other CLIs the app drives:
-/// Codex, the cross-agent `~/.agents`, and Codex plugins). Two entry
+/// desktop-cc-gui's claude_commands.rs): the workspace and global claude
+/// skill roots, plus the cross-agent `~/.agents` root. Two entry
 /// kinds share the one trigger and stay distinct via `kind`:
 ///
 /// - commands: `.claude/commands/**/*.md` — the CLI expands `/name args`

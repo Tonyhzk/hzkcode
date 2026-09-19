@@ -21,7 +21,6 @@ tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
 regex = "1"
-toml = "0.8"
 toml_edit = "0.22"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tokio = { version = "1", features = ["rt", "macros", "net", "process", "time", "sync", "io-util"] }
@@ -39,7 +38,6 @@ ignore = "0.4"
 uuid = { version = "1", features = ["v4"] }
 parking_lot = "0.12"
 base64 = "0.22"
-zstd = "0.13"
 which = "7"
 # PTY for the integrated terminal panel.
 portable-pty = "0.8"
@@ -49,10 +47,9 @@ libc = "0.2"
 # surface over a token-authenticated WebSocket (see src/web.rs).
 axum = { version = "0.8", features = ["ws"] }
 futures-util = "0.3"
-# DSH host session streams (ws:// loopback mux) plus the outbound relay, which
-# dials the Cloudflare Worker over wss:// — hence the TLS feature.
+# Outbound relay WebSocket client: dials the Cloudflare Worker over wss:// —
+# hence the TLS feature.
 tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
-serde_yaml = "0.9"
 # Linux-native Baidu Tongji transport: fixed hm.js fetch + hm.gif beacon with
 # rustls so it never touches the vendored-openssl stack or WebKit networking.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "multipart", "json"] }

@@ -8,8 +8,8 @@
  *     model picker by use-engine-models.
  *
  * The official row's state lives in useCliConfig; the bin/models rows use
- * the local read-modify-write AppSettings funnel below (same discipline as
- * useDshSettings: patch onto a fresh read, never persist a stale snapshot).
+ * the local read-modify-write AppSettings funnel below (patch onto a fresh
+ * read, never persist a stale snapshot).
  */
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

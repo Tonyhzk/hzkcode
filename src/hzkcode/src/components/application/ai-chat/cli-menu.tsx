@@ -369,7 +369,7 @@ function EngineModelDialog({
  * "{CLI} / {model} · {effort}" — hairline-separated engine rows where
  * only the active engine carries a status dot, and a per-engine flyout.
  * Picking a model in another engine's flyout switches to that engine (when
- * installed) and keeps the panel open for Fast / effort.
+ * installed) and keeps the panel open for effort.
  */
 export function CliMenu({
   options,
@@ -440,9 +440,9 @@ export function CliMenu({
 
   const dialogOption = options.find((o) => o.id === dialogEngine);
 
-  // Keep the menu open after a model pick so Fast / effort can be adjusted in
-  // the same panel (Codex desktop behavior). A model on another installed
-  // engine still switches the active CLI; the flyout stays on that engine.
+  // Keep the menu open after a model pick so effort can be adjusted in the
+  // same panel. A model on another installed engine still switches the
+  // active CLI; the flyout stays on that engine.
   const pickModel = (engine: string, id: string) => {
     onModelChange(engine, id);
     const target = options.find((o) => o.id === engine);

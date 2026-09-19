@@ -648,9 +648,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
         engines,
       });
       ensureUsableEngine(engines);
-      // Restore persisted tabs; drop ones whose workspace/session is gone.
+      // Restore persisted tabs; drop ones whose engine, workspace or session
+      // is gone. A stale tab from a since-removed CLI engine must not come
+      // back and hijack the engine picker.
       const restoredTabs = readPersistedTabs().filter(
         (t) =>
+          engines.some((e) => e.id === t.engine) &&
           workspaces.some((w) => w.path === t.workspacePath) &&
           (t.sessionId === null ||
             allSessions.some(
