@@ -8,13 +8,13 @@
 #   1. Developer ID Application certificate in the login keychain
 #      (already present: "Developer ID Application: kunpeng zhu (RLHBM56QRH)")
 #   2. Notary credentials profile (only needed for notarization):
-#        xcrun notarytool store-credentials ccgui-notary \
+#        xcrun notarytool store-credentials hzkcode-notary \
 #          --apple-id <your-apple-id-email> \
 #          --team-id RLHBM56QRH \
 #          --password <app-specific-password from appleid.apple.com>
 #
 # Env:
-#   NOTARY_PROFILE   notarytool keychain profile (default: ccgui-notary)
+#   NOTARY_PROFILE   notarytool keychain profile (default: hzkcode-notary)
 #   SKIP_NOTARIZE=1  sign only, skip notarization (TCC fix does not need it)
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  updater key password (prompted if unset)
 set -euo pipefail
@@ -44,7 +44,7 @@ if [ "${SKIP_NOTARIZE:-0}" = "1" ]; then
   exit 0
 fi
 
-NOTARY_PROFILE="${NOTARY_PROFILE:-ccgui-notary}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-hzkcode-notary}"
 DMG="$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' | head -n 1)"
 [ -n "$DMG" ] || { echo "error: no dmg produced" >&2; exit 1; }
 

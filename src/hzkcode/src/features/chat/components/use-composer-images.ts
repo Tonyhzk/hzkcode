@@ -11,7 +11,7 @@ export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp"];
  * thumbnails, and clipboard-paste handling.
  *
  * Thumbnail URLs are data URLs from the backend's readFile — the asset
- * protocol scope denies ~/.ccgui-next (app home holds secrets), so asset://
+ * protocol scope denies ~/.hzkcode/gui (app home holds secrets), so asset://
  * thumbnails of pasted images would be blocked. Same pipeline MessageImages
  * uses.
  *

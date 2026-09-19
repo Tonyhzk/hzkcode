@@ -509,47 +509,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ccgui-next"
-version = "1.0.5"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "dirs",
- "dunce",
- "futures-util",
- "git2",
- "ignore",
- "libc",
- "openssl-sys",
- "parking_lot",
- "portable-pty",
- "regex",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "sysinfo",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-updater",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "toml 0.8.2",
- "toml_edit 0.22.27",
- "trash",
- "uuid",
- "which",
- "windows 0.61.3",
- "winreg 0.55.0",
- "zstd",
-]
-
-[[package]]
 name = "cesu8"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1884,6 +1843,47 @@ dependencies = [
  "tower-service",
  "tracing",
  "windows-registry",
+]
+
+[[package]]
+name = "hzkcode"
+version = "1.0.5"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "dirs",
+ "dunce",
+ "futures-util",
+ "git2",
+ "ignore",
+ "libc",
+ "openssl-sys",
+ "parking_lot",
+ "portable-pty",
+ "regex",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "sysinfo",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-updater",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "toml 0.8.2",
+ "toml_edit 0.22.27",
+ "trash",
+ "uuid",
+ "which",
+ "windows 0.61.3",
+ "winreg 0.55.0",
+ "zstd",
 ]
 
 [[package]]

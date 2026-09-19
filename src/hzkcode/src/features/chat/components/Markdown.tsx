@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import Copy from "lucide-react/dist/esm/icons/copy";
 import Check from "lucide-react/dist/esm/icons/check";
 import { useFilesStore } from "@/features/files/store";
-import { markdownRegistry, useRegistry } from "@ccgui/plugin-sdk";
+import { markdownRegistry, useRegistry } from "@hzkcode/plugin-sdk";
 import { useCopied } from "@/hooks/use-copied";
 import { FileLinkContextMenu } from "./FileLinkContextMenu";
 import { resolveChatFileLink } from "@/features/chat/file-link-resolution";

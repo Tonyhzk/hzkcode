@@ -1,6 +1,6 @@
 /**
- * Workspace UI bridge (window.__ccguiWorkspaceUI, same-webview global
- * contract as __ccguiFiles): plugins may decorate workspace UI without the
+ * Workspace UI bridge (window.__hzkcodeWorkspaceUI, same-webview global
+ * contract as __hzkcodeFiles): plugins may decorate workspace UI without the
  * host knowing plugin-specific meta shapes. Two optional hooks, both keyed
  * by workspace path:
  *  - allowedEngines: engine ids allowed in the composer CLI menu for this
@@ -19,13 +19,13 @@ export interface WorkspaceUIHooks {
   labelSuffix(workspacePath: string): string | null;
 }
 
-export interface CcguiWorkspaceUIBridge {
+export interface HzkcodeWorkspaceUIBridge {
   registerHooks(hooks: WorkspaceUIHooks | null): void;
 }
 
 declare global {
   interface Window {
-    __ccguiWorkspaceUI?: CcguiWorkspaceUIBridge;
+    __hzkcodeWorkspaceUI?: HzkcodeWorkspaceUIBridge;
   }
 }
 
@@ -33,7 +33,7 @@ let hooks: WorkspaceUIHooks | null = null;
 const listeners = new Set<() => void>();
 
 // Self-installing: module scope runs on first import (files store pattern).
-window.__ccguiWorkspaceUI = {
+window.__hzkcodeWorkspaceUI = {
   registerHooks(h) {
     hooks = h;
     // 插件 activate / 热重载换 hooks:通知订阅方重算(此前读模块级变量

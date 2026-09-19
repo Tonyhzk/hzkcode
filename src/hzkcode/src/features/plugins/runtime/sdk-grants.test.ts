@@ -4,7 +4,7 @@ import {
   execGrantAllows,
   isKnownPermission,
   networkGrantAllows,
-} from "@ccgui/plugin-sdk";
+} from "@hzkcode/plugin-sdk";
 import spec from "../../../../packages/plugin-sdk/spec/permissions.json";
 
 describe("isKnownPermission", () => {

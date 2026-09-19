@@ -434,7 +434,7 @@ mod tests {
     #[test]
     fn title_strips_image_path_placeholder() {
         assert_eq!(
-            stripped("[Image #1: /var/folders/qj/T/cc-gui-images/abc-pasted-image-1787459160234.png] 这个报错"),
+            stripped("[Image #1: /var/folders/qj/T/hzkcode-images/abc-pasted-image-1787459160234.png] 这个报错"),
             "这个报错"
         );
     }

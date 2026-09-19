@@ -1,5 +1,5 @@
 import { listenEngineEvents } from "@/lib/events";
-import type { Disposer } from "@ccgui/plugin-sdk";
+import type { Disposer } from "@hzkcode/plugin-sdk";
 
 /**
  * Plugin event bus (plan §5.2 ctx.events). Carries host→plugin topics (e.g.

@@ -56,7 +56,7 @@ const DOWNLOADS = 47;
 
 const ENTRY: MarketPlugin = {
   id: "react-doctor",
-  repo: "zhukunpenglinyutong/ccgui-plugin-react-doctor",
+  repo: "Tonyhzk/hzkcode-plugin-react-doctor",
   name: "React Doctor",
   description: "",
   author: "zhukunpenglinyutong",

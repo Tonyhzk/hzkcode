@@ -131,8 +131,8 @@ export function SidebarBrandRow() {
   return (
     <div className="flex w-full flex-row items-center justify-between">
       <span className="flex items-center gap-2 px-1">
-        <img src="/app-icon.png" alt="CC GUI" className="size-7 rounded-lg" />
-        <span className="text-headline-medium text-text-primary">CC GUI</span>
+        <img src="/app-icon.png" alt="HZK CODE" className="size-7 rounded-lg" />
+        <span className="text-headline-medium text-text-primary">HZK CODE</span>
       </span>
     </div>
   );

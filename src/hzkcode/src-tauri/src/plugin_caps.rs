@@ -927,26 +927,26 @@ mod tests {
     // so splitting these across tests would race under parallel test runs.
     #[tokio::test]
     async fn tracked_children_kill_semantics() {
-        register_tracked_child("ccgui-test-lifecycle-a", spawn_test_sleeper());
-        register_tracked_child("ccgui-test-lifecycle-a", spawn_test_sleeper());
-        register_tracked_child("ccgui-test-lifecycle-b", spawn_test_sleeper());
+        register_tracked_child("hzkcode-test-lifecycle-a", spawn_test_sleeper());
+        register_tracked_child("hzkcode-test-lifecycle-a", spawn_test_sleeper());
+        register_tracked_child("hzkcode-test-lifecycle-b", spawn_test_sleeper());
 
         // Kills every child of the named plugin and reports the count.
-        assert_eq!(kill_tracked_children("ccgui-test-lifecycle-a"), 2);
+        assert_eq!(kill_tracked_children("hzkcode-test-lifecycle-a"), 2);
         // Registry entry is cleared; a second kill finds nothing.
-        assert_eq!(kill_tracked_children("ccgui-test-lifecycle-a"), 0);
+        assert_eq!(kill_tracked_children("hzkcode-test-lifecycle-a"), 0);
         // A plugin can never reach another plugin's children.
         assert!(tracked_children()
             .lock()
-            .contains_key("ccgui-test-lifecycle-b"));
-        assert_eq!(kill_tracked_children("ccgui-test-lifecycle-b"), 1);
+            .contains_key("hzkcode-test-lifecycle-b"));
+        assert_eq!(kill_tracked_children("hzkcode-test-lifecycle-b"), 1);
         // Plugin that never spawned: nothing to kill, no error.
-        assert_eq!(kill_tracked_children("ccgui-test-lifecycle-none"), 0);
+        assert_eq!(kill_tracked_children("hzkcode-test-lifecycle-none"), 0);
         assert!(tracked_children().lock().is_empty());
 
         // kill_all (app-exit hook) drains every plugin's children at once.
-        register_tracked_child("ccgui-test-lifecycle-x", spawn_test_sleeper());
-        register_tracked_child("ccgui-test-lifecycle-y", spawn_test_sleeper());
+        register_tracked_child("hzkcode-test-lifecycle-x", spawn_test_sleeper());
+        register_tracked_child("hzkcode-test-lifecycle-y", spawn_test_sleeper());
         kill_all_tracked_children();
         assert!(tracked_children().lock().is_empty());
     }
@@ -955,9 +955,9 @@ mod tests {
     async fn plugin_exec_kill_requires_an_installed_record() {
         // Cleanup needs no exec: grant, but the plugin must exist — a random
         // id can never be in plugins.json.
-        let error = plugin_exec_kill("ccgui-test-never-installed".to_string())
+        let error = plugin_exec_kill("hzkcode-test-never-installed".to_string())
             .await
             .unwrap_err();
-        assert!(error.contains("ccgui-test-never-installed"), "{error}");
+        assert!(error.contains("hzkcode-test-never-installed"), "{error}");
     }
 }

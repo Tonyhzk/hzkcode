@@ -37,7 +37,7 @@ vi.mock("@/lib/events", () => ({
 }));
 
 const WS = "/tmp/ws";
-const STORAGE_KEY = "ccgui-next.selectedAgentByThread:v1";
+const STORAGE_KEY = "hzkcode.selectedAgentByThread:v1";
 const BUILT_IN_PICK: AgentConfig = {
   id: "agency-agents:design/design-ui-designer",
   name: "UI 设计师",

@@ -166,11 +166,11 @@ pub fn run() {
                     }
                 });
             }
-            // Dev convenience: `CCGUI_WEB_AUTOSTART=1 pnpm dev` starts the LAN
+            // Dev convenience: `HZKCODE_WEB_AUTOSTART=1 pnpm dev` starts the LAN
             // bridge at launch and prints the URL, so the web build can be
             // exercised without clicking the settings toggle.
             #[cfg(debug_assertions)]
-            if std::env::var_os("CCGUI_WEB_AUTOSTART").is_some() {
+            if std::env::var_os("HZKCODE_WEB_AUTOSTART").is_some() {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     match web::web_access_start(handle).await {
@@ -188,7 +188,7 @@ pub fn run() {
             let settings = settings::read_settings().unwrap_or_default();
             let mut window_builder =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-                    .title("CC GUI")
+                    .title("HZK CODE")
                     .inner_size(1400.0, 900.0)
                     .min_inner_size(900.0, 600.0);
             #[cfg(target_os = "macos")]

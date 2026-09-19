@@ -63,7 +63,7 @@ function initialForm(engine: EngineId, initial?: ProviderFormValue): ProviderFor
         ? base.configToml
         : initial
           ? buildCodexConfigToml(
-              "ccgui",
+              "hzkcode",
               base.baseUrl.trim() || "https://api.example.com/v1",
               base.model.trim() || "gpt-5.1-codex",
               "chat",

@@ -76,7 +76,7 @@ export type CustomApp = {
   icon?: string | null;
 };
 
-export const CUSTOM_APPS_KEY = "ccgui-next.openWorkspaceCustomApps";
+export const CUSTOM_APPS_KEY = "hzkcode.openWorkspaceCustomApps";
 
 export function readCustomApps(): CustomApp[] {
   return (
@@ -114,8 +114,8 @@ export async function extractCustomAppIcon(app: CustomApp): Promise<string | nul
 
 // ---------- header pinning / selection persistence (localStorage) ----------
 
-const PINNED_IDS_KEY = "ccgui-next.headerPinnedActions";
-const SELECTED_APP_KEY = "ccgui-next.openWorkspaceApp";
+const PINNED_IDS_KEY = "hzkcode.headerPinnedActions";
+const SELECTED_APP_KEY = "hzkcode.openWorkspaceApp";
 
 /** "terminal" is a pinnable extra action, not an open target. */
 export const TERMINAL_ACTION_ID = "terminal";

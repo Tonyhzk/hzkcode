@@ -1,5 +1,5 @@
 import i18n from "@/lib/i18n";
-import { commandRegistry } from "@ccgui/plugin-sdk";
+import { commandRegistry } from "@hzkcode/plugin-sdk";
 import { useShortcutsStore } from "@/features/shortcuts/store";
 
 /**

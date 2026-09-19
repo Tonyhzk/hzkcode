@@ -4,7 +4,7 @@
 //!
 //!   cargo run --example engine_smoke -- [claude kimi grok]
 
-use ccgui_next_lib::engine::{engine_by_id, EngineEvent, SendRequest};
+use hzkcode_lib::engine::{engine_by_id, EngineEvent, SendRequest};
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -16,7 +16,7 @@ async fn main() {
     } else {
         engines
     };
-    let workspace = std::env::temp_dir().join("ccgui-engine-smoke");
+    let workspace = std::env::temp_dir().join("hzkcode-engine-smoke");
     std::fs::create_dir_all(&workspace).unwrap();
 
     for engine_id in engines {

@@ -16,7 +16,7 @@ import { registerShortcutHandler } from "@/features/shortcuts/runtime";
  */
 
 /** localStorage key for the collapsed workspace-group id set. */
-const COLLAPSED_GROUPS_KEY = "ccgui-next.sidebarCollapsedGroups:v1";
+const COLLAPSED_GROUPS_KEY = "hzkcode.sidebarCollapsedGroups:v1";
 /** Reserved id in the collapsed-group set for the 已归档 section (group ids
  *  are generated, so a sentinel can't collide). */
 export const ARCHIVED_SECTION_ID = "__archived__";
@@ -56,7 +56,7 @@ export function useCollapsedGroups() {
 }
 
 /** localStorage key for the expanded workspace id set. */
-const EXPANDED_WORKSPACES_KEY = "ccgui-next.sidebarExpandedWorkspaces:v1";
+const EXPANDED_WORKSPACES_KEY = "hzkcode.sidebarExpandedWorkspaces:v1";
 
 /** Expanded workspace ids, or null when the user never expanded/collapsed
  *  anything — null keeps the built-in default (the first workspace open)

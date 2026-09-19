@@ -34,8 +34,8 @@ usePromptStore.setState({
   byRoot: {
     [ROOT]: {
       entries: [
-        { name: "review", path: "/ws/.ccgui/prompts/review.md", description: "逐行审查当前改动", argumentHint: "<文件路径>", content: "请审查 $ARGUMENTS …", scope: "workspace" },
-        { name: "standup", path: "/home/.ccgui-next/prompts/standup.md", description: "生成站会日报", content: "总结今天的进展…", scope: "global" },
+        { name: "review", path: "/ws/.hzkcode/prompts/review.md", description: "逐行审查当前改动", argumentHint: "<文件路径>", content: "请审查 $ARGUMENTS …", scope: "workspace" },
+        { name: "standup", path: "/home/.hzkcode/gui/prompts/standup.md", description: "生成站会日报", content: "总结今天的进展…", scope: "global" },
       ],
       status: "ready",
       fetchedAt: Date.now(),

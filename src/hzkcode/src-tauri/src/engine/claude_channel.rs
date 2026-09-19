@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn channel_settings_isolate_credentials_without_rewriting_native_files() {
         let directory =
-            std::env::temp_dir().join(format!("ccgui-claude-channel-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("hzkcode-claude-channel-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();
         let native = directory.join("settings.json");
         let original = r#"{"env":{"ANTHROPIC_BASE_URL":"https://native.invalid","ANTHROPIC_API_KEY":"test-native"},"hooks":{"Stop":[]}}"#;

@@ -162,7 +162,7 @@ mod tests {
 
     fn scratch(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "ccgui-codex-usage-{tag}-{}",
+            "hzkcode-codex-usage-{tag}-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).unwrap();

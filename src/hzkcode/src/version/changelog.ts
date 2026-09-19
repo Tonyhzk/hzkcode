@@ -5,7 +5,7 @@
  */
 
 /** Repo the dialog's Star banner links to; shared with Settings → About. */
-export const GITHUB_REPO_URL = "https://github.com/zhukunpenglinyutong/desktop-cc-gui";
+export const GITHUB_REPO_URL = "https://github.com/Tonyhzk/hzkcode";
 
 export interface ChangelogEntry {
   version: string;
@@ -157,7 +157,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - Windows 上派生子进程不再弹出控制台窗口`,
       en: `✨ Features
 - Add the **OMP engine** (parameterized reuse of the pi-family pipeline, wired end to end)
-- **LAN web access**: WebSocket bridge + QR entry in Settings, so phones on the same network can use CC GUI in a browser
+- **LAN web access**: WebSocket bridge + QR entry in Settings, so phones on the same network can use HZK CODE in a browser
 - **Pi-family engine auth**: OAuth subscription sign-in and API Key management, cc-switch channel import and switching
 - **Composer upgrades**: @ mentions, permission / effort tiers, branch menu, prompt-history completion
 - Message anchor navigation, provider configuration dialog, and engine/history layer improvements

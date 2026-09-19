@@ -27,9 +27,9 @@ const ACTION_BUTTON =
 /** Where plugins are submitted (central index) and a real reference plugin
  *  to learn from — both repos actually exist; the template repo is still
  *  local-only, so the tutorial points at the example instead of a dead link. */
-const SUBMIT_REPO_URL = "https://github.com/zhukunpenglinyutong/ccgui-plugins";
+const SUBMIT_REPO_URL = "https://github.com/Tonyhzk/hzkcode-plugins";
 const EXAMPLE_PLUGIN_URL =
-  "https://github.com/zhukunpenglinyutong/ccgui-plugin-react-doctor";
+  "https://github.com/Tonyhzk/hzkcode-plugin-react-doctor";
 
 function LinkButton({ url, label }: { url: string; label: string }) {
   return (
@@ -96,7 +96,7 @@ function DevelopGuideDialog({ onClose }: { onClose: () => void }) {
             {t("plugins.market.repoAddress")}
           </span>
           <code className="rounded-md bg-background-secondary-default px-1.5 py-0.5 text-xs text-text-secondary">
-            github.com/zhukunpenglinyutong/ccgui-plugins
+            github.com/Tonyhzk/hzkcode-plugins
           </code>
           <LinkButton url={SUBMIT_REPO_URL} label={t("plugins.market.openSubmitRepo")} />
         </div>

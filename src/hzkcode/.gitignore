@@ -18,9 +18,9 @@ src-tauri/gen
 Thumbs.db
 
 # Plugin development checkouts — plugins are separate GitHub repos under the
-# ccgui-plugin/ container (plan ADR-4); never commit them into this tree.
-/ccgui-plugin/
-/ccgui-plugin-*/
+# hzkcode-plugin/ container (plan ADR-4); never commit them into this tree.
+/hzkcode-plugin/
+/hzkcode-plugin-*/
 
 # Local agent / editor tooling
 .claude/

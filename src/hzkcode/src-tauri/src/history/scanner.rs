@@ -1428,7 +1428,7 @@ mod tests {
     }
 
     fn scratch_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("ccgui-{tag}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hzkcode-{tag}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -1652,7 +1652,9 @@ mod tests {
     /// keep their <encoded-cwd>/<session>/chat_history.jsonl shape.
     #[test]
     fn discover_grok_reads_provider_homes() {
-        let home = scratch_dir("discover-grok-legacy");
+        // Short tag on purpose: the scratch path is percent-encoded one %XX
+        // per byte, and a longer tag overflows the 255-byte filename limit.
+        let home = scratch_dir("grok-legacy");
         let workspace = home.join("ws");
         std::fs::create_dir_all(&workspace).unwrap();
         let encoded: String = workspace

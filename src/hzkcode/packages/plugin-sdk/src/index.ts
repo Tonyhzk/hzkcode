@@ -1,5 +1,5 @@
 /**
- * @ccgui/plugin-sdk — 插件系统契约包（single source of truth）。
+ * @hzkcode/plugin-sdk — 插件系统契约包（single source of truth）。
  *
  * 宿主（src/features/plugins/）实现这里定义的接口；插件（独立仓库）只依赖
  * 这里的类型与常量。版本独立演进（见 CHANGELOG.md），插件经 manifest 的

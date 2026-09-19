@@ -15,10 +15,10 @@
 //! comctl32 v6 manifest (0xc0000139) - the app exe gets one from tauri-build,
 //! a bare `cargo test` binary does not.
 
-use ccgui_next_lib::db::Db;
-use ccgui_next_lib::engine::{self, ProcessRegistry};
-use ccgui_next_lib::event_sink::{BroadcastEmit, Emit, EventSink, ENGINE_EVENT_NAME};
-use ccgui_next_lib::AppState;
+use hzkcode_lib::db::Db;
+use hzkcode_lib::engine::{self, ProcessRegistry};
+use hzkcode_lib::event_sink::{BroadcastEmit, Emit, EventSink, ENGINE_EVENT_NAME};
+use hzkcode_lib::AppState;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
@@ -40,7 +40,7 @@ impl Emit for Capture {
 
 fn temp_home(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "ccgui-codex-probe-{}-{}",
+        "hzkcode-codex-probe-{}-{}",
         tag,
         std::process::id()
     ));
@@ -57,7 +57,7 @@ fn redirect_env(home: &std::path::Path) {
     std::env::set_var("APPDATA", home.join("appdata"));
     std::env::set_var("USERPROFILE", home.join("profile"));
     std::env::set_var("LOCALAPPDATA", home.join("localappdata"));
-    ccgui_next_lib::engine::resolve::clear_search_paths_cache();
+    hzkcode_lib::engine::resolve::clear_search_paths_cache();
 }
 
 /// Fake codex CLI: `%APPDATA%\npm\codex.cmd` running a Node script that reads
@@ -125,7 +125,7 @@ process.stdin.on("end", () => {
 }
 
 fn build_state(home: &std::path::Path) -> (AppState, Arc<Capture>) {
-    ccgui_next_lib::paths::ensure_dirs().unwrap();
+    hzkcode_lib::paths::ensure_dirs().unwrap();
     let capture = Arc::new(Capture(Mutex::new(Vec::new())));
     let emitter = Arc::clone(&capture) as Arc<dyn Emit>;
     let sink = EventSink::new(Arc::clone(&emitter));
@@ -134,20 +134,20 @@ fn build_state(home: &std::path::Path) -> (AppState, Arc<Capture>) {
         sink,
         terminal_sink: EventSink::with_name(
             Arc::clone(&emitter),
-            ccgui_next_lib::terminal::TERMINAL_OUTPUT_EVENT,
+            hzkcode_lib::terminal::TERMINAL_OUTPUT_EVENT,
         ),
-        terminals: ccgui_next_lib::terminal::TerminalRegistry::default(),
+        terminals: hzkcode_lib::terminal::TerminalRegistry::default(),
         processes: Arc::new(ProcessRegistry::default()),
         emitters: BroadcastEmit::new(emitter),
-        web: ccgui_next_lib::web::WebAccessState::default(),
-        relay: ccgui_next_lib::relay::RelayState::default(),
-        dsh_host: Arc::new(ccgui_next_lib::dsh_host::DshHostState::default()),
+        web: hzkcode_lib::web::WebAccessState::default(),
+        relay: hzkcode_lib::relay::RelayState::default(),
+        dsh_host: Arc::new(hzkcode_lib::dsh_host::DshHostState::default()),
     };
     (state, capture)
 }
 
 async fn send_codex_and_wait(state: &AppState, events: &Arc<Capture>, deadline_ms: u64) -> Vec<Value> {
-    let workspace = std::env::temp_dir().join(format!("ccgui-codex-ws-{}", std::process::id()));
+    let workspace = std::env::temp_dir().join(format!("hzkcode-codex-ws-{}", std::process::id()));
     std::fs::create_dir_all(&workspace).unwrap();
     let result = engine::send_message_inner(
         state,

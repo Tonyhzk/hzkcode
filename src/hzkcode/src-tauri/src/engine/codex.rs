@@ -38,9 +38,9 @@ pub(super) fn apply_channel(
     // A flat channel must select its own provider, even when the native file
     // selects a different relay. Credentials travel in env, never in argv.
     if !config.contains_key("model_provider") && (base_url.is_some() || api_key.is_some()) {
-        config.insert("model_provider".into(), Toml::String("ccgui".into()));
+        config.insert("model_provider".into(), Toml::String("hzkcode".into()));
         let table = toml::Table::from_iter([
-            ("name".into(), Toml::String("CC GUI".into())),
+            ("name".into(), Toml::String("HZK CODE".into())),
             (
                 "base_url".into(),
                 Toml::String(
@@ -54,7 +54,7 @@ pub(super) fn apply_channel(
         config.insert(
             "model_providers".into(),
             Toml::Table(toml::Table::from_iter([(
-                "ccgui".into(),
+                "hzkcode".into(),
                 Toml::Table(table),
             )])),
         );
@@ -78,10 +78,10 @@ pub(super) fn apply_channel(
         table
             .entry("name")
             .or_insert_with(|| Toml::String(selected));
-        table.insert("env_key".into(), Toml::String("CCGUI_CODEX_API_KEY".into()));
+        table.insert("env_key".into(), Toml::String("HZKCODE_CODEX_API_KEY".into()));
         table.insert("requires_openai_auth".into(), Toml::Boolean(false));
         table.remove("experimental_bearer_token");
-        command.env("CCGUI_CODEX_API_KEY", key);
+        command.env("HZKCODE_CODEX_API_KEY", key);
     }
     // Provider documents may authenticate via literal headers or a bearer
     // token. Move those to env too, so process listings do not reveal them.
@@ -97,7 +97,7 @@ pub(super) fn apply_channel(
                 let token = token
                     .as_str()
                     .ok_or("Codex channel bearer token must be a string")?;
-                let key = format!("CCGUI_CODEX_BEARER_{provider_index}");
+                let key = format!("HZKCODE_CODEX_BEARER_{provider_index}");
                 command.env(&key, token);
                 table.insert("env_key".into(), Toml::String(key));
                 table.insert("requires_openai_auth".into(), Toml::Boolean(false));
@@ -119,7 +119,7 @@ pub(super) fn apply_channel(
                         .entry(header.clone())
                         .or_insert_with(|| {
                             Toml::String(format!(
-                                "CCGUI_CODEX_HEADER_{provider_index}_{header_index}"
+                                "HZKCODE_CODEX_HEADER_{provider_index}_{header_index}"
                             ))
                         })
                         .as_str()
@@ -516,11 +516,11 @@ mod tests {
                 .any(|(key, value)| key == header_key
                     && value == Some(std::ffi::OsStr::new("channel"))));
             assert_eq!(relay["requires_openai_auth"].as_bool(), Some(false));
-            assert_eq!(relay["env_key"].as_str(), Some("CCGUI_CODEX_API_KEY"));
+            assert_eq!(relay["env_key"].as_str(), Some("HZKCODE_CODEX_API_KEY"));
             assert!(command
                 .as_std()
                 .get_envs()
-                .any(|(k, v)| k == "CCGUI_CODEX_API_KEY"
+                .any(|(k, v)| k == "HZKCODE_CODEX_API_KEY"
                     && v == Some(std::ffi::OsStr::new("test-channel-secret"))));
             assert!(!command
                 .as_std()
@@ -546,9 +546,9 @@ mod tests {
             (&b, "https://b.example", "model-b"),
         ] {
             let config = overrides(command);
-            assert_eq!(config["model_provider"].as_str(), Some("ccgui"));
+            assert_eq!(config["model_provider"].as_str(), Some("hzkcode"));
             assert_eq!(
-                config["model_providers"]["ccgui"]["base_url"].as_str(),
+                config["model_providers"]["hzkcode"]["base_url"].as_str(),
                 Some(base)
             );
             assert_eq!(config["model"].as_str(), Some(model));

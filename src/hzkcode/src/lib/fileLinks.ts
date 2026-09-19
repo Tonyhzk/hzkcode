@@ -4,10 +4,10 @@
  * spans and link targets that look like file paths render as green
  * dotted-underline links that open the file.
  *
- * Scheme is app-internal: `ccgui-file:<encodeURIComponent(path)>`.
+ * Scheme is app-internal: `hzkcode-file:<encodeURIComponent(path)>`.
  */
 
-const FILE_LINK_PROTOCOL = "ccgui-file:";
+const FILE_LINK_PROTOCOL = "hzkcode-file:";
 
 const SPACED_POSIX_FILE_PATH_PATTERN = String.raw`\/(?:Users|Volumes|home|tmp|var|private)\/[^\r\n\`"'<>]*?\.[A-Za-z0-9]{1,12}(?:#[A-Za-z0-9:_-]+)?`;
 const WINDOWS_ABSOLUTE_PATH_PATTERN = String.raw`[A-Za-z]:[\\/](?![\\/])[^\s\`"'<>\|]+`;

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { SDK_VERSION, compareVersions, satisfiesSdkRange } from "@ccgui/plugin-sdk";
+import { SDK_VERSION, compareVersions, satisfiesSdkRange } from "@hzkcode/plugin-sdk";
 
 describe("satisfiesSdkRange", () => {
   it("absent or * accepts anything", () => {
@@ -63,7 +63,7 @@ describe("satisfiesSdkRange", () => {
       resolve(dirname(fileURLToPath(import.meta.url)), "../../../../packages/plugin-sdk/plugin.d.ts"),
       "utf8",
     );
-    expect(dts.slice(0, 400)).toContain(`@ccgui/plugin-sdk v${SDK_VERSION}`);
+    expect(dts.slice(0, 400)).toContain(`@hzkcode/plugin-sdk v${SDK_VERSION}`);
   });
 });
 

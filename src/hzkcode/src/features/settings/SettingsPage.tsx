@@ -10,7 +10,7 @@ import {
   pluginIdFromRegistryKey,
   settingsRegistry,
   useRegistry,
-} from "@ccgui/plugin-sdk";
+} from "@hzkcode/plugin-sdk";
 import { PluginBoundary } from "@/features/plugins/boundary/PluginBoundary";
 import { useChatStore } from "@/features/chat/store";
 import { ENGINE_IDS, type EngineId } from "./providers";
@@ -31,7 +31,7 @@ const GROUP_META: Record<string, { labelKey: string; order: number }> = {
 };
 const KNOWN_GROUP_COUNT = Object.keys(GROUP_META).length;
 /** localStorage key for the user's CLI 管理 rail order (section keys). */
-const CLI_NAV_ORDER_KEY = "ccgui-next.settingsCliNavOrder:v1";
+const CLI_NAV_ORDER_KEY = "hzkcode.settingsCliNavOrder:v1";
 
 const readCliNavOrder = (): string[] =>
   readStoredJson(CLI_NAV_ORDER_KEY, (value) =>

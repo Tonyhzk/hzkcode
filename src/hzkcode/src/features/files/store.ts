@@ -10,7 +10,7 @@ import { errorText } from "@/lib/errors";
 import { writeStored } from "@/lib/storage";
 import { installFilesBridge, readRemoteAware } from "./remote-files";
 
-export const FILES_ROOT_KEY = "ccgui-next.filesRoot";
+export const FILES_ROOT_KEY = "hzkcode.filesRoot";
 
 /** Join a directory path and a child name. Backend paths are POSIX-style on
  * macOS/Linux; Rust's fs APIs also accept "/" separators on Windows. */
@@ -444,6 +444,6 @@ export const useFilesStore = create<FilesStore>((set, get) => ({
   closeSearch: () => set({ searchRoot: null }),
 }));
 
-// WSL 插件(独立 bundle)经 window.__ccguiFiles 拿到中央编辑器的打开入口,
+// WSL 插件(独立 bundle)经 window.__hzkcodeFiles 拿到中央编辑器的打开入口,
 // 并注册远程读取器 —— 见 remote-files.ts。
 installFilesBridge((path) => useFilesStore.getState().openFile(path));

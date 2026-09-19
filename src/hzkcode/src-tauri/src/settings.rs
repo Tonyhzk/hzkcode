@@ -74,7 +74,7 @@ pub struct AppSettings {
     #[serde(default)]
     pub web_auth_key: Option<String>,
     /// Worker base URL for the outbound relay (设置 → 远程访问 → 外网访问),
-    /// e.g. https://ccgui-relay.<account>.workers.dev.
+    /// e.g. https://hzkcode-relay.<account>.workers.dev.
     #[serde(default)]
     pub web_relay_url: Option<String>,
     /// Shared key the relay worker checks.
@@ -819,7 +819,7 @@ mod tests {
     impl Scratch {
         fn new() -> Self {
             let dir = std::env::temp_dir()
-                .join(format!("ccgui-next-settings-test-{}", uuid::Uuid::new_v4()));
+                .join(format!("hzkcode-settings-test-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&dir).unwrap();
             Self(dir)
         }
@@ -860,8 +860,8 @@ mod tests {
     fn legacy_group_import_merges_and_assigns() {
         let scratch = Scratch::new();
         let db = crate::db::Db::open_at(&scratch.path("app.db")).unwrap();
-        insert_workspace(&db, "ws-new", "/repos/desktop-cc-gui");
-        insert_workspace(&db, "ws-jb", "/repos/jetbrains-cc-gui");
+        insert_workspace(&db, "ws-new", "/repos/hzkcode");
+        insert_workspace(&db, "ws-jb", "/repos/jetbrains-hzkcode");
         insert_workspace(&db, "ws-free", "/repos/sub2api");
 
         std::fs::write(
@@ -888,8 +888,8 @@ mod tests {
         std::fs::write(
             scratch.path("legacy-workspaces.json"),
             r#"[
-                {"path": "/repos/desktop-cc-gui", "settings": {"groupId": "g-oss"}},
-                {"path": "/repos/jetbrains-cc-gui", "settings": {"groupId": "g-oss"}},
+                {"path": "/repos/hzkcode", "settings": {"groupId": "g-oss"}},
+                {"path": "/repos/jetbrains-hzkcode", "settings": {"groupId": "g-oss"}},
                 {"path": "/repos/sub2api", "settings": {"groupId": "g-relay"}},
                 {"path": "/repos/unknown", "settings": {"groupId": "g-dangling"}}
             ]"#,
@@ -1077,9 +1077,9 @@ mod tests {
 
         // A fixed absolute path outside any temp root validates as-is.
         let ok = if cfg!(windows) {
-            r"C:\ccgui-codex-home-probe"
+            r"C:\hzkcode-codex-home-probe"
         } else {
-            "/opt/ccgui-codex-home-probe"
+            "/opt/hzkcode-codex-home-probe"
         };
         assert_eq!(validate_home_override(ok).unwrap(), std::path::PathBuf::from(ok));
         assert!(validate_home_override("/tmp/codex-home").is_err());

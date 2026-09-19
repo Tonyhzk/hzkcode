@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Registry } from "@ccgui/plugin-sdk";
+import { Registry } from "@hzkcode/plugin-sdk";
 
 interface Entry {
   id: string;

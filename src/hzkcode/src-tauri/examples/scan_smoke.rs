@@ -1,14 +1,14 @@
 //! Smoke: run the history scanner against the real native session files on
-//! this machine, using a temp app home so the user's ~/.ccgui-next is untouched.
+//! this machine, using a temp app home so the user's ~/.hzkcode/gui is untouched.
 //!
 //!   cargo run --example scan_smoke -- /path/to/workspace [/another ...]
 
-use ccgui_next_lib::db::Db;
-use ccgui_next_lib::history::parse_session_file;
+use hzkcode_lib::db::Db;
+use hzkcode_lib::history::parse_session_file;
 use std::time::Instant;
 
 fn main() {
-    let tmp = std::env::temp_dir().join(format!("ccgui-scan-smoke-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("hzkcode-scan-smoke-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).expect("create temp home");
 
     let workspaces: Vec<String> = std::env::args().skip(1).collect();
@@ -31,7 +31,7 @@ fn main() {
 
     // First full scan.
     let start = Instant::now();
-    let report = ccgui_next_lib::history::scanner::scan_with(&db, || {}).expect("scan");
+    let report = hzkcode_lib::history::scanner::scan_with(&db, || {}).expect("scan");
     println!(
         "full scan: scanned={} reparsed={} reused={} in {:?}",
         report.scanned,
@@ -42,7 +42,7 @@ fn main() {
 
     // Second scan must reuse everything (stat-keyed cache).
     let start = Instant::now();
-    let report2 = ccgui_next_lib::history::scanner::scan_with(&db, || {}).expect("rescan");
+    let report2 = hzkcode_lib::history::scanner::scan_with(&db, || {}).expect("rescan");
     println!(
         "cache scan: scanned={} reparsed={} reused={} in {:?}",
         report2.scanned,

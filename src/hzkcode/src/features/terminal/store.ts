@@ -4,7 +4,7 @@ import { readStoredNumber, writeStored } from "@/lib/storage";
 import { newId } from "@/lib/id";
 import { clearTerminalSessionState } from "./sessions";
 
-const HEIGHT_KEY = "ccgui-next.terminalHeight";
+const HEIGHT_KEY = "hzkcode.terminalHeight";
 export const TERMINAL_MIN_HEIGHT = 120;
 export const TERMINAL_MAX_HEIGHT = 600;
 export const TERMINAL_DEFAULT_HEIGHT = 240;

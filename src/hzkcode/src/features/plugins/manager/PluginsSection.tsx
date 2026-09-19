@@ -13,7 +13,7 @@ import { cx } from "@/utils/cx";
 import { ConfirmDialog } from "@/components/dialogs";
 import type { PluginInfo } from "@/lib/ipc";
 import { usePluginsStore, usePluginStates } from "./usePlugins";
-import { useMarketplaceStore } from "../marketplace/store";
+import { MARKETPLACE_ENABLED, useMarketplaceStore } from "../marketplace/store";
 import type { PluginRuntimeState } from "../runtime/loader";
 
 const BADGE =
@@ -149,7 +149,7 @@ export default function PluginsSection() {
     void refresh();
     // Update badges on marketplace rows ride the same 1h index cache; a
     // failed check just leaves the list empty, so fire and forget.
-    void useMarketplaceStore.getState().checkUpdates();
+    if (MARKETPLACE_ENABLED) void useMarketplaceStore.getState().checkUpdates();
   }, [refresh]);
 
   return (

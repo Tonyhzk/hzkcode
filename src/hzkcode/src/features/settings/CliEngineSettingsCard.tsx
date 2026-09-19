@@ -557,7 +557,7 @@ export function CliEngineSettingsCard({
 }: {
   cli: CliConfigState;
   /** pi/omp official edit: open the models config editor in the auth
-   *  section below (their files are never cc-gui-managed). */
+   *  section below (their files are never hzkcode-managed). */
   onEditOfficial: () => void;
 }) {
   const { engine } = cli;

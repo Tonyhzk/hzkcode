@@ -10,13 +10,13 @@ import { listenScanProgress, type ScanProgress } from "@/lib/events";
 import { readStoredNumber, writeStored } from "@/lib/storage";
 import { useTauriEvent } from "@/hooks/use-tauri-event";
 import { cx } from "@/utils/cx";
-import { compareByOrder, pluginIdFromRegistryKey, statusBarRegistry, useRegistry } from "@ccgui/plugin-sdk";
+import { compareByOrder, pluginIdFromRegistryKey, statusBarRegistry, useRegistry } from "@hzkcode/plugin-sdk";
 import { PluginBoundary } from "@/features/plugins/boundary/PluginBoundary";
 import { ChangelogDialog } from "@/features/settings/ChangelogDialog";
 import { CHANGELOG_DATA, GITHUB_REPO_URL } from "@/version/changelog";
 import { registerShortcutHandler } from "@/features/shortcuts/runtime";
 
-const ZOOM_KEY = "ccgui-next.zoom:v1";
+const ZOOM_KEY = "hzkcode.zoom:v1";
 const ZOOM_MIN = 50;
 const ZOOM_MAX = 200;
 const ZOOM_STEP = 10;

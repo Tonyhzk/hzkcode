@@ -574,7 +574,7 @@ mod tests {
         fn new(name: &str) -> Self {
             let guard = ENV_LOCK.lock();
             let dir = std::env::temp_dir().join(format!(
-                "ccgui-agent-catalog-{name}-{}",
+                "hzkcode-agent-catalog-{name}-{}",
                 std::process::id()
             ));
             let _ = fs::remove_dir_all(&dir);
@@ -606,7 +606,7 @@ mod tests {
             .expect("clock")
             .as_nanos();
         let root = std::env::temp_dir().join(format!(
-            "ccgui-agent-catalog-{}-{}",
+            "hzkcode-agent-catalog-{}-{}",
             std::process::id(),
             suffix
         ));
@@ -663,7 +663,7 @@ mod tests {
             .expect("clock")
             .as_nanos();
         let root = std::env::temp_dir().join(format!(
-            "ccgui-agent-catalog-identity-{}-{}",
+            "hzkcode-agent-catalog-identity-{}-{}",
             std::process::id(),
             suffix
         ));

@@ -32,7 +32,7 @@ const EMPTY_MESSAGES: Message[] = [];
  *   workspace git status as a fallback.
  */
 
-const CHROME_OPEN_KEY = "ccgui.chat.runStatusChromeOpen";
+const CHROME_OPEN_KEY = "hzkcode.chat.runStatusChromeOpen";
 
 function readChromeOpen(): boolean {
   try {

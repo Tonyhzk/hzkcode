@@ -1,27 +1,26 @@
 <div align="center">
 
-# CC GUI 客户端
+# HZK CODE
 
-<img width="120" alt="ccgui 图标" src="./public/app-icon.png" />
+<img width="120" alt="hzkcode 图标" src="./public/app-icon.png" />
 
 [English](./README.md) · **简体中文**
 
-<a href="https://trendshift.io/repositories/25546" target="_blank"><img src="https://trendshift.io/api/badge/repositories/25546" alt="zhukunpenglinyutong%2Fdesktop-cc-gui | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://atomgit.com/zhukunpenglinyutong/desktop-cc-gui" target="_blank"><img src="https://atomgit.com/zhukunpenglinyutong/desktop-cc-gui/star/new_badge.svg" alt="AtomGit G-Star" width="250" height="54"/></a>
+<a href="https://atomgit.com/Tonyhzk/hzkcode" target="_blank"><img src="https://atomgit.com/Tonyhzk/hzkcode/star/new_badge.svg" alt="AtomGit G-Star" width="250" height="54"/></a>
 
 ![][github-contributors-shield] ![][github-forks-shield] ![][github-stars-shield] ![][github-issues-shield]
 
 </div>
 
-**ccgui** 是一个开源的 **multi-engine AI 编程桌面客户端**。简单说：它把 **Claude Code**、**Codex CLI**、**Kimi CLI**、**Grok CLI**、**Pi CLI**、**OMP CLI**、**DeepSeek Harness（DSH）** 等命令行 AI 编程 runtime，放进一个统一的图形界面里。
+**HZK CODE** 是一个开源的 **multi-engine AI 编程桌面客户端**。简单说：它把 **Claude Code**、**Codex CLI**、**Kimi CLI**、**Grok CLI**、**Pi CLI**、**OMP CLI**、**DeepSeek Harness（DSH）** 等命令行 AI 编程 runtime，放进一个统一的图形界面里。
 
-你不用再盯着黑乎乎的终端敲命令——打开 ccgui，选好项目，像聊天一样让 AI 帮你写代码、改 Bug、提交 Git。流式输出、思考过程和工具调用都会实时展示；token 用量在引擎上报时同步呈现。
+你不用再盯着黑乎乎的终端敲命令——打开 HZK CODE，选好项目，像聊天一样让 AI 帮你写代码、改 Bug、提交 Git。流式输出、思考过程和工具调用都会实时展示；token 用量在引擎上报时同步呈现。
 
 应用基于 **Tauri 2 + React 18 + TypeScript + Rust** 开发，支持 macOS / Windows / Linux。设置与状态默认在本机持久化；发送给 AI provider 的内容，遵循你为对应 CLI 配置的渠道边界。
 
 ---
 
-## ccgui 能干什么
+## HZK CODE 能干什么
 
 ### 一个客户端，装下七个 AI 引擎
 
@@ -49,7 +48,7 @@
 
 ### 插件系统
 
-- 自研 **插件 SDK**（`@ccgui/plugin-sdk`），配套应用内运行时、管理界面与信任边界。
+- 自研 **插件 SDK**（`@hzkcode/plugin-sdk`），配套应用内运行时、管理界面与信任边界。
 - **声明式插件**无需编写前端代码即可新增设置区块与配置驱动的界面；应用内建界面（包括设置页本身）也走同一套扩展点注册。
 - 完整开发指南见 [docs/plugin-development-guide.zh-CN.md](./docs/plugin-development-guide.zh-CN.md)。
 
@@ -65,7 +64,7 @@
 
 ## 下载安装
 
-直接去 [Releases 页面](https://github.com/zhukunpenglinyutong/desktop-cc-gui/releases) 下载对应平台的安装包：
+直接去 [Releases 页面](https://github.com/Tonyhzk/hzkcode/releases) 下载对应平台的安装包：
 
 | 平台 | 安装包 |
 | --- | --- |
@@ -77,8 +76,8 @@
 
 ### 使用 DeepSeek Harness（DSH）
 
-1. 在本机安装 DSH CLI，并在 DSH 自身中配置模型与 API key——不要把它当成 ccgui 里的另一套 vendor preset。
-2. 在设置 → DeepSeek Harness 中，ccgui 可以接管本机已运行的 `dsh web` host，也可以自动拉起一个。
+1. 在本机安装 DSH CLI，并在 DSH 自身中配置模型与 API key——不要把它当成 HZK CODE 里的另一套 vendor preset。
+2. 在设置 → DeepSeek Harness 中，HZK CODE 可以接管本机已运行的 `dsh web` host，也可以自动拉起一个。
 3. 在输入框引擎选择器中选中 **DeepSeek Harness**。对话走 DSH 的 headless profile；模型与凭证仍归 DSH 管理。
 
 ---
@@ -104,8 +103,8 @@
 ### 第二步：装依赖
 
 ```bash
-git clone https://github.com/zhukunpenglinyutong/desktop-cc-gui.git
-cd desktop-cc-gui
+git clone https://github.com/Tonyhzk/hzkcode.git
+cd hzkcode
 pnpm install
 ```
 
@@ -147,7 +146,7 @@ Windows 与 Linux 安装包由 `.github/workflows/` 下的 CI 工作流产出（
 ### 目录结构
 
 ```text
-desktop-cc-gui/
+hzkcode/
 ├── src/                    # 前端代码
 │   ├── features/           # ★ 功能模块：chat / files / git / terminal /
 │   │                       #   settings / plugins / commands / update / open-app
@@ -158,7 +157,7 @@ desktop-cc-gui/
 ├── src-tauri/              # Rust 后端
 │   └── src/                # engine/（每个 CLI 一个模块）、history/、plugins/、
 │                           # git.rs、terminal.rs、web.rs（局域网桥接）……
-├── packages/plugin-sdk/    # @ccgui/plugin-sdk —— 插件开发套件
+├── packages/plugin-sdk/    # @hzkcode/plugin-sdk —— 插件开发套件
 ├── tests/                  # 前端集成向测试（Vitest）
 ├── scripts/                # 构建与打包脚本
 └── docs/                   # 插件开发指南、引擎模式说明
@@ -231,7 +230,7 @@ perf(chat): reveal streamed text per frame without reparsing markdown
 3. 改代码，本地把 `pnpm build` + `pnpm test` 跑绿。
 4. 提 PR 到本仓库的 **`main` 分支**。标题按 commit 格式写，描述里说清楚：改了什么、为什么改、怎么验证的。
 
-不知道从哪下手？看看 [Issues](https://github.com/zhukunpenglinyutong/desktop-cc-gui/issues)，挑一个感兴趣的开干。发现 Bug 或有新点子，也欢迎直接开 Issue 聊。
+不知道从哪下手？看看 [Issues](https://github.com/Tonyhzk/hzkcode/issues)，挑一个感兴趣的开干。发现 Bug 或有新点子，也欢迎直接开 Issue 聊。
 
 ### 想深入了解项目内部？
 
@@ -242,7 +241,7 @@ perf(chat): reveal streamed text per frame without reparsing markdown
 
 ## License
 
-[MIT](https://github.com/zhukunpenglinyutong/desktop-cc-gui?tab=MIT-1-ov-file)
+[MIT](https://github.com/Tonyhzk/hzkcode?tab=MIT-1-ov-file)
 
 ---
 
@@ -250,18 +249,18 @@ perf(chat): reveal streamed text per frame without reparsing markdown
 
 感谢 [LINUX DO](https://linux.do/) 用户的支持与反馈。
 
-[AtomGit](https://atomgit.com/zhukunpenglinyutong/desktop-cc-gui)：在国内托管本项目，帮助中国大陆用户更快访问项目与下载 Release。
+[AtomGit](https://atomgit.com/Tonyhzk/hzkcode)：在国内托管本项目，帮助中国大陆用户更快访问项目与下载 Release。
 
-感谢 [AtomGit](https://atomgit.com/zhukunpenglinyutong/desktop-cc-gui) 平台 G-Star 认证
+感谢 [AtomGit](https://atomgit.com/Tonyhzk/hzkcode) 平台 G-Star 认证
 
 ---
 
 ## 贡献者列表
 
-感谢所有帮助 ccgui 变得更好的贡献者。
+感谢所有帮助 HZK CODE 变得更好的贡献者。
 
-<a href="https://github.com/zhukunpenglinyutong/desktop-cc-gui/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=zhukunpenglinyutong/desktop-cc-gui" alt="Contributors" />
+<a href="https://github.com/Tonyhzk/hzkcode/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Tonyhzk/hzkcode" alt="Contributors" />
 </a>
 
 ---
@@ -274,13 +273,13 @@ perf(chat): reveal streamed text per frame without reparsing markdown
 
 ## Star History
 
-[![Star History Chart](https://star-history.dera.page/svg?repos=zhukunpenglinyutong/desktop-cc-gui&type=date&legend=top-left)](https://star-history.dera.page/#zhukunpenglinyutong/desktop-cc-gui&type=date&legend=top-left)
+[![Star History Chart](https://star-history.dera.page/svg?repos=Tonyhzk/hzkcode&type=date&legend=top-left)](https://star-history.dera.page/#Tonyhzk/hzkcode&type=date&legend=top-left)
 
 <!-- LINK GROUP -->
 
-[github-contributors-shield]: https://img.shields.io/github/contributors/zhukunpenglinyutong/desktop-cc-gui?color=c4f042&labelColor=black&style=flat-square
-[github-forks-shield]: https://img.shields.io/github/forks/zhukunpenglinyutong/desktop-cc-gui?color=8ae8ff&labelColor=black&style=flat-square
-[github-issues-link]: https://github.com/zhukunpenglinyutong/desktop-cc-gui/issues
-[github-issues-shield]: https://img.shields.io/github/issues/zhukunpenglinyutong/desktop-cc-gui?color=ff80eb&labelColor=black&style=flat-square
-[github-license-link]: https://github.com/zhukunpenglinyutong/desktop-cc-gui/blob/main/LICENSE
-[github-stars-shield]: https://img.shields.io/github/stars/zhukunpenglinyutong/desktop-cc-gui?color=ffcb47&labelColor=black&style=flat-square
+[github-contributors-shield]: https://img.shields.io/github/contributors/Tonyhzk/hzkcode?color=c4f042&labelColor=black&style=flat-square
+[github-forks-shield]: https://img.shields.io/github/forks/Tonyhzk/hzkcode?color=8ae8ff&labelColor=black&style=flat-square
+[github-issues-link]: https://github.com/Tonyhzk/hzkcode/issues
+[github-issues-shield]: https://img.shields.io/github/issues/Tonyhzk/hzkcode?color=ff80eb&labelColor=black&style=flat-square
+[github-license-link]: https://github.com/Tonyhzk/hzkcode/blob/main/LICENSE
+[github-stars-shield]: https://img.shields.io/github/stars/Tonyhzk/hzkcode?color=ffcb47&labelColor=black&style=flat-square

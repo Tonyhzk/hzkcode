@@ -60,7 +60,7 @@ import {
   composerStatusRegistry,
   pluginIdFromRegistryKey,
   useRegistry,
-} from "@ccgui/plugin-sdk";
+} from "@hzkcode/plugin-sdk";
 import { PluginBoundary } from "@/features/plugins/boundary/PluginBoundary";
 
 /**

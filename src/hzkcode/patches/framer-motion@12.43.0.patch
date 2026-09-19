@@ -7,7 +7,7 @@ index 7ba755a222d33b33148ebf4a4b957ee0ca719860..f0536e14670b49867f40c4e9570c44cd
              // Always attempt to update order - checkReorder handles the logic
              updateOrder(value, offset, velocity[axis]);
 -            autoScrollIfNeeded(groupRef.current, pointerPoint[axis], axis, velocity[axis]);
-+            // PATCH(ccgui): auto-scroll is opt-in via data-reorder-autoscroll on the
++            // PATCH(hzkcode): auto-scroll is opt-in via data-reorder-autoscroll on the
 +            // Reorder.Group element; default off — edge scrolling fights the
 +            // drag offset and stutters when dragging toward the container top.
 +            if (groupRef.current && groupRef.current.hasAttribute("data-reorder-autoscroll")) {
@@ -25,7 +25,7 @@ index 8a1f18b7c86bef6bcdcecd7f15368352404ddfca..2ce2ddd89b1a62f4e1a12a92afc23ffa
              // Always attempt to update order - checkReorder handles the logic
              updateOrder(value, offset, velocity[axis]);
 -            autoScrollIfNeeded(groupRef.current, pointerPoint[axis], axis, velocity[axis]);
-+            // PATCH(ccgui): auto-scroll is opt-in via data-reorder-autoscroll on the
++            // PATCH(hzkcode): auto-scroll is opt-in via data-reorder-autoscroll on the
 +            // Reorder.Group element; default off — edge scrolling fights the
 +            // drag offset and stutters when dragging toward the container top.
 +            if (groupRef.current && groupRef.current.hasAttribute("data-reorder-autoscroll")) {

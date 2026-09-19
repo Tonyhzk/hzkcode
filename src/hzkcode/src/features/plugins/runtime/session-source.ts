@@ -1,4 +1,4 @@
-import type { Disposer, ExternalSessionRow } from "@ccgui/plugin-sdk";
+import type { Disposer, ExternalSessionRow } from "@hzkcode/plugin-sdk";
 import type { SessionMeta } from "@/lib/ipc";
 
 /**

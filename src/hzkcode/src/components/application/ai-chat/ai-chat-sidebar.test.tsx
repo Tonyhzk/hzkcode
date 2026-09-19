@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { sessionMenuRegistry } from "@ccgui/plugin-sdk";
+import { sessionMenuRegistry } from "@hzkcode/plugin-sdk";
 import { AiChatSidebar } from "./ai-chat-sidebar";
 import type { AiChatRepo } from "./ai-chat-sidebar";
 
@@ -9,7 +9,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const KEY = "ccgui-next.sidebarExpandedWorkspaces:v1";
+const KEY = "hzkcode.sidebarExpandedWorkspaces:v1";
 
 function repo(id: string, defaultOpen = false): AiChatRepo {
   return { id, label: id, defaultOpen, threads: [] };

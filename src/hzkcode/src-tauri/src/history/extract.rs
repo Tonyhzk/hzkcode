@@ -1903,7 +1903,7 @@ mod tests {
     /// OpenCode fixture tree: storage/session + message + part jsons, shaped
     /// like opencode 1.1.16 on disk.
     fn opencode_fixture() -> (PathBuf, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("ccgui-extract-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("hzkcode-extract-{}", uuid::Uuid::new_v4()));
         let storage = dir.join("storage");
         let meta = storage.join("session").join("proj1").join("ses_x.json");
         std::fs::create_dir_all(meta.parent().unwrap()).unwrap();

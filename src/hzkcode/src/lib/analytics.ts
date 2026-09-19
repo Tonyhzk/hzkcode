@@ -17,7 +17,7 @@ import { isWeb } from "./transport";
 const BAIDU_TONGJI_SITE_ID = "daa60bcc45c658ee35054b93be3cf2e4";
 const BAIDU_TONGJI_HOST = "hm.baidu.com";
 const BAIDU_TONGJI_BEACON_PATH = "/hm.gif";
-const IMAGE_BRIDGE_MARKER = Symbol("ccgui.baiduTongjiImageBridge");
+const IMAGE_BRIDGE_MARKER = Symbol("hzkcode.baiduTongjiImageBridge");
 
 type BridgedImageConstructor = typeof Image & {
   [IMAGE_BRIDGE_MARKER]?: true;

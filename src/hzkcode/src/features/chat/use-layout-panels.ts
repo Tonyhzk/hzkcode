@@ -9,10 +9,10 @@ const PANEL_DEFAULT_WIDTH = PANEL_MIN_WIDTH;
 const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 480;
 const SIDEBAR_DEFAULT_WIDTH = 260;
-const PANEL_COLLAPSED_KEY = "ccgui-next.panelCollapsed";
-const SIDEBAR_COLLAPSED_KEY = "ccgui-next.sidebarCollapsed";
-const PANEL_WIDTH_KEY = "ccgui-next.panelWidth";
-const SIDEBAR_WIDTH_KEY = "ccgui-next.sidebarWidth";
+const PANEL_COLLAPSED_KEY = "hzkcode.panelCollapsed";
+const SIDEBAR_COLLAPSED_KEY = "hzkcode.sidebarCollapsed";
+const PANEL_WIDTH_KEY = "hzkcode.panelWidth";
+const SIDEBAR_WIDTH_KEY = "hzkcode.sidebarWidth";
 
 /** Stored width, validated against the live min/max before use. */
 function readStoredWidth(key: string, min: number, max: number, fallback: number): number {

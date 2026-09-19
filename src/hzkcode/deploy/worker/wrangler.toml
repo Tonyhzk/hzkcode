@@ -1,4 +1,4 @@
-name = "ccgui-relay"
+name = "hzkcode-relay"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 

@@ -1,6 +1,6 @@
 /**
  * Agent personas: user-named prompt presets stored in
- * ~/.ccgui-next/agents.json behind the agent_* IPC commands, plus the
+ * ~/.hzkcode/gui/agents.json behind the agent_* IPC commands, plus the
  * bundled read-only built-in catalog (list_built_in_agents) whose enabled
  * entries merge into the same composer `#` menu. The settings page manages
  * both lists. This store is the app-wide cache — every mutation goes
@@ -19,7 +19,7 @@ import {
 } from "@/lib/ipc";
 
 /** Broadcast after any agent mutation (window CustomEvent, no detail). */
-export const AGENTS_CHANGED_EVENT = "ccgui-next:agents-changed";
+export const AGENTS_CHANGED_EVENT = "hzkcode:agents-changed";
 
 /** Subscribe to agent-list mutations; returns the unlisten fn. */
 export function subscribeAgentsChanged(listener: () => void): () => void {

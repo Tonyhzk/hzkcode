@@ -242,7 +242,7 @@ describe("RunStatusStrip", () => {
     await renderStrip();
     await click(container.querySelector("[aria-label='收起运行状态']")!);
     expect(container.querySelector('[role="tab"]')).toBeNull();
-    expect(localStorage.getItem("ccgui.chat.runStatusChromeOpen")).toBe("0");
+    expect(localStorage.getItem("hzkcode.chat.runStatusChromeOpen")).toBe("0");
 
     await act(async () => root.unmount());
     root = createRoot(container);

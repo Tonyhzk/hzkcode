@@ -583,7 +583,7 @@ mod tests {
     #[test]
     fn persists_and_reloads_visitor_cookie_continuity() {
         let root =
-            std::env::temp_dir().join(format!("ccgui-baidu-tongji-cookie-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("hzkcode-baidu-tongji-cookie-test-{}", Uuid::new_v4()));
         let path = root.join("analytics").join("baidu-tongji.json");
 
         persist_visitor_cookie(&path, "350BB24308ABC8D1").expect("persist cookie");
@@ -598,7 +598,7 @@ mod tests {
     #[test]
     fn rejects_invalid_persisted_cookie_values() {
         let root = std::env::temp_dir().join(format!(
-            "ccgui-baidu-tongji-invalid-cookie-test-{}",
+            "hzkcode-baidu-tongji-invalid-cookie-test-{}",
             Uuid::new_v4()
         ));
         std::fs::create_dir_all(&root).expect("create temp root");
@@ -638,7 +638,7 @@ mod tests {
     #[tokio::test]
     async fn invalid_official_script_does_not_commit_response_cookie() {
         let root = std::env::temp_dir().join(format!(
-            "ccgui-baidu-tongji-invalid-script-cookie-test-{}",
+            "hzkcode-baidu-tongji-invalid-script-cookie-test-{}",
             Uuid::new_v4()
         ));
         let path = root.join("analytics").join("baidu-tongji.json");
@@ -694,7 +694,7 @@ mod tests {
     #[tokio::test]
     async fn commits_a_valid_response_cookie_and_persists_it() {
         let root = std::env::temp_dir().join(format!(
-            "ccgui-baidu-tongji-commit-cookie-test-{}",
+            "hzkcode-baidu-tongji-commit-cookie-test-{}",
             Uuid::new_v4()
         ));
         let path = root.join("analytics").join("baidu-tongji.json");
@@ -736,7 +736,7 @@ mod tests {
     #[tokio::test]
     async fn stale_response_cannot_overwrite_a_newer_cookie() {
         let root = std::env::temp_dir().join(format!(
-            "ccgui-baidu-tongji-stale-cookie-test-{}",
+            "hzkcode-baidu-tongji-stale-cookie-test-{}",
             Uuid::new_v4()
         ));
         let path = root.join("analytics").join("baidu-tongji.json");

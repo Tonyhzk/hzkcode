@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn prefer_windows_executable_variant_prefers_cmd_over_posix_shim() {
         let root =
-            std::env::temp_dir().join(format!("ccgui-posix-shim-{}", std::process::id()));
+            std::env::temp_dir().join(format!("hzkcode-posix-shim-{}", std::process::id()));
         std::fs::create_dir_all(&root).expect("create temp dir");
         let posix_shim = root.join("dsh");
         let cmd_path = root.join("dsh.cmd");
@@ -716,7 +716,7 @@ mod tests {
     fn windows_extra_search_paths_cover_openai_codex_installer() {
         // The Programs dir must exist for the installer path to be pushed;
         // emulate %LOCALAPPDATA% with a temp dir.
-        let temp = std::env::temp_dir().join(format!("ccgui-openai-codex-{}", std::process::id()));
+        let temp = std::env::temp_dir().join(format!("hzkcode-openai-codex-{}", std::process::id()));
         let programs = temp.join("Programs");
         std::fs::create_dir_all(&programs).expect("create Programs dir");
 
@@ -733,7 +733,7 @@ mod tests {
 
     #[test]
     fn windows_extra_search_paths_cover_codemoss_bundled_claude() {
-        let temp = std::env::temp_dir().join(format!("ccgui-codemoss-sdk-{}", std::process::id()));
+        let temp = std::env::temp_dir().join(format!("hzkcode-codemoss-sdk-{}", std::process::id()));
         // Build the expectation the same way the resolver does: the
         // read_dir entry joins with a platform separator, so the final
         // segment is its own component even though the parents carry
@@ -757,22 +757,22 @@ mod tests {
 
     #[test]
     fn expand_windows_env_vars_resolves_known_and_keeps_unknown() {
-        std::env::set_var("CCGUI_TEST_EXPAND_ROOT", r"C:\Users\demo");
+        std::env::set_var("HZKCODE_TEST_EXPAND_ROOT", r"C:\Users\demo");
         let expanded = expand_windows_env_vars(
-            r"%CCGUI_TEST_EXPAND_ROOT%\bin;C:\tools;%CCGUI_NO_SUCH_VAR%\x;100%",
+            r"%HZKCODE_TEST_EXPAND_ROOT%\bin;C:\tools;%HZKCODE_NO_SUCH_VAR%\x;100%",
         );
         assert_eq!(
             expanded,
-            r"C:\Users\demo\bin;C:\tools;%CCGUI_NO_SUCH_VAR%\x;100%"
+            r"C:\Users\demo\bin;C:\tools;%HZKCODE_NO_SUCH_VAR%\x;100%"
         );
-        std::env::remove_var("CCGUI_TEST_EXPAND_ROOT");
+        std::env::remove_var("HZKCODE_TEST_EXPAND_ROOT");
     }
 
     #[test]
     fn parse_registry_path_value_splits_and_expands() {
-        std::env::set_var("CCGUI_TEST_PATH_ROOT", r"C:\Users\demo");
+        std::env::set_var("HZKCODE_TEST_PATH_ROOT", r"C:\Users\demo");
         let paths = parse_registry_path_value(
-            r"C:\Windows;;%CCGUI_TEST_PATH_ROOT%\AppData\Local\Programs\OpenAI\Codex\bin; ",
+            r"C:\Windows;;%HZKCODE_TEST_PATH_ROOT%\AppData\Local\Programs\OpenAI\Codex\bin; ",
         );
         assert_eq!(
             paths,
@@ -781,7 +781,7 @@ mod tests {
                 PathBuf::from(r"C:\Users\demo\AppData\Local\Programs\OpenAI\Codex\bin"),
             ]
         );
-        std::env::remove_var("CCGUI_TEST_PATH_ROOT");
+        std::env::remove_var("HZKCODE_TEST_PATH_ROOT");
     }
 
     #[test]

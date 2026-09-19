@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { commandRegistry } from "@ccgui/plugin-sdk";
+import { commandRegistry } from "@hzkcode/plugin-sdk";
 import { keywords } from "@/features/commands/builtins";
 import { registerShortcutHandler } from "@/features/shortcuts/runtime";
 import { ipc } from "@/lib/ipc";

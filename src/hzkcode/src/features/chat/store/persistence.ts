@@ -43,12 +43,12 @@ export function parseDraftSessionKey(
   return { engine: rest.slice(0, colon), workspacePath: rest.slice(colon + 1) };
 }
 
-export const OPEN_TABS_KEY = "ccgui-next.openTabs:v1";
-const ACTIVE_SESSION_KEY = "ccgui-next.activeSession:v1";
-const LEGACY_OPEN_TABS_KEY = "ccgui-next.openTabs";
-const LEGACY_ACTIVE_SESSION_KEY = "ccgui-next.activeSession";
-export const ENGINE_PREF_KEY = "ccgui-next.enginePref";
-export const PERMISSION_PREF_KEY = "ccgui-next.permissionPref";
+export const OPEN_TABS_KEY = "hzkcode.openTabs:v1";
+const ACTIVE_SESSION_KEY = "hzkcode.activeSession:v1";
+const LEGACY_OPEN_TABS_KEY = "hzkcode.openTabs";
+const LEGACY_ACTIVE_SESSION_KEY = "hzkcode.activeSession";
+export const ENGINE_PREF_KEY = "hzkcode.enginePref";
+export const PERMISSION_PREF_KEY = "hzkcode.permissionPref";
 
 export function sameTab(
   tab: ActiveSession,

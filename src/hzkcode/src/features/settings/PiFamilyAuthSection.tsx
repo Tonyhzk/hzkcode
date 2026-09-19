@@ -46,7 +46,7 @@ export function PiFamilyAuthSection({
 }: {
   engine: "pi" | "omp";
   /** Bump to open the 自定义供应商 editor from the 官方配置 row's 编辑
-   *  entry (pi/omp official files are never cc-gui-managed, so no gate). */
+   *  entry (pi/omp official files are never hzkcode-managed, so no gate). */
   openCustomEditorSignal?: number;
 }) {
   const { t } = useTranslation();

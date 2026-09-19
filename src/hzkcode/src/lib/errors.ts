@@ -8,7 +8,7 @@ import i18n from "i18next";
 export function errorText(err: unknown): string {
   const text = typeof err === "string" ? err : err instanceof Error ? err.message : null;
   if (text !== null) {
-    const prefix = "CCGUI_PROVIDER_MIGRATION_CONFLICT:";
+    const prefix = "HZKCODE_PROVIDER_MIGRATION_CONFLICT:";
     if (text.startsWith(prefix)) {
       try {
         const detail = JSON.parse(text.slice(prefix.length));

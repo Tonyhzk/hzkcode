@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, type Mock } from "vitest";
 import { createPluginContext, injectBundleCss, type PluginContextBackend } from "./context";
-import type { PluginContext } from "@ccgui/plugin-sdk";
+import type { PluginContext } from "@hzkcode/plugin-sdk";
 import {
   addMenuRegistry,
   commandRegistry,
@@ -13,10 +13,10 @@ import {
   statusBarRegistry,
   composerStatusRegistry,
   timelineRowRegistry,
-} from "@ccgui/plugin-sdk";
+} from "@hzkcode/plugin-sdk";
 import { pluginBus } from "./events";
 import { setActiveComposerDraft } from "./composer-draft";
-import type { PluginManifest } from "@ccgui/plugin-sdk";
+import type { PluginManifest } from "@hzkcode/plugin-sdk";
 // composer.setDraft 的 store 落点由 composer-draft.test.ts 单独覆盖；
 // 这里只验证权限门与委派，不拉入 chat store 依赖链。
 vi.mock("./composer-draft", () => ({ setActiveComposerDraft: vi.fn() }));
@@ -286,9 +286,9 @@ describe("createPluginContext", () => {
     injectBundleCss(handle, ".bundle { color: red; }");
     const css = document.head.querySelector('style[data-plugin="test-plugin"]')?.textContent ?? "";
     expect(css).toContain("color: red");
-    // Bundle CSS is wrapped in the ccgui-plugins layer (declared first in
+    // Bundle CSS is wrapped in the hzkcode-plugins layer (declared first in
     // index.css) so it can never outrank host utilities on specificity ties.
-    expect(css).toMatch(/^@layer ccgui-plugins \{/);
+    expect(css).toMatch(/^@layer hzkcode-plugins \{/);
     expect(handle.disposers).toHaveLength(1);
     handle.disposers[0]();
     expect(document.head.querySelector('style[data-plugin="test-plugin"]')).toBeNull();

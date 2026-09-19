@@ -13,7 +13,7 @@ import {
 } from "react-aria-components";
 import { menuPopoverSurface } from "@/components/base/dropdown/menu-styles";
 import { cx } from "@/utils/cx";
-import { addMenuRegistry, useRegistry } from "@ccgui/plugin-sdk";
+import { addMenuRegistry, useRegistry } from "@hzkcode/plugin-sdk";
 import { usePopoverState } from "@/utils/use-dismiss-on-outside-press";
 
 /**

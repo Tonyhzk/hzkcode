@@ -153,7 +153,7 @@ describe("CliEngineSettingsCard official edit entry", () => {
     expect(setOfficialEditing).toHaveBeenCalledWith(true);
   });
 
-  it("pi/omp: 编辑 is never gated (files are not cc-gui-managed)", async () => {
+  it("pi/omp: 编辑 is never gated (files are not hzkcode-managed)", async () => {
     await render(makeCli({ engine: "pi", officialActive: false, currentId: "chan-a" }));
     expect(editButton().disabled).toBe(false);
   });

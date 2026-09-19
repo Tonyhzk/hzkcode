@@ -16,7 +16,7 @@ export const en: Messages = {
     refresh: "Refresh",
     copied: "Copied",
     confirmCloseApp:
-      "Quit CC GUI? All running sessions and terminals will be terminated.",
+      "Quit HZK CODE? All running sessions and terminals will be terminated.",
   },
   chat: {
     ompFastToggle: "Fast mode",
@@ -252,7 +252,7 @@ export const en: Messages = {
     promptScopeWorkspace: "Workspace",
     promptScopeGlobal: "Global",
     promptEmptyTitle: "No prompts yet",
-    promptEmptyDesc: "Create Markdown prompts in the workspace .ccgui/prompts or the global folder.",
+    promptEmptyDesc: "Create Markdown prompts in the workspace .hzkcode/prompts or the global folder.",
     promptNoMatches: "No matching prompts",
     promptWorkspaceRequired: "Open a workspace to manage prompts",
     promptEdit: "Edit",
@@ -302,7 +302,7 @@ export const en: Messages = {
     sidebarThreadLimit: "Sessions shown per workspace",
     proxy: "Network Proxy",
     proxyDesc:
-      "When enabled, CC GUI and the networked child processes it launches will prefer this proxy.",
+      "When enabled, HZK CODE and the networked child processes it launches will prefer this proxy.",
     proxyEnabled: "Enable network proxy",
     proxyEnabledDesc:
       "Applies to networked child processes such as CLI engines and terminals.",
@@ -389,11 +389,11 @@ export const en: Messages = {
     webWan: "Internet",
     webWanRiskTitle: "Internet access: read this first",
     webWanRiskBody:
-      "Turning on internet access exposes this machine's CC GUI to the public internet through the relay. Any device that pairs and that you then approve can read and write your files, run terminal commands, and spend your API quota — the same reach you have sitting at this computer, not limited to a project directory.",
+      "Turning on internet access exposes this machine's HZK CODE to the public internet through the relay. Any device that pairs and that you then approve can read and write your files, run terminal commands, and spend your API quota — the same reach you have sitting at this computer, not limited to a project directory.",
     webWanRiskPoints:
       "So: approve only your own devices, never forward the pairing key, disconnect the relay when you are done, and remove devices you no longer use from the list.",
     webWanRiskAccept: "I understand and accept the risk",
-    webAccessDesc: "Let devices on the same network use CC GUI in a browser",
+    webAccessDesc: "Let devices on the same network use HZK CODE in a browser",
     webAccessStart: "Start web access",
     webAccessStop: "Stop",
     webAccessRunning: "Running",

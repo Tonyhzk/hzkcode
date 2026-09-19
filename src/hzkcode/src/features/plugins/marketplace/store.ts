@@ -4,6 +4,11 @@ import { listenPluginInstallProgress } from "@/lib/events";
 import { loadPlugin } from "../runtime/loader";
 import { usePluginsStore } from "../manager/usePlugins";
 
+/** Marketplace gate: while false the market page, its startup update checks
+ *  and the update badges stay out of the app. All market code is kept in
+ *  full — flip to true to bring the marketplace back. */
+export const MARKETPLACE_ENABLED = false;
+
 /**
  * Marketplace state (plan §6.3): the GitHub index listing, the update check
  * result, and the one-at-a-time install/update flow. Installed-state merging

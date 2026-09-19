@@ -183,7 +183,7 @@ fn migrate_targets(
             );
             if !restore_original && !official {
                 return Err(format!(
-                    "CCGUI_PROVIDER_MIGRATION_CONFLICT:{}",
+                    "HZKCODE_PROVIDER_MIGRATION_CONFLICT:{}",
                     serde_json::json!({
                         "path": target.path.to_string_lossy(),
                         "backup": target.backup.to_string_lossy(),
@@ -351,7 +351,7 @@ fn write_official(target: &Target, content: &str) -> Result<(), String> {
 }
 
 /// Snapshot the file before the first managed write. An existing backup wins
-/// (it is the pre-cc-gui original); a missing file is recorded with an
+/// (it is the pre-hzkcode original); a missing file is recorded with an
 /// `.absent` marker so restore can remove what we created.
 #[cfg(test)]
 fn snapshot_once(target: &Target) -> Result<(), String> {
@@ -373,7 +373,7 @@ fn snapshot_once(target: &Target) -> Result<(), String> {
     Ok(())
 }
 
-/// 官方配置: put the pre-cc-gui file back. No backup and no marker means we
+/// 官方配置: put the pre-hzkcode file back. No backup and no marker means we
 /// never managed the file — leave it alone.
 #[cfg(test)]
 fn restore(target: &Target) -> Result<(), String> {
@@ -615,7 +615,7 @@ fn render_claude(base: &str, provider: &Value) -> Result<String, String> {
         return Err("Legacy Claude settings root is not a JSON object".into());
     }
     // Provider-selection keys in the base are residue from whatever managed
-    // the file before cc-gui (another provider switcher captured in the
+    // the file before hzkcode (another provider switcher captured in the
     // snapshot). A channel owns them outright: strip them so a polluted
     // snapshot can't resurrect foreign endpoints/credentials/model mappings
     // on every apply. The 官方配置 restore path is untouched — it still
@@ -649,7 +649,7 @@ fn render_claude(base: &str, provider: &Value) -> Result<String, String> {
     serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())
 }
 
-/// Provider-selection env keys a claude channel owns outright once cc-gui
+/// Provider-selection env keys a claude channel owns outright once hzkcode
 /// manages settings.json: endpoint, credentials, and model routing. The three
 /// convention keys mirror env_mapping("claude"); ANTHROPIC_API_KEY is the
 /// alternate credential key the dialog recognizes.
@@ -733,14 +733,14 @@ fn render_codex(base: &str, provider: &Value) -> Result<String, String> {
         }
     } else {
         if let Some(base_url) = channel_field("codex", provider, "baseUrl") {
-            let name = non_empty_str(provider.get("name")).unwrap_or_else(|| "CC GUI".into());
-            let mut table = existing_table(&doc, &["model_providers", "ccgui"])
+            let name = non_empty_str(provider.get("name")).unwrap_or_else(|| "HZK CODE".into());
+            let mut table = existing_table(&doc, &["model_providers", "hzkcode"])
                 .unwrap_or_else(|| Item::Table(Table::new()));
             upsert_str(&mut table, "name", &name);
             upsert_str(&mut table, "base_url", &base_url);
             upsert_str(&mut table, "env_key", "OPENAI_API_KEY");
-            upsert_table(&mut doc, &["model_providers", "ccgui"], table);
-            doc["model_provider"] = value("ccgui");
+            upsert_table(&mut doc, &["model_providers", "hzkcode"], table);
+            doc["model_provider"] = value("hzkcode");
         }
         if let Some(model) = channel_field("codex", provider, "model") {
             doc["model"] = value(model);
@@ -767,7 +767,7 @@ fn render_kimi(base: &str, provider: &Value) -> Result<String, String> {
     let model = channel_field("kimi", provider, "model");
     let mut wrote_provider = false;
     if base_url.is_some() || api_key.is_some() {
-        let mut table = existing_table(&doc, &["providers", "ccgui"])
+        let mut table = existing_table(&doc, &["providers", "hzkcode"])
             .unwrap_or_else(|| Item::Table(Table::new()));
         // kimi-cli defaults a missing type to "openai"; state it anyway.
         upsert_str(&mut table, "type", "openai");
@@ -777,18 +777,18 @@ fn render_kimi(base: &str, provider: &Value) -> Result<String, String> {
         if let Some(v) = &api_key {
             upsert_str(&mut table, "api_key", v);
         }
-        upsert_table(&mut doc, &["providers", "ccgui"], table);
+        upsert_table(&mut doc, &["providers", "hzkcode"], table);
         wrote_provider = true;
     }
     if let Some(model) = model {
         if wrote_provider {
             // Alias into our provider so base_url/api_key actually apply.
-            let mut table = existing_table(&doc, &["models", "ccgui"])
+            let mut table = existing_table(&doc, &["models", "hzkcode"])
                 .unwrap_or_else(|| Item::Table(Table::new()));
-            upsert_str(&mut table, "provider", "ccgui");
+            upsert_str(&mut table, "provider", "hzkcode");
             upsert_str(&mut table, "model", &model);
-            upsert_table(&mut doc, &["models", "ccgui"], table);
-            doc["default_model"] = value("ccgui");
+            upsert_table(&mut doc, &["models", "hzkcode"], table);
+            doc["default_model"] = value("hzkcode");
         } else {
             // No connection details: assume the user named an existing alias.
             doc["default_model"] = value(model);
@@ -971,7 +971,7 @@ mod tests {
         let targets = [config, auth];
         assert!(migrate_targets("codex", &section, &targets)
             .unwrap_err()
-            .starts_with("CCGUI_PROVIDER_MIGRATION_CONFLICT:"));
+            .starts_with("HZKCODE_PROVIDER_MIGRATION_CONFLICT:"));
         assert_eq!(
             std::fs::read_to_string(&targets[0].path).unwrap(),
             managed_config
@@ -1179,7 +1179,7 @@ mod tests {
     /// Isolated (target, backup) pair in a fresh temp dir.
     fn fixture(name: &str, file: &str) -> (PathBuf, Target) {
         let dir = std::env::temp_dir().join(format!(
-            "ccgui-provider-files-{name}-{}-{}",
+            "hzkcode-provider-files-{name}-{}-{}",
             std::process::id(),
             SEQ.fetch_add(1, Ordering::Relaxed)
         ));
@@ -1255,7 +1255,7 @@ mod tests {
     #[test]
     fn claude_snapshot_provider_keys_are_not_resurrected() {
         let (dir, target) = fixture("claude-residue", "settings.json");
-        // The pre-cc-gui file was last written by another provider manager:
+        // The pre-hzkcode file was last written by another provider manager:
         // its endpoint/credential/model-routing keys sit in the snapshot.
         let original = r#"{"model":"opus","env":{"USER_KEY":"keep","ANTHROPIC_BASE_URL":"https://old.example","ANTHROPIC_AUTH_TOKEN":"sk-old","ANTHROPIC_DEFAULT_OPUS_MODEL":"kimi-k3","ANTHROPIC_DEFAULT_SONNET_MODEL":"kimi-k3","ANTHROPIC_DEFAULT_HAIKU_MODEL":"kimi-k3","ANTHROPIC_DEFAULT_FABLE_MODEL":"kimi-k3","ANTHROPIC_SMALL_FAST_MODEL":"kimi-k3-mini"}}"#;
         std::fs::write(&target.path, original).unwrap();
@@ -1354,13 +1354,13 @@ mod tests {
         assert!(text.contains("notify"), "unrelated keys survive: {text}");
         let doc = text.parse::<DocumentMut>().unwrap();
         assert_eq!(doc["model"].as_str(), Some("gpt-new"));
-        assert_eq!(doc["model_provider"].as_str(), Some("ccgui"));
+        assert_eq!(doc["model_provider"].as_str(), Some("hzkcode"));
         assert_eq!(
-            doc["model_providers"]["ccgui"]["base_url"].as_str(),
+            doc["model_providers"]["hzkcode"]["base_url"].as_str(),
             Some("https://c.example/v1")
         );
         assert_eq!(
-            doc["model_providers"]["ccgui"]["env_key"].as_str(),
+            doc["model_providers"]["hzkcode"]["env_key"].as_str(),
             Some("OPENAI_API_KEY")
         );
         let auth_doc: Value =
@@ -1428,15 +1428,15 @@ mod tests {
         apply_kimi(&target, &p).unwrap();
         let text = std::fs::read_to_string(&target.path).unwrap();
         let doc = text.parse::<DocumentMut>().unwrap();
-        assert_eq!(doc["default_model"].as_str(), Some("ccgui"));
-        assert_eq!(doc["providers"]["ccgui"]["type"].as_str(), Some("openai"));
+        assert_eq!(doc["default_model"].as_str(), Some("hzkcode"));
+        assert_eq!(doc["providers"]["hzkcode"]["type"].as_str(), Some("openai"));
         assert_eq!(
-            doc["providers"]["ccgui"]["base_url"].as_str(),
+            doc["providers"]["hzkcode"]["base_url"].as_str(),
             Some("https://k.example/v1")
         );
-        assert_eq!(doc["providers"]["ccgui"]["api_key"].as_str(), Some("sk-k"));
-        assert_eq!(doc["models"]["ccgui"]["provider"].as_str(), Some("ccgui"));
-        assert_eq!(doc["models"]["ccgui"]["model"].as_str(), Some("k2"));
+        assert_eq!(doc["providers"]["hzkcode"]["api_key"].as_str(), Some("sk-k"));
+        assert_eq!(doc["models"]["hzkcode"]["provider"].as_str(), Some("hzkcode"));
+        assert_eq!(doc["models"]["hzkcode"]["model"].as_str(), Some("k2"));
         assert!(text.contains("[[hooks]]"), "user hooks survive: {text}");
         let _ = std::fs::remove_dir_all(&dir);
     }

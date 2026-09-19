@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createPluginContext, type PluginContextBackend } from "../runtime/context";
-import { commandRegistry, statusBarRegistry } from "@ccgui/plugin-sdk";
+import { commandRegistry, statusBarRegistry } from "@hzkcode/plugin-sdk";
 import { pluginBus } from "../runtime/events";
-import type { PluginManifest } from "@ccgui/plugin-sdk";
+import type { PluginManifest } from "@hzkcode/plugin-sdk";
 import { applyDeclarativePlugin } from "./interpreter";
 
 function fakeBackend(): PluginContextBackend {

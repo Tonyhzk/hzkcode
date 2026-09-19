@@ -1,27 +1,26 @@
 <div align="center">
 
-# Desktop CC GUI
+# HZK CODE
 
-<img width="120" alt="ccgui icon" src="./public/app-icon.png" />
+<img width="120" alt="hzkcode icon" src="./public/app-icon.png" />
 
 **English** · [简体中文](./README.zh-CN.md)
 
-<a href="https://trendshift.io/repositories/25546" target="_blank"><img src="https://trendshift.io/api/badge/repositories/25546" alt="zhukunpenglinyutong%2Fdesktop-cc-gui | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://atomgit.com/zhukunpenglinyutong/desktop-cc-gui" target="_blank"><img src="https://atomgit.com/zhukunpenglinyutong/desktop-cc-gui/star/new_badge.svg" alt="AtomGit G-Star" width="250" height="54"/></a>
+<a href="https://atomgit.com/Tonyhzk/hzkcode" target="_blank"><img src="https://atomgit.com/Tonyhzk/hzkcode/star/new_badge.svg" alt="AtomGit G-Star" width="250" height="54"/></a>
 
 ![][github-contributors-shield] ![][github-forks-shield] ![][github-stars-shield] ![][github-issues-shield]
 
 </div>
 
-**ccgui** is an open-source **multi-engine AI coding desktop client**. In plain words: it brings command-line AI coding runtimes — **Claude Code**, **Codex CLI**, **Kimi CLI**, **Grok CLI**, **Pi CLI**, **OMP CLI**, and **DeepSeek Harness (DSH)** — into one graphical interface.
+**HZK CODE** is an open-source **multi-engine AI coding desktop client**. In plain words: it brings command-line AI coding runtimes — **Claude Code**, **Codex CLI**, **Kimi CLI**, **Grok CLI**, **Pi CLI**, **OMP CLI**, and **DeepSeek Harness (DSH)** — into one graphical interface.
 
-No more staring at a black terminal. Open ccgui, pick a project, and chat with AI to write code, fix bugs, and commit to Git. Streaming output, thinking traces, and tool calls are visible as they happen; token usage appears when the engine reports it.
+No more staring at a black terminal. Open HZK CODE, pick a project, and chat with AI to write code, fix bugs, and commit to Git. Streaming output, thinking traces, and tool calls are visible as they happen; token usage appears when the engine reports it.
 
 The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on macOS, Windows, and Linux. Settings and state are persisted locally. Content sent to an AI provider follows the boundary of the channel you configured for that CLI.
 
 ---
 
-## What can ccgui do?
+## What can HZK CODE do?
 
 ### One client, seven AI engines
 
@@ -49,7 +48,7 @@ The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on mac
 
 ### Plugin system
 
-- First-party **plugin SDK** (`@ccgui/plugin-sdk`) plus an in-app runtime, manager UI, and trust boundary.
+- First-party **plugin SDK** (`@hzkcode/plugin-sdk`) plus an in-app runtime, manager UI, and trust boundary.
 - **Declarative plugins** can add settings sections and config-driven UI without shipping frontend code; builtin app surfaces (including the settings page itself) are registered through the same extension points.
 - See [docs/plugin-development-guide.zh-CN.md](./docs/plugin-development-guide.zh-CN.md) for the full authoring guide.
 
@@ -65,7 +64,7 @@ The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on mac
 
 ## Download
 
-Grab the installer for your platform from the [Releases page](https://github.com/zhukunpenglinyutong/desktop-cc-gui/releases):
+Grab the installer for your platform from the [Releases page](https://github.com/Tonyhzk/hzkcode/releases):
 
 | Platform | Installer |
 | --- | --- |
@@ -77,8 +76,8 @@ After installing, open Settings, configure a provider channel for the CLI you wa
 
 ### Using DeepSeek Harness (DSH)
 
-1. Install the DSH CLI on your machine and configure its models and API keys in DSH itself — not as a separate vendor preset inside ccgui.
-2. In Settings → DeepSeek Harness, ccgui can adopt a running local `dsh web` host or auto-start one.
+1. Install the DSH CLI on your machine and configure its models and API keys in DSH itself — not as a separate vendor preset inside HZK CODE.
+2. In Settings → DeepSeek Harness, HZK CODE can adopt a running local `dsh web` host or auto-start one.
 3. Select **DeepSeek Harness** in the composer engine picker. Chat runs through DSH's headless profile; models and credentials stay in DSH.
 
 ---
@@ -104,8 +103,8 @@ Each OS also needs the standard Tauri prerequisites — see the [official Tauri 
 ### Step 2: Install dependencies
 
 ```bash
-git clone https://github.com/zhukunpenglinyutong/desktop-cc-gui.git
-cd desktop-cc-gui
+git clone https://github.com/Tonyhzk/hzkcode.git
+cd hzkcode
 pnpm install
 ```
 
@@ -147,7 +146,7 @@ Windows and Linux installers are produced by the CI workflows under `.github/wor
 ### Directory layout
 
 ```text
-desktop-cc-gui/
+hzkcode/
 ├── src/                    # Frontend code
 │   ├── features/           # ★ Feature modules: chat / files / git / terminal /
 │   │                       #   settings / plugins / commands / update / open-app
@@ -158,7 +157,7 @@ desktop-cc-gui/
 ├── src-tauri/              # Rust backend
 │   └── src/                # engine/ (one module per CLI), history/, plugins/,
 │                           # git.rs, terminal.rs, web.rs (LAN bridge), ...
-├── packages/plugin-sdk/    # @ccgui/plugin-sdk — plugin authoring kit
+├── packages/plugin-sdk/    # @hzkcode/plugin-sdk — plugin authoring kit
 ├── tests/                  # Frontend integration-style tests (Vitest)
 ├── scripts/                # Build and packaging scripts
 └── docs/                   # Plugin development guide, engine mode notes
@@ -231,7 +230,7 @@ No emoji in commit messages, and no AI-generated signatures.
 3. Make your changes and get `pnpm build` + `pnpm test` green locally.
 4. Open a PR against this repo's **`main` branch**. Title in commit format; in the description, explain what changed, why, and how you verified it.
 
-Not sure where to start? Browse the [Issues](https://github.com/zhukunpenglinyutong/desktop-cc-gui/issues) and pick one that interests you. Found a bug or have an idea? Open an issue and let's talk.
+Not sure where to start? Browse the [Issues](https://github.com/Tonyhzk/hzkcode/issues) and pick one that interests you. Found a bug or have an idea? Open an issue and let's talk.
 
 ### Want to dig deeper?
 
@@ -242,7 +241,7 @@ Not sure where to start? Browse the [Issues](https://github.com/zhukunpenglinyut
 
 ## License
 
-[MIT](https://github.com/zhukunpenglinyutong/desktop-cc-gui?tab=MIT-1-ov-file)
+[MIT](https://github.com/Tonyhzk/hzkcode?tab=MIT-1-ov-file)
 
 ---
 
@@ -250,18 +249,18 @@ Not sure where to start? Browse the [Issues](https://github.com/zhukunpenglinyut
 
 Thanks for the support and feedback from the friends at [LINUX DO](https://linux.do/).
 
-[AtomGit](https://atomgit.com/zhukunpenglinyutong/desktop-cc-gui): hosts this project in China, helping users in mainland China access the project and download Releases faster.
+[AtomGit](https://atomgit.com/Tonyhzk/hzkcode): hosts this project in China, helping users in mainland China access the project and download Releases faster.
 
-Thank you for [AtomGit](https://atomgit.com/zhukunpenglinyutong/desktop-cc-gui) platform G-Star certification
+Thank you for [AtomGit](https://atomgit.com/Tonyhzk/hzkcode) platform G-Star certification
 
 ---
 
 ## Contributors
 
-Thanks to all the contributors who help make ccgui better.
+Thanks to all the contributors who help make HZK CODE better.
 
-<a href="https://github.com/zhukunpenglinyutong/desktop-cc-gui/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=zhukunpenglinyutong/desktop-cc-gui" alt="Contributors" />
+<a href="https://github.com/Tonyhzk/hzkcode/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Tonyhzk/hzkcode" alt="Contributors" />
 </a>
 
 ---
@@ -274,13 +273,13 @@ This project originally started from [CodexMonitor](https://github.com/Dimillian
 
 ## Star History
 
-[![Star History Chart](https://star-history.dera.page/svg?repos=zhukunpenglinyutong/desktop-cc-gui&type=date&legend=top-left)](https://star-history.dera.page/#zhukunpenglinyutong/desktop-cc-gui&type=date&legend=top-left)
+[![Star History Chart](https://star-history.dera.page/svg?repos=Tonyhzk/hzkcode&type=date&legend=top-left)](https://star-history.dera.page/#Tonyhzk/hzkcode&type=date&legend=top-left)
 
 <!-- LINK GROUP -->
 
-[github-contributors-shield]: https://img.shields.io/github/contributors/zhukunpenglinyutong/desktop-cc-gui?color=c4f042&labelColor=black&style=flat-square
-[github-forks-shield]: https://img.shields.io/github/forks/zhukunpenglinyutong/desktop-cc-gui?color=8ae8ff&labelColor=black&style=flat-square
-[github-issues-link]: https://github.com/zhukunpenglinyutong/desktop-cc-gui/issues
-[github-issues-shield]: https://img.shields.io/github/issues/zhukunpenglinyutong/desktop-cc-gui?color=ff80eb&labelColor=black&style=flat-square
-[github-license-link]: https://github.com/zhukunpenglinyutong/desktop-cc-gui/blob/main/LICENSE
-[github-stars-shield]: https://img.shields.io/github/stars/zhukunpenglinyutong/desktop-cc-gui?color=ffcb47&labelColor=black&style=flat-square
+[github-contributors-shield]: https://img.shields.io/github/contributors/Tonyhzk/hzkcode?color=c4f042&labelColor=black&style=flat-square
+[github-forks-shield]: https://img.shields.io/github/forks/Tonyhzk/hzkcode?color=8ae8ff&labelColor=black&style=flat-square
+[github-issues-link]: https://github.com/Tonyhzk/hzkcode/issues
+[github-issues-shield]: https://img.shields.io/github/issues/Tonyhzk/hzkcode?color=ff80eb&labelColor=black&style=flat-square
+[github-license-link]: https://github.com/Tonyhzk/hzkcode/blob/main/LICENSE
+[github-stars-shield]: https://img.shields.io/github/stars/Tonyhzk/hzkcode?color=ffcb47&labelColor=black&style=flat-square

@@ -2,11 +2,11 @@
 //! NDJSON, real send_message command, real EventSink, events captured via
 //! listen_global. Verifies the whole chain the UI depends on.
 
-use ccgui_next_lib::config::ConfigStore;
-use ccgui_next_lib::db::Db;
-use ccgui_next_lib::engine::{self, ProcessRegistry};
-use ccgui_next_lib::event_sink::{EventSink, ENGINE_EVENT_NAME};
-use ccgui_next_lib::AppState;
+use hzkcode_lib::config::ConfigStore;
+use hzkcode_lib::db::Db;
+use hzkcode_lib::engine::{self, ProcessRegistry};
+use hzkcode_lib::event_sink::{EventSink, ENGINE_EVENT_NAME};
+use hzkcode_lib::AppState;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use tauri::{Listener, Manager};
@@ -16,7 +16,7 @@ use tauri::{Listener, Manager};
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn temp_home(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("ccgui-send-test-{}-{}", tag, std::process::id()));
+    let dir = std::env::temp_dir().join(format!("hzkcode-send-test-{}-{}", tag, std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -50,14 +50,14 @@ fn build_app(
         sink: EventSink::new(Arc::new(app.handle().clone())),
         terminal_sink: EventSink::with_name(
             Arc::new(app.handle().clone()),
-            ccgui_next_lib::terminal::TERMINAL_OUTPUT_EVENT,
+            hzkcode_lib::terminal::TERMINAL_OUTPUT_EVENT,
         ),
-        terminals: ccgui_next_lib::terminal::TerminalRegistry::default(),
+        terminals: hzkcode_lib::terminal::TerminalRegistry::default(),
         processes: Arc::new(ProcessRegistry::default()),
-        emitters: ccgui_next_lib::event_sink::BroadcastEmit::new(Arc::new(app.handle().clone())),
-        web: ccgui_next_lib::web::WebAccessState::default(),
-        relay: ccgui_next_lib::relay::RelayState::default(),
-        dsh_host: Arc::new(ccgui_next_lib::dsh_host::DshHostState::default()),
+        emitters: hzkcode_lib::event_sink::BroadcastEmit::new(Arc::new(app.handle().clone())),
+        web: hzkcode_lib::web::WebAccessState::default(),
+        relay: hzkcode_lib::relay::RelayState::default(),
+        dsh_host: Arc::new(hzkcode_lib::dsh_host::DshHostState::default()),
     };
     app.manage(state);
     app.manage(ConfigStore::default());
@@ -281,14 +281,14 @@ fn ipc_send_message_accepts_camel_case_args() {
         sink: EventSink::new(Arc::new(app.handle().clone())),
         terminal_sink: EventSink::with_name(
             Arc::new(app.handle().clone()),
-            ccgui_next_lib::terminal::TERMINAL_OUTPUT_EVENT,
+            hzkcode_lib::terminal::TERMINAL_OUTPUT_EVENT,
         ),
-        terminals: ccgui_next_lib::terminal::TerminalRegistry::default(),
+        terminals: hzkcode_lib::terminal::TerminalRegistry::default(),
         processes: Arc::new(ProcessRegistry::default()),
-        emitters: ccgui_next_lib::event_sink::BroadcastEmit::new(Arc::new(app.handle().clone())),
-        web: ccgui_next_lib::web::WebAccessState::default(),
-        relay: ccgui_next_lib::relay::RelayState::default(),
-        dsh_host: Arc::new(ccgui_next_lib::dsh_host::DshHostState::default()),
+        emitters: hzkcode_lib::event_sink::BroadcastEmit::new(Arc::new(app.handle().clone())),
+        web: hzkcode_lib::web::WebAccessState::default(),
+        relay: hzkcode_lib::relay::RelayState::default(),
+        dsh_host: Arc::new(hzkcode_lib::dsh_host::DshHostState::default()),
     });
     app.manage(ConfigStore::default());
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -325,7 +325,7 @@ fn ipc_send_message_accepts_camel_case_args() {
 async fn omp_send_uses_persisted_tier_and_model_without_touching_cli_config() {
     let _env_guard = ENV_LOCK.lock().unwrap();
     let home = temp_home("omp-tier");
-    std::fs::create_dir_all(home.join(".ccgui-next")).unwrap();
+    std::fs::create_dir_all(home.join(".hzkcode/gui")).unwrap();
     let bin_dir = home.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();
     let script = bin_dir.join("omp");
@@ -347,7 +347,7 @@ echo '{"type":"agent_end"}'
     let workspace = home.join("ws");
     std::fs::create_dir_all(&workspace).unwrap();
     let (app, events) = build_app(&home);
-    let mut settings = ccgui_next_lib::settings::AppSettings::default();
+    let mut settings = hzkcode_lib::settings::AppSettings::default();
     for (model, tier) in [
         ("openai-codex/gpt-5.4", Some("priority")),
         ("openai-codex/gpt-5.4", Some("default")),
@@ -359,7 +359,7 @@ echo '{"type":"agent_end"}'
     ] {
         settings.default_models.insert("omp".into(), model.into());
         settings.omp_openai_service_tier = tier.map(str::to_string);
-        ccgui_next_lib::settings::update_app_settings(app.handle().clone(), settings.clone())
+        hzkcode_lib::settings::update_app_settings(app.handle().clone(), settings.clone())
             .unwrap();
         events.lock().unwrap().clear();
         engine::send_message(

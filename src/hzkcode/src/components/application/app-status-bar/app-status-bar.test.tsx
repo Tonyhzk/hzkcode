@@ -26,8 +26,8 @@ vi.mock("@/lib/platform", () => ({
 
 import { AppStatusBar } from "./app-status-bar";
 import { getAppVersion } from "@/lib/platform";
-import { statusBarRegistry } from "@ccgui/plugin-sdk";
-import type { Disposer } from "@ccgui/plugin-sdk";
+import { statusBarRegistry } from "@hzkcode/plugin-sdk";
+import type { Disposer } from "@hzkcode/plugin-sdk";
 
 // React 18's act() requires this flag to be set by the test environment.
 declare global {

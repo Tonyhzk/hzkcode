@@ -1,12 +1,12 @@
 /**
- * @ccgui/plugin-sdk — 插件侧公共契约声明（VS Code 的 vscode.d.ts 同款模式：
+ * @hzkcode/plugin-sdk — 插件侧公共契约声明（VS Code 的 vscode.d.ts 同款模式：
  * 本文件是插件作者面对的公共 API 定义，与 src/ 同包维护、同版本发布；
  * 双向漂移由 src/contract-check.ts 在类型层面把守）。
  *
  * 插件仓用法（包未发布 npm 前的过渡方案）：复制本文件为插件仓的
- * `src/ccgui-plugin.d.ts`，首行版本戳必须与所用宿主 SDK 一致。
+ * `src/hzkcode-plugin.d.ts`，首行版本戳必须与所用宿主 SDK 一致。
  *
- * @ccgui/plugin-sdk v0.3.10
+ * @hzkcode/plugin-sdk v0.3.10
  */
 
 /** 宿主实现的 SDK 契约版本。 */
@@ -48,7 +48,7 @@ export interface JsonSchemaObject {
   required?: string[];
 }
 
-/** ccgui.plugin.json（plan §5.1）。 */
+/** hzkcode.plugin.json（plan §5.1）。 */
 export interface PluginManifest {
   id: string;
   name: string;
@@ -270,7 +270,7 @@ export interface PluginContext {
   };
   host: {
     appVersion: string;
-    /** 宿主实现的 SDK 版本（= @ccgui/plugin-sdk version）。 */
+    /** 宿主实现的 SDK 版本（= @hzkcode/plugin-sdk version）。 */
     sdkVersion: string;
     locale: string;
     /** Web 客户端为 true；上述桌面独占桥命令在那里不可用。 */

@@ -420,7 +420,7 @@ mod tests {
         fn new() -> Self {
             let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             let dir = std::env::temp_dir()
-                .join(format!("ccgui-next-config-test-{}", uuid::Uuid::new_v4()));
+                .join(format!("hzkcode-config-test-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&dir).unwrap();
             let prev_home = std::env::var_os("HOME");
             let prev_profile = std::env::var_os("USERPROFILE");

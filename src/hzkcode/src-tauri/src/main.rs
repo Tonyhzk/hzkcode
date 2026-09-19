@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    ccgui_next_lib::run()
+    hzkcode_lib::run()
 }

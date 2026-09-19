@@ -1,7 +1,7 @@
 import type { PluginContext } from "./context";
 
 /**
- * manifest（ccgui.plugin.json / release 的 manifest.json，plan §5.1）与
+ * manifest（hzkcode.plugin.json / release 的 manifest.json，plan §5.1）与
  * 基础类型。零运行时依赖（纯类型），Node 校验脚本可直接 import。
  */
 

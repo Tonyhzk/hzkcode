@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import X from "lucide-react/dist/esm/icons/x";
-import { pageRegistry, pluginIdFromRegistryKey, useRegistry } from "@ccgui/plugin-sdk";
+import { pageRegistry, pluginIdFromRegistryKey, useRegistry } from "@hzkcode/plugin-sdk";
 import { PluginBoundary } from "../boundary/PluginBoundary";
 
 /**

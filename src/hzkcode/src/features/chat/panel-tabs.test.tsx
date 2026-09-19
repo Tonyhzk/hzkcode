@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { panelTabRegistry } from "@ccgui/plugin-sdk";
+import { panelTabRegistry } from "@hzkcode/plugin-sdk";
 import { ChatSidePanel } from "./ChatSidePanel";
 import type { ActiveSession } from "./store";
 // Side-effect import: registers the builtin files/changes tabs (their panel

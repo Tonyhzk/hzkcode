@@ -1,10 +1,10 @@
-import { isKnownPermission, type PluginManifest } from "@ccgui/plugin-sdk";
+import { isKnownPermission, type PluginManifest } from "@hzkcode/plugin-sdk";
 
 /**
  * Manifest validation beyond Rust's install-time checks (Rust is the
  * install-time authority; this guards builtin/AI paths that skip the
  * installer). Permission declarations must be known — 基座权限集（以 spec/permissions.json 的 knownPermissions 为准）或形状合法的
- * network:/exec: 授权，单一事实来源是 @ccgui/plugin-sdk 的
+ * network:/exec: 授权，单一事实来源是 @hzkcode/plugin-sdk 的
  * spec/permissions.json（Rust 侧经 include_str! 消费同一份）；typo/unknown =
  * 拒绝加载。`network:none` is informational — CSP already denies all webview
  * egress; real egress goes through the network:/exec:-granted bridge commands

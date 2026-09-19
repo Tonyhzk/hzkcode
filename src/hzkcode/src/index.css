@@ -2,12 +2,12 @@
  * JetBrains Mono for code. Exposed as --font-inter / --font-mono-source in
  * styles/theme.css. */
 /* Plugin bundle stylesheets (features/plugins/runtime/context.ts
- * injectBundleCss) mount wrapped in `@layer ccgui-plugins`. Declaring the
+ * injectBundleCss) mount wrapped in `@layer hzkcode-plugins`. Declaring the
  * cascade-layer order here — legal before @import, and ahead of Tailwind's
  * own theme/base/components/utilities declaration in globals.css — makes
  * every host rule win specificity ties against plugin bundle CSS, so a
  * plugin shipping its own framework build can't silently restyle the host. */
-@layer ccgui-plugins, theme, base, components, utilities;
+@layer hzkcode-plugins, theme, base, components, utilities;
 
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";

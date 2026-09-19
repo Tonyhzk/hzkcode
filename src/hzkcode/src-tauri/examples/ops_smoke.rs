@@ -3,7 +3,7 @@
 //!
 //!   cargo run --example ops_smoke
 
-use ccgui_next_lib::git;
+use hzkcode_lib::git;
 
 fn main() {
     // git_status/push/pull are async (spawn_blocking under the hood), so the
@@ -17,7 +17,7 @@ fn main() {
 }
 
 async fn git_smoke() {
-    let dir = std::env::temp_dir().join(format!("ccgui-git-smoke-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("hzkcode-git-smoke-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.to_string_lossy().to_string();

@@ -5,7 +5,7 @@ import { readStoredJson, writeStored } from "@/lib/storage";
  * ever counts turns that ran while this was on — nothing is reconstructed
  * from history — so the switch is the feature's own boundary.
  */
-const USAGE_TRACKING_KEY = "ccgui-next.usageTracking:v1";
+const USAGE_TRACKING_KEY = "hzkcode.usageTracking:v1";
 
 export function usageTrackingEnabled(): boolean {
   const stored = readStoredJson(USAGE_TRACKING_KEY, (value) =>

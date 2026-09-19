@@ -96,14 +96,14 @@ pub(crate) fn manifest_path(dir: &Path) -> Option<PathBuf> {
     if primary.is_file() {
         return Some(primary);
     }
-    let alt = dir.join("ccgui.plugin.json");
+    let alt = dir.join("hzkcode.plugin.json");
     if alt.is_file() {
         return Some(alt);
     }
     None
 }
 
-/// Parse and validate `<dir>/manifest.json` (fallback `ccgui.plugin.json`).
+/// Parse and validate `<dir>/manifest.json` (fallback `hzkcode.plugin.json`).
 /// Checks every install-time rule: id/name/version/tier shape, js-tier
 /// entrypoint, per-file size cap, permission whitelist, minAppVersion floor.
 /// `files` is the caller's single collect_files walk of the source tree —
@@ -298,7 +298,7 @@ mod tests {
         // Alternate manifest name is honored.
         let dir = scratch.path("alt-name");
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("ccgui.plugin.json"), valid_manifest("alt-id")).unwrap();
+        std::fs::write(dir.join("hzkcode.plugin.json"), valid_manifest("alt-id")).unwrap();
         assert_eq!(validate(&dir).unwrap().id, "alt-id");
 
         // A file past the 16MB cap refuses the whole bundle.

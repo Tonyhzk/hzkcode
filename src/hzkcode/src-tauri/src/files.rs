@@ -621,7 +621,7 @@ mod tests {
     impl Scratch {
         fn new() -> Self {
             let dir =
-                std::env::temp_dir().join(format!("ccgui-next-files-test-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("hzkcode-files-test-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&dir).unwrap();
             Self(dir)
         }

@@ -533,7 +533,7 @@ fn initialize_params() -> Value {
     json!({
         "protocolVersion": ACP_PROTOCOL_VERSION,
         "clientInfo": {
-            "name": "ccgui",
+            "name": "hzkcode",
             "version": env!("CARGO_PKG_VERSION"),
         },
         "clientCapabilities": {

@@ -85,7 +85,7 @@ describe("useChatSidebar repo mapping", () => {
 
   afterEach(async () => {
     await act(async () => {
-      window.__ccguiWorkspaceUI?.registerHooks(null);
+      window.__hzkcodeWorkspaceUI?.registerHooks(null);
       root.unmount();
     });
     container.remove();
@@ -118,7 +118,7 @@ describe("useChatSidebar repo mapping", () => {
   it("插件桥 hooks 注册后徽标响应式出现(activate/热重载不等无关重渲染)", async () => {
     expect(captured[0]?.labelSuffix).toBeUndefined();
     await act(async () => {
-      window.__ccguiWorkspaceUI?.registerHooks({
+      window.__hzkcodeWorkspaceUI?.registerHooks({
         allowedEngines: () => null,
         labelSuffix: (p) => (p === "/ws/a" ? "WSL" : null),
       });

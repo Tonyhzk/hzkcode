@@ -9,7 +9,7 @@ import { readStoredJson, writeStored } from "@/lib/storage";
  * native session id, `migrateSelectedAgent` moves the entry onto the real
  * key so the selection survives the draft → session transition.
  */
-const STORAGE_KEY = "ccgui-next.selectedAgentByThread:v1";
+const STORAGE_KEY = "hzkcode.selectedAgentByThread:v1";
 const DRAFT_SESSION = "draft";
 
 export function selectedAgentKey(

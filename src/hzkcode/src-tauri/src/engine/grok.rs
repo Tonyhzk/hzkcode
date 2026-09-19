@@ -170,9 +170,9 @@ fn link_sessions(source: &std::path::Path, target: &std::path::Path) -> std::io:
         // never interpolate user paths into PowerShell source.
         let output = std::process::Command::new("powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-Command",
-                "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:CCGUI_GROK_LINK -Target $env:CCGUI_GROK_SESSIONS | Out-Null"])
-            .env("CCGUI_GROK_LINK", target)
-            .env("CCGUI_GROK_SESSIONS", dunce::canonicalize(source)?)
+                "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:HZKCODE_GROK_LINK -Target $env:HZKCODE_GROK_SESSIONS | Out-Null"])
+            .env("HZKCODE_GROK_LINK", target)
+            .env("HZKCODE_GROK_SESSIONS", dunce::canonicalize(source)?)
             .creation_flags(0x0800_0000)
             .output()?;
         if output.status.success() {
@@ -214,7 +214,7 @@ mod channel_tests {
     #[test]
     fn concurrent_channels_isolate_cli_config_saves_and_keep_native_files() {
         let directory =
-            std::env::temp_dir().join(format!("ccgui-grok-channel-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("hzkcode-grok-channel-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let config = directory.join("config.toml");
         let auth = directory.join("auth.json");
@@ -303,11 +303,11 @@ mod channel_tests {
     }
 
     #[test]
-    #[ignore = "requires CCGUI_TEST_GROK_BIN pointing to an installed Grok CLI"]
+    #[ignore = "requires HZKCODE_TEST_GROK_BIN pointing to an installed Grok CLI"]
     fn installed_grok_uses_channel_without_rewriting_native_config() {
-        let binary = std::env::var("CCGUI_TEST_GROK_BIN").expect("set CCGUI_TEST_GROK_BIN");
+        let binary = std::env::var("HZKCODE_TEST_GROK_BIN").expect("set HZKCODE_TEST_GROK_BIN");
         let directory =
-            std::env::temp_dir().join(format!("ccgui-grok-probe-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("hzkcode-grok-probe-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let original = "# native comment\n[models]\ndefault = \"native-model\"\n[features]\nremote_fetch = false\n";
         std::fs::write(directory.join("config.toml"), original).unwrap();
@@ -357,7 +357,7 @@ mod channel_tests {
     #[test]
     fn staging_never_follows_symlinks_outside_the_native_home() {
         let directory =
-            std::env::temp_dir().join(format!("ccgui-grok-symlink-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("hzkcode-grok-symlink-test-{}", uuid::Uuid::new_v4()));
         let outside = directory.join("outside");
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(outside.join("secret.txt"), "secret").unwrap();
@@ -391,7 +391,7 @@ mod channel_tests {
     #[test]
     fn invalid_native_config_fails_before_staging() {
         let directory =
-            std::env::temp_dir().join(format!("ccgui-grok-invalid-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("hzkcode-grok-invalid-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let config = directory.join("config.toml");
         std::fs::write(&config, "endpoints = 1").unwrap();

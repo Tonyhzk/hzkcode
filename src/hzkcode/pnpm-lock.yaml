@@ -6,16 +6,13 @@ settings:
 
 patchedDependencies:
   framer-motion@12.43.0:
-    hash: b669732395f614733671f6fe303fa2909e1fd06d70b939d329d9b76639691a5b
+    hash: 239d303796f915402b03cc76a9de4e4df83f17f4487a0b5f92c836a63a4a683a
     path: patches/framer-motion@12.43.0.patch
 
 importers:
 
   .:
     dependencies:
-      '@ccgui/plugin-sdk':
-        specifier: workspace:*
-        version: link:packages/plugin-sdk
       '@codemirror/language':
         specifier: ^6.12.3
         version: 6.12.4
@@ -34,6 +31,9 @@ importers:
       '@fontsource-variable/jetbrains-mono':
         specifier: ^5.2.0
         version: 5.3.0
+      '@hzkcode/plugin-sdk':
+        specifier: workspace:*
+        version: link:packages/plugin-sdk
       '@lobehub/icons-static-svg':
         specifier: ^1.95.0
         version: 1.95.0
@@ -3356,7 +3356,7 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
-  framer-motion@12.43.0(patch_hash=b669732395f614733671f6fe303fa2909e1fd06d70b939d329d9b76639691a5b)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  framer-motion@12.43.0(patch_hash=239d303796f915402b03cc76a9de4e4df83f17f4487a0b5f92c836a63a4a683a)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
       motion-dom: 12.43.0
       motion-utils: 12.39.0
@@ -4033,7 +4033,7 @@ snapshots:
 
   motion@12.43.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
-      framer-motion: 12.43.0(patch_hash=b669732395f614733671f6fe303fa2909e1fd06d70b939d329d9b76639691a5b)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      framer-motion: 12.43.0(patch_hash=239d303796f915402b03cc76a9de4e4df83f17f4487a0b5f92c836a63a4a683a)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       tslib: 2.8.1
     optionalDependencies:
       react: 18.3.1

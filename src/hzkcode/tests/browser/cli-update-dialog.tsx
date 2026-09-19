@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import "../../src/index.css";
 import type { CliUpdateFlow, CliUpdateFlowState } from "../../src/features/settings/useCliUpdateFlow";
 
-localStorage.setItem("ccgui-next.language", "zh");
+localStorage.setItem("hzkcode.language", "zh");
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

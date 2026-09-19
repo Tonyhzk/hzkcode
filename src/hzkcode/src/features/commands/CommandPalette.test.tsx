@@ -1,8 +1,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { commandRegistry } from "@ccgui/plugin-sdk";
-import type { CommandDef, Disposer } from "@ccgui/plugin-sdk";
+import { commandRegistry } from "@hzkcode/plugin-sdk";
+import type { CommandDef, Disposer } from "@hzkcode/plugin-sdk";
 import { CommandPalette } from "./CommandPalette";
 import { startShortcutRuntime } from "@/features/shortcuts/runtime";
 

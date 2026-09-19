@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 /// attaches to an outgoing prompt (ported from desktop-cc-gui's agents.rs,
 /// trimmed to the CRUD surface — selection state now lives frontend-side in
 /// localStorage, and import/export was dropped). The whole catalog is one
-/// JSON file at `~/.ccgui-next/agents.json`; a missing or corrupt file reads
+/// JSON file at `~/.hzkcode/gui/agents.json`; a missing or corrupt file reads
 /// as an empty list so the picker degrades instead of erroring.
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -350,7 +350,7 @@ mod tests {
     impl ScratchHome {
         fn new(name: &str) -> Self {
             let guard = ENV_LOCK.lock();
-            let dir = std::env::temp_dir().join(format!("ccgui-agents-{name}-{}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!("hzkcode-agents-{name}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).unwrap();
             let previous = std::env::var_os("HOME");
@@ -441,7 +441,7 @@ mod tests {
     impl ScratchDir {
         fn new(name: &str) -> Self {
             let dir = std::env::temp_dir()
-                .join(format!("ccgui-agents-migrate-{name}-{}", std::process::id()));
+                .join(format!("hzkcode-agents-migrate-{name}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).unwrap();
             Self(dir)

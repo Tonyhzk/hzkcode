@@ -133,7 +133,7 @@ jobs:
       # Single-binary app (openssl vendored, no daemon subcomponent), so Tauri
       # can codesign mid-bundle — unlike the 0.9.x flow that re-signed after.
       # With TAURI_SIGNING_PRIVATE_KEY set, `createUpdaterArtifacts` also emits
-      # "CC GUI.app.tar.gz" + .sig for the updater channel.
+      # "HZK CODE.app.tar.gz" + .sig for the updater channel.
       - name: Build app bundle (signed)
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
@@ -180,20 +180,20 @@ jobs:
           mkdir -p release-artifacts
 
           mv src-tauri/target/release/bundle/dmg/*.dmg \
-            "release-artifacts/ccgui_${VERSION}_${ARCH}.dmg"
-          mv "src-tauri/target/release/bundle/macos/CC GUI.app.tar.gz" \
-            "release-artifacts/ccgui_${ARCH}.app.tar.gz"
-          mv "src-tauri/target/release/bundle/macos/CC GUI.app.tar.gz.sig" \
-            "release-artifacts/ccgui_${ARCH}.app.tar.gz.sig"
+            "release-artifacts/hzkcode_${VERSION}_${ARCH}.dmg"
+          mv "src-tauri/target/release/bundle/macos/HZK CODE.app.tar.gz" \
+            "release-artifacts/hzkcode_${ARCH}.app.tar.gz"
+          mv "src-tauri/target/release/bundle/macos/HZK CODE.app.tar.gz.sig" \
+            "release-artifacts/hzkcode_${ARCH}.app.tar.gz.sig"
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}
           path: |
-            release-artifacts/ccgui_*_${{ matrix.arch }}.dmg
-            release-artifacts/ccgui_${{ matrix.arch }}.app.tar.gz
-            release-artifacts/ccgui_${{ matrix.arch }}.app.tar.gz.sig
+            release-artifacts/hzkcode_*_${{ matrix.arch }}.dmg
+            release-artifacts/hzkcode_${{ matrix.arch }}.app.tar.gz
+            release-artifacts/hzkcode_${{ matrix.arch }}.app.tar.gz.sig
           if-no-files-found: error
 
   build_linux:
@@ -272,9 +272,9 @@ jobs:
           APPIMAGE=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' | head -n 1)
           test -n "$APPIMAGE"
           mkdir -p "$HOME/.tauri"
-          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY_B64" > "$HOME/.tauri/ccgui.key"
+          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY_B64" > "$HOME/.tauri/hzkcode.key"
           pnpm exec tauri signer sign \
-            -f "$HOME/.tauri/ccgui.key" \
+            -f "$HOME/.tauri/hzkcode.key" \
             -p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
             "$APPIMAGE"
 
@@ -384,8 +384,8 @@ jobs:
           PY
           )
 
-          SIGNATURE_AARCH64=$(cat release-artifacts/ccgui_aarch64.app.tar.gz.sig)
-          SIGNATURE_X86_64=$(cat release-artifacts/ccgui_x86_64.app.tar.gz.sig)
+          SIGNATURE_AARCH64=$(cat release-artifacts/hzkcode_aarch64.app.tar.gz.sig)
+          SIGNATURE_X86_64=$(cat release-artifacts/hzkcode_x86_64.app.tar.gz.sig)
           LAST_TAG=$(git tag --sort=-version:refname \
             | grep -v "^v${VERSION}$" \
             | head -n 1 || true)
@@ -443,11 +443,11 @@ jobs:
 
           platforms = {
             "darwin-aarch64": {
-              "url": "https://github.com/zhukunpenglinyutong/desktop-cc-gui/releases/download/v${VERSION}/ccgui_aarch64.app.tar.gz",
+              "url": "https://github.com/Tonyhzk/hzkcode/releases/download/v${VERSION}/hzkcode_aarch64.app.tar.gz",
               "signature": "${SIGNATURE_AARCH64}",
             },
             "darwin-x86_64": {
-              "url": "https://github.com/zhukunpenglinyutong/desktop-cc-gui/releases/download/v${VERSION}/ccgui_x86_64.app.tar.gz",
+              "url": "https://github.com/Tonyhzk/hzkcode/releases/download/v${VERSION}/hzkcode_x86_64.app.tar.gz",
               "signature": "${SIGNATURE_X86_64}",
             }
           }
@@ -455,8 +455,8 @@ jobs:
           appimages = list(artifacts_dir.rglob("*.AppImage"))
 
           # GitHub sanitizes uploaded asset names (spaces become dots — e.g.
-          # "CC GUI_1.0.1_x64-setup.exe" is stored as "CC.GUI_..."), while
-          # tauri emits bundles with the literal productName ("CC GUI").
+          # "HZK CODE_1.0.1_x64-setup.exe" is stored as "HZK.CODE_..."), while
+          # tauri emits bundles with the literal productName ("HZK CODE").
           # latest.json must point at the sanitized name or the updater's
           # download step 404s (v1.0.0/v1.0.1 Windows+Linux hit this).
           def asset_name(name):
@@ -477,7 +477,7 @@ jobs:
             sig_path = appimage.with_suffix(appimage.suffix + ".sig")
             if sig_path.exists():
               platforms[f"linux-{arch}"] = {
-                "url": f"https://github.com/zhukunpenglinyutong/desktop-cc-gui/releases/download/v${VERSION}/{asset_name(appimage.name)}",
+                "url": f"https://github.com/Tonyhzk/hzkcode/releases/download/v${VERSION}/{asset_name(appimage.name)}",
                 "signature": sig_path.read_text().strip(),
               }
 
@@ -486,7 +486,7 @@ jobs:
             sig_path = Path(str(nsis_exe) + ".sig")
             if sig_path.exists():
               platforms["windows-x86_64"] = {
-                "url": f"https://github.com/zhukunpenglinyutong/desktop-cc-gui/releases/download/v${VERSION}/{asset_name(nsis_exe.name)}",
+                "url": f"https://github.com/Tonyhzk/hzkcode/releases/download/v${VERSION}/{asset_name(nsis_exe.name)}",
                 "signature": sig_path.read_text().strip(),
               }
               break
@@ -517,12 +517,12 @@ jobs:
 
           ASSETS=()
           for pattern in \
-            "release-artifacts/ccgui_${VERSION}_aarch64.dmg" \
-            "release-artifacts/ccgui_${VERSION}_x86_64.dmg" \
-            "release-artifacts/ccgui_aarch64.app.tar.gz" \
-            "release-artifacts/ccgui_aarch64.app.tar.gz.sig" \
-            "release-artifacts/ccgui_x86_64.app.tar.gz" \
-            "release-artifacts/ccgui_x86_64.app.tar.gz.sig" \
+            "release-artifacts/hzkcode_${VERSION}_aarch64.dmg" \
+            "release-artifacts/hzkcode_${VERSION}_x86_64.dmg" \
+            "release-artifacts/hzkcode_aarch64.app.tar.gz" \
+            "release-artifacts/hzkcode_aarch64.app.tar.gz.sig" \
+            "release-artifacts/hzkcode_x86_64.app.tar.gz" \
+            "release-artifacts/hzkcode_x86_64.app.tar.gz.sig" \
             "release-artifacts/*.AppImage" \
             "release-artifacts/*.AppImage.sig" \
             "release-artifacts/*-setup.exe" \

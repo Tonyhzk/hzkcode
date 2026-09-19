@@ -2,8 +2,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Markdown from "./Markdown";
-import { markdownRegistry } from "@ccgui/plugin-sdk";
-import type { Disposer } from "@ccgui/plugin-sdk";
+import { markdownRegistry } from "@hzkcode/plugin-sdk";
+import type { Disposer } from "@hzkcode/plugin-sdk";
 
 // React's act() environment flag — a well-known global the runtime can't
 // validate, so a named cast with no narrowing is the right boundary.

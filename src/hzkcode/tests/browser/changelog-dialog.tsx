@@ -7,7 +7,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "../../src/index.css";
 
-localStorage.setItem("ccgui-next.language", "zh");
+localStorage.setItem("hzkcode.language", "zh");
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

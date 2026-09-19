@@ -474,7 +474,7 @@ fn icon_png_bytes(icon_path: &Path) -> Option<Vec<u8>> {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or_default();
-    let out_path = std::env::temp_dir().join(format!("ccgui-icon-{ts}.png"));
+    let out_path = std::env::temp_dir().join(format!("hzkcode-icon-{ts}.png"));
     let status = Command::new("sips")
         .args(["-s", "format", "png"])
         .arg(icon_path.as_os_str())

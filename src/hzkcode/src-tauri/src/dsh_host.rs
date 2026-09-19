@@ -10,7 +10,7 @@
 //! Credential chain: the spawned host prints a one-time launch token
 //! (`dsh web: http://…/?token=…`) on its output; we capture it, exchange it
 //! via `GET /?token=…` (303 + set-cookie, no redirects), and persist the
-//! cookie per-origin in `~/.ccgui-next/dsh-host-credentials.json`. A host
+//! cookie per-origin in `~/.hzkcode/gui/dsh-host-credentials.json`. A host
 //! that answers with 401 is alive but credential-locked: local listeners are
 //! stopped so we can respawn with our own token chain (credentials are ours
 //! to manage), remote origins can't be adopted.

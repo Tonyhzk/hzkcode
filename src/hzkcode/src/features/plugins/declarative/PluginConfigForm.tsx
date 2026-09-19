@@ -9,8 +9,8 @@ import {
   SettingsRow,
   SettingsSectionLabel,
 } from "@/components/application/settings/settings-rows";
-import type { PluginContext } from "@ccgui/plugin-sdk";
-import type { JsonSchemaObject, JsonSchemaProperty } from "@ccgui/plugin-sdk";
+import type { PluginContext } from "@hzkcode/plugin-sdk";
+import type { JsonSchemaObject, JsonSchemaProperty } from "@hzkcode/plugin-sdk";
 
 /** Topic emitted (with {pluginId, key, value}) whenever a config form writes
  *  a value — pluginId distinguishes co-loaded configSchema plugins. */

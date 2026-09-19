@@ -1430,7 +1430,7 @@ mod staging_tests {
     #[tokio::test]
     async fn reader_context_cleans_private_configs_on_completion_and_abort() {
         for abort in [false, true] {
-            let directory = std::env::temp_dir().join(format!("ccgui-reader-cleanup-{}", uuid::Uuid::new_v4()));
+            let directory = std::env::temp_dir().join(format!("hzkcode-reader-cleanup-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&directory).unwrap();
             std::fs::write(directory.join("config.toml"), "temporary credential").unwrap();
             let mut command = Command::new(if cfg!(windows) {"cmd.exe"} else {"sh"});
@@ -2865,7 +2865,7 @@ mod retry_lifecycle_tests {
     }
 
     async fn replay_cli_output(lines: &[Value]) -> Vec<Value> {
-        let path = std::env::temp_dir().join(format!("ccgui-retry-{}.jsonl", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("hzkcode-retry-{}.jsonl", uuid::Uuid::new_v4()));
         let mut text = lines.iter().map(Value::to_string).collect::<Vec<_>>().join("\n");
         text.push('\n');
         std::fs::write(&path, text).unwrap();
@@ -3215,7 +3215,7 @@ mod codex_home_bin_tests {
     #[test]
     fn engine_bin_prefers_codex_home_bin() {
         let dir = std::env::temp_dir().join(format!(
-            "ccgui-codex-home-bin-{}",
+            "hzkcode-codex-home-bin-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(dir.join("bin")).unwrap();

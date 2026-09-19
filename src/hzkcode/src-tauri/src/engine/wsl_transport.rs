@@ -6,7 +6,7 @@
 //! 1. 生成发行版内脚本:先 `cd` 到发行版内工作区,再以**发行版内**的引擎
 //!    路径 `exec <cli> <args…>`(argv[0] 经 `enginePaths` 表或远端
 //!    `command -v` 解析 —— 本机 macOS/Windows 路径在 Linux 里不存在);
-//! 2. 一次 `ssh <host> "wsl.exe -d <distro> -- tee /tmp/ccgui-wsl-<id>.sh"`
+//! 2. 一次 `ssh <host> "wsl.exe -d <distro> -- tee /tmp/hzkcode-wsl-<id>.sh"`
 //!    经 stdin 明文写入脚本(脚本内容不进命令串,零转义需求);
 //! 3. 真正的 run 进程 = `ssh <host> "wsl.exe -d <distro> -- bash /tmp/….sh"`
 //!    (命令串只含固定词,无 `$`/`|`/`>`/反引号,cmd/PowerShell 均惰性),
@@ -32,7 +32,7 @@ use tokio::process::Command;
 /// (wrap 出的长驻 run 命令)不在此列——它的存活期就是 turn 的存活期。
 const REMOTE_CALL_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// `meta.wsl` 的形状(插件 ccgui-plugin-wsl 写入;其他插件可同构复用)。
+/// `meta.wsl` 的形状(插件 hzkcode-plugin-wsl 写入;其他插件可同构复用)。
 #[derive(Debug, Clone)]
 pub struct WslTransport {
     /// Windows 宿主地址(IP/主机名)。
@@ -356,10 +356,10 @@ pub async fn wrap(command: Command, transport: &WslTransport) -> Result<Wrapped,
     let (program, args, envs) = program_args_env(&command);
     let script = build_script(&program, &args, &envs, transport);
     let script_id = uuid::Uuid::new_v4().simple().to_string();
-    let remote_path = format!("/tmp/ccgui-wsl-{script_id}.sh");
+    let remote_path = format!("/tmp/hzkcode-wsl-{script_id}.sh");
     upload_script(transport, &script, &remote_path).await?;
 
-    let local_tmp = std::env::temp_dir().join(format!("ccgui-wsl-{script_id}.marker"));
+    let local_tmp = std::env::temp_dir().join(format!("hzkcode-wsl-{script_id}.marker"));
     std::fs::write(&local_tmp, b"").map_err(|e| format!("临时文件写入失败: {e}"))?;
 
     let mut wrapped = base_ssh_command(transport);
@@ -405,7 +405,7 @@ pub async fn run_script_output(
     script_body: &str,
 ) -> Result<String, String> {
     let script_id = uuid::Uuid::new_v4().simple().to_string();
-    let remote_path = format!("/tmp/ccgui-wsl-{script_id}.sh");
+    let remote_path = format!("/tmp/hzkcode-wsl-{script_id}.sh");
     // 调用方脚本同样落盘即删(bash 从已打开 fd 继续读,unlink 不影响执行)。
     let body = format!("rm -f \"$0\"\n{script_body}");
     upload_script(transport, &body, &remote_path).await?;

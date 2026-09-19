@@ -827,7 +827,7 @@ mod tests {
     impl Scratch {
         fn new() -> Self {
             let path = std::env::temp_dir().join(format!(
-                "ccgui-next-git-summary-{}",
+                "hzkcode-git-summary-{}",
                 uuid::Uuid::new_v4()
             ));
             std::fs::create_dir_all(&path).unwrap();

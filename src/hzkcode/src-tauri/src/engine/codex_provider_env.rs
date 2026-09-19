@@ -13,15 +13,15 @@ use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-const FRAME_START_PREFIX: &str = "__CCGUI_CODEX_ENV_START__";
-const FRAME_END_PREFIX: &str = "__CCGUI_CODEX_ENV_END__";
+const FRAME_START_PREFIX: &str = "__HZKCODE_CODEX_ENV_START__";
+const FRAME_END_PREFIX: &str = "__HZKCODE_CODEX_ENV_END__";
 const RESOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 const SHELL_SCRIPT: &str = r#"
 for key in "$@"; do
-  printf '%s%s\n' "__CCGUI_CODEX_ENV_START__" "$key"
+  printf '%s%s\n' "__HZKCODE_CODEX_ENV_START__" "$key"
   value=$(/usr/bin/printenv -- "$key" 2>/dev/null || true)
   printf '%s\n' "$value"
-  printf '%s%s\n' "__CCGUI_CODEX_ENV_END__" "$key"
+  printf '%s%s\n' "__HZKCODE_CODEX_ENV_END__" "$key"
 done
 "#;
 
@@ -98,7 +98,7 @@ async fn resolve_from_login_shell(keys: &[String]) -> Option<BTreeMap<String, St
         .arg("-i")
         .arg("-c")
         .arg(SHELL_SCRIPT)
-        .arg("ccgui")
+        .arg("hzkcode")
         .args(keys);
     // tokio's output() does NOT kill on drop: a login shell whose rc files
     // block past the timeout would otherwise be abandoned alive — one orphan
@@ -156,11 +156,11 @@ mod tests {
     #[test]
     fn shell_credentials_never_replace_explicit_child_env() {
         let mut command = Command::new("codex");
-        command.env("CCGUI_TEST_CHANNEL_KEY", "channel-key");
-        assert!(env_has_non_empty_value(&command, "CCGUI_TEST_CHANNEL_KEY"));
+        command.env("HZKCODE_TEST_CHANNEL_KEY", "channel-key");
+        assert!(env_has_non_empty_value(&command, "HZKCODE_TEST_CHANNEL_KEY"));
         // An explicit removal is also intentional, not a missing inherited key.
-        command.env_remove("CCGUI_TEST_CHANNEL_KEY");
-        assert!(env_has_non_empty_value(&command, "CCGUI_TEST_CHANNEL_KEY"));
+        command.env_remove("HZKCODE_TEST_CHANNEL_KEY");
+        assert!(env_has_non_empty_value(&command, "HZKCODE_TEST_CHANNEL_KEY"));
     }
 
     #[test]

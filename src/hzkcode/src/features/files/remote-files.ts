@@ -17,7 +17,7 @@ export type RemoteFileReader = (
   path: string,
 ) => Promise<FileContent | null>;
 
-export interface CcguiFilesBridge {
+export interface HzkcodeFilesBridge {
   /** Register (or clear with null) the remote reader. */
   registerRemoteFileReader(reader: RemoteFileReader | null): void;
   /** Open a path in the center editor (the standard file-open flow). */
@@ -28,7 +28,7 @@ export interface CcguiFilesBridge {
 
 declare global {
   interface Window {
-    __ccguiFiles?: CcguiFilesBridge;
+    __hzkcodeFiles?: HzkcodeFilesBridge;
   }
 }
 
@@ -38,7 +38,7 @@ const remotePaths = new Set<string>();
 export function installFilesBridge(
   openFile: (path: string) => Promise<void>,
 ): void {
-  window.__ccguiFiles = {
+  window.__hzkcodeFiles = {
     registerRemoteFileReader(reader) {
       remoteReader = reader;
       // 换 reader(含注销为 null)即重建归属集:旧 reader 服务过的路径对新

@@ -2,7 +2,7 @@
  * Custom prompts: markdown files with `---` frontmatter (description,
  * argument-hint) that the composer `!` menu inserts into the input and the
  * settings page manages. Workspace scope lives under
- * `<root>/.ccgui/prompts/`, global scope under `~/.ccgui-next/prompts/`.
+ * `<root>/.hzkcode/prompts/`, global scope under `~/.hzkcode/gui/prompts/`.
  *
  * Per-root cache modeled on create-root-cache-store (stale-while-
  * revalidate, one in-flight IPC per root) with an added forced refresh()
@@ -16,7 +16,7 @@ import { ipc, type CustomPromptEntry, type PromptScope } from "@/lib/ipc";
 import type { RootCache } from "@/components/application/ai-chat/create-root-cache-store";
 
 /** Broadcast after any prompt mutation; detail carries the workspace root. */
-export const PROMPTS_CHANGED_EVENT = "ccgui-next:prompts-changed";
+export const PROMPTS_CHANGED_EVENT = "hzkcode:prompts-changed";
 
 /** Subscribe to prompt mutations; `root` is the affected workspace root,
  *  null when the event carries none. Returns the unlisten fn. */

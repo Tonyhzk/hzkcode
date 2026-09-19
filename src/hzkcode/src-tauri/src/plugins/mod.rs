@@ -1,7 +1,7 @@
 //! Phase-1 plugin host: local-path install/uninstall/enable/disable, plugin
 //! file reads confined to the plugin directory, and per-plugin KV storage
-//! (db.rs `plugin_kv`). State lives in `~/.ccgui-next/plugins.json`; the
-//! plugins themselves in `~/.ccgui-next/plugins/<id>/`.
+//! (db.rs `plugin_kv`). State lives in `~/.hzkcode/gui/plugins.json`; the
+//! plugins themselves in `~/.hzkcode/gui/plugins/<id>/`.
 //!
 //! Uninstall data policy (plan §9.1): `delete_data=false` keeps the KV rows
 //! and records a tombstone; `plugin_list` purges rows whose tombstone is
@@ -199,7 +199,7 @@ pub(crate) mod test_support {
     impl Scratch {
         pub(crate) fn new() -> Self {
             let dir = std::env::temp_dir()
-                .join(format!("ccgui-next-plugins-test-{}", uuid::Uuid::new_v4()));
+                .join(format!("hzkcode-plugins-test-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&dir).unwrap();
             Self(dir)
         }

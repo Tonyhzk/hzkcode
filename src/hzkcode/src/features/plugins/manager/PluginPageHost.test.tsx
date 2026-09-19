@@ -3,8 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "@/lib/i18n";
-import { pageRegistry } from "@ccgui/plugin-sdk";
-import type { Disposer, PageDef } from "@ccgui/plugin-sdk";
+import { pageRegistry } from "@hzkcode/plugin-sdk";
+import type { Disposer, PageDef } from "@hzkcode/plugin-sdk";
 import PluginPageHost from "./PluginPageHost";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

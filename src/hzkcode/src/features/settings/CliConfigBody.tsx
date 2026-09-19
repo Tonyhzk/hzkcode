@@ -49,7 +49,7 @@ export function CliConfigBody({ cli }: { cli: CliConfigState }) {
     importCcSwitchFile,
     dismissCcSwitch,
   } = cli;
-  // pi/omp official files are never cc-gui-managed: their 编辑 entry opens
+  // pi/omp official files are never hzkcode-managed: their 编辑 entry opens
   // the models.json/models.yml editor already living in the auth section.
   const [customEditorSignal, setCustomEditorSignal] = useState(0);
 

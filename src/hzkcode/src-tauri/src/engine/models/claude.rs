@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn cli_config_local_overrides_user_per_field() {
-        let dir = std::env::temp_dir().join(format!("ccgui-claude-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hzkcode-claude-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("settings.json"),
@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn launch_model_resolves_overrides_and_passes_the_rest_through() {
-        let dir = std::env::temp_dir().join(format!("ccgui-claude-test4-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hzkcode-claude-test4-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("settings.json"),
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn cli_config_reads_env_when_no_local_file() {
-        let dir = std::env::temp_dir().join(format!("ccgui-claude-test2-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hzkcode-claude-test2-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("settings.json"),
@@ -374,7 +374,7 @@ mod tests {
 
     #[test]
     fn catalog_labels_overridden_aliases_like_the_cli_menu() {
-        let dir = std::env::temp_dir().join(format!("ccgui-claude-test3-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hzkcode-claude-test3-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("settings.json"),

@@ -18,7 +18,7 @@ import { applyTheme } from "./theme";
 import { PromptHistoryManager, PromptHistoryToggleRow } from "./PromptHistorySettings";
 import { useChatStore } from "@/features/chat/store";
 
-export const LANGUAGE_STORAGE_KEY = "ccgui-next.language";
+export const LANGUAGE_STORAGE_KEY = "hzkcode.language";
 
 /** Compact select trigger (h 32, radius/lg) per the Figma settings rows. */
 const SELECT_TRIGGER = "h-8 w-auto gap-1 rounded-lg px-2 py-1.5";

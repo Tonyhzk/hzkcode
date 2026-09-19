@@ -247,7 +247,7 @@ pub fn claude_stdin_message(
 
 /// Kimi image injection: absolute path tags the CLI reads via ReadMediaFile.
 /// Marker lets history parsing strip the instruction block.
-pub const KIMI_IMAGE_MARKER: &str = "\n\n<!-- ccgui:kimi-image-attachments -->\n";
+pub const KIMI_IMAGE_MARKER: &str = "\n\n<!-- hzkcode:kimi-image-attachments -->\n";
 
 pub fn kimi_prompt_with_images(prompt: &str, images: &[String], workspace: &Path) -> String {
     let paths: Vec<PathBuf> = images

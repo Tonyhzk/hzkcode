@@ -12,7 +12,7 @@
  */
 import { ASSUMED_CONTEXT_WINDOW, parseUsage } from "./usage";
 
-const PREFIX = "ccgui.context-window";
+const PREFIX = "hzkcode.context-window";
 
 function storage(): Storage | null {
   try {

@@ -24,9 +24,9 @@ pub(crate) fn home_dir() -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
-/// Application home directory: ~/.ccgui-next/
+/// Application home directory: ~/.hzkcode/gui/
 pub fn app_home() -> PathBuf {
-    home_dir().join(".ccgui-next")
+    home_dir().join(".hzkcode").join("gui")
 }
 
 pub fn legacy_home() -> PathBuf {

@@ -7,7 +7,7 @@ import {
   panelTabRegistry,
   useRegistry,
   type PanelTabDef,
-} from "@ccgui/plugin-sdk";
+} from "@hzkcode/plugin-sdk";
 import { FilesPanel } from "@/features/files/FilesPanel";
 import { ChangesPanel } from "@/features/git/ChangesPanel";
 

@@ -32,7 +32,7 @@ export default defineConfig(() => ({
     port: 1420,
     strictPort: true,
     fs: {
-      // Sibling plugin repos (e.g. ../ccgui-plugin/usage-stats) are served in
+      // Sibling plugin repos (e.g. ../hzkcode-plugin/usage-stats) are served in
       // dev so external plugins can be exercised without installing.
       allow: [".."],
     },

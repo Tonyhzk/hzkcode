@@ -185,7 +185,7 @@ export function providerEntries(
  * (ChatConversation's model picker) refetches — it caches getCliConfig on
  * mount and never re-reads otherwise.
  */
-export const CLI_CONFIG_CHANGED_EVENT = "ccgui:cli-config-changed";
+export const CLI_CONFIG_CHANGED_EVENT = "hzkcode:cli-config-changed";
 
 export function notifyCliConfigChanged() {
   window.dispatchEvent(new Event(CLI_CONFIG_CHANGED_EVENT));

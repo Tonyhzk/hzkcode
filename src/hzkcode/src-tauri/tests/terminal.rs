@@ -3,12 +3,12 @@
 //! dock depends on: open spawns a shell in the given cwd, write reaches it,
 //! output arrives as `terminal://output` batches, close kills the session.
 
-use ccgui_next_lib::config::ConfigStore;
-use ccgui_next_lib::db::Db;
-use ccgui_next_lib::engine::ProcessRegistry;
-use ccgui_next_lib::event_sink::EventSink;
-use ccgui_next_lib::terminal::{self, TERMINAL_OUTPUT_EVENT};
-use ccgui_next_lib::AppState;
+use hzkcode_lib::config::ConfigStore;
+use hzkcode_lib::db::Db;
+use hzkcode_lib::engine::ProcessRegistry;
+use hzkcode_lib::event_sink::EventSink;
+use hzkcode_lib::terminal::{self, TERMINAL_OUTPUT_EVENT};
+use hzkcode_lib::AppState;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -16,7 +16,7 @@ use tauri::{Listener, Manager};
 
 fn temp_home(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "ccgui-terminal-test-{}-{}",
+        "hzkcode-terminal-test-{}-{}",
         tag,
         std::process::id()
     ));
@@ -41,10 +41,10 @@ fn build_app(home: &std::path::Path) -> tauri::App<tauri::test::MockRuntime> {
         terminal_sink: EventSink::with_name(Arc::new(app.handle().clone()), TERMINAL_OUTPUT_EVENT),
         terminals: terminal::TerminalRegistry::default(),
         processes: Arc::new(ProcessRegistry::default()),
-        emitters: ccgui_next_lib::event_sink::BroadcastEmit::new(Arc::new(app.handle().clone())),
-        web: ccgui_next_lib::web::WebAccessState::default(),
-        relay: ccgui_next_lib::relay::RelayState::default(),
-        dsh_host: Arc::new(ccgui_next_lib::dsh_host::DshHostState::default()),
+        emitters: hzkcode_lib::event_sink::BroadcastEmit::new(Arc::new(app.handle().clone())),
+        web: hzkcode_lib::web::WebAccessState::default(),
+        relay: hzkcode_lib::relay::RelayState::default(),
+        dsh_host: Arc::new(hzkcode_lib::dsh_host::DshHostState::default()),
     });
     app.manage(ConfigStore::default());
     app

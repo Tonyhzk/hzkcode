@@ -1,4 +1,4 @@
-# @ccgui/plugin-sdk changelog
+# @hzkcode/plugin-sdk changelog
 
 ## 0.3.9 — 2026-09-16
 - **新增能力**：`ctx.ui.registerComposerStatusItem({ key?, component, order? })`

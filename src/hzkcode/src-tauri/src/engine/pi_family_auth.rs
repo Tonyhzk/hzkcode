@@ -977,7 +977,7 @@ mod tests {
 
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "ccgui-pi-family-auth-test-{tag}-{}",
+            "hzkcode-pi-family-auth-test-{tag}-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);

@@ -135,7 +135,7 @@ export function AboutSection() {
       <div className="flex w-full flex-col gap-2">
         <SettingsSectionLabel>{t("settings.about")}</SettingsSectionLabel>
         <SettingsCard>
-          <SettingsRow label="CC GUI" description={t("settings.aboutDesc")}>
+          <SettingsRow label="HZK CODE" description={t("settings.aboutDesc")}>
             <span className="text-body-regular text-text-secondary">
               {version ? `v${version}` : "…"}
             </span>

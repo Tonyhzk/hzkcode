@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn sync_names_and_renames_preserving_fallback_and_custom_titles() -> Result<(), String> {
-        let dir = std::env::temp_dir().join(format!("ccgui-codex-names-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("hzkcode-codex-names-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let db = crate::db::Db::open_at(&dir.join("app.db")).map_err(|e| e.to_string())?;
         let index = dir.join("session_index.jsonl");

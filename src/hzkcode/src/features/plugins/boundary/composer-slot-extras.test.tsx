@@ -2,8 +2,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComposerSlotExtras } from "./composer-slot-extras";
-import { composerSlotRegistry } from "@ccgui/plugin-sdk";
-import type { ComposerSlotDef, Disposer } from "@ccgui/plugin-sdk";
+import { composerSlotRegistry } from "@hzkcode/plugin-sdk";
+import type { ComposerSlotDef, Disposer } from "@hzkcode/plugin-sdk";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

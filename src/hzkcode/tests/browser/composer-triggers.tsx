@@ -34,7 +34,7 @@ usePromptStore.setState({
   byRoot: {
     [ROOT]: {
       entries: [
-        { name: "review", path: "/fixture-ws/.ccgui/prompts/review.md", description: "逐行审查当前改动", content: "请审查…", scope: "workspace" },
+        { name: "review", path: "/fixture-ws/.hzkcode/prompts/review.md", description: "逐行审查当前改动", content: "请审查…", scope: "workspace" },
       ],
       status: "ready",
       fetchedAt: Date.now(),

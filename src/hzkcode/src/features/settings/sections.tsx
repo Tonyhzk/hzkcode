@@ -10,7 +10,7 @@ import i18n from "@/lib/i18n";
 import type { SettingsNavItem } from "@/components/application/settings/settings-modal";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { CLI_DISPLAY_NAMES } from "@/components/foundations/icons/engine-brands";
-import { settingsRegistry } from "@ccgui/plugin-sdk";
+import { settingsRegistry } from "@hzkcode/plugin-sdk";
 import { cx } from "@/utils/cx";
 import { GeneralSection } from "./GeneralSection";
 import { ProxySection } from "./ProxySection";

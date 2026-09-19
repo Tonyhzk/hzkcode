@@ -1,10 +1,10 @@
-# CC GUI 插件开发与提交规范
+# HZK CODE 插件开发与提交规范
 
 > **版本**：v0.1（规范草案，随插件系统 Phase 1 落地生效）
 > **适用对象**：社区插件开发者、AI 生成插件的使用者、市场审核人员
 > **关联文档**：[插件化系统总体计划](../.omx/plans/plugin-system-plan.md)
 
-本文档是向 CC GUI 插件市场提交插件的**唯一权威规范**。插件从开发、打包、发版到上架的全部要求都在这里。
+本文档是向 HZK CODE 插件市场提交插件的**唯一权威规范**。插件从开发、打包、发版到上架的全部要求都在这里。
 
 ---
 
@@ -29,7 +29,7 @@
 
 ## 1. 插件是什么
 
-CC GUI 插件是一个**托管在 GitHub 上的独立仓库**，通过 GitHub Releases 分发，用户可以一键安装、升级、卸载。插件可以：
+HZK CODE 插件是一个**托管在 GitHub 上的独立仓库**，通过 GitHub Releases 分发，用户可以一键安装、升级、卸载。插件可以：
 
 - 修改界面样式（主题、输入框样式、布局微调）
 - 新增设置页、侧边栏面板、状态栏组件、命令面板命令
@@ -58,18 +58,18 @@ CC GUI 插件是一个**托管在 GitHub 上的独立仓库**，通过 GitHub Re
 
 ```bash
 # 1. 从官方模板创建仓库（GitHub → Use this template）
-#    https://github.com/<org>/ccgui-plugin-template
+#    https://github.com/<org>/hzkcode-plugin-template
 
 # 2. 克隆并安装
-git clone https://github.com/<you>/ccgui-plugin-hello.git
-cd ccgui-plugin-hello && pnpm install
+git clone https://github.com/<you>/hzkcode-plugin-hello.git
+cd hzkcode-plugin-hello && pnpm install
 
 # 3. 开发（产物三件套输出到 dist/）
 pnpm dev        # 监听构建
 pnpm build      # 产出 main.js + manifest.json + styles.css
 pnpm validate   # 本地校验 manifest 与产物
 
-# 4. 本地调试：CC GUI → 设置 → 插件 → 从本地目录安装（指向 dist/）
+# 4. 本地调试：HZK CODE → 设置 → 插件 → 从本地目录安装（指向 dist/）
 
 # 5. 发版：打一个与 manifest.json version 一致的 tag
 git tag 1.0.0 && git push origin 1.0.0
@@ -83,7 +83,7 @@ git tag 1.0.0 && git push origin 1.0.0
 ### 4.1 必须满足的仓库布局
 
 ```
-ccgui-plugin-hello/
+hzkcode-plugin-hello/
 ├── manifest.json          # 【必须】仓库根目录，见 §5
 ├── src/
 │   └── index.ts           # JS 插件入口（Tier-0 可没有 src/）
@@ -102,7 +102,7 @@ ccgui-plugin-hello/
 1. **`manifest.json` 必须在默认分支的根目录**——市场按「默认分支根目录 manifest 的 version」查找同 tag 的 Release（与 Obsidian 相同约定）。
 2. **Release 附件文件名固定**：`main.js`、`manifest.json`、`styles.css`（Tier-0 允许只有后两个）。改名 = 无法安装。
 3. **Release tag 必须等于 manifest.json 的 `version`**（如 tag `1.2.0` ↔ `"version": "1.2.0"`），不带 `v` 前缀。
-4. **单文件 ESM bundle**：所有第三方依赖在构建期打进 `main.js`；运行时**禁止** `import` 任何外部模块（宿主提供的基座除外，构建模板已将 `react`/`react-dom`/`@ccgui/plugin-sdk` 标记为 external）。
+4. **单文件 ESM bundle**：所有第三方依赖在构建期打进 `main.js`；运行时**禁止** `import` 任何外部模块（宿主提供的基座除外，构建模板已将 `react`/`react-dom`/`@hzkcode/plugin-sdk` 标记为 external）。
 5. **体积**：bundle ≤ 512KB（CI 警告阈值），硬上限 2MB（gzip 前）。超出硬上限 CI 直接拒绝。
 
 ## 5. manifest.json 字段规范
@@ -113,13 +113,13 @@ ccgui-plugin-hello/
 {
   // ── 必填 ──────────────────────────────
   "id": "usage-stats",              // 全局唯一，小写字母/数字/连字符，^([a-z0-9]+-)*[a-z0-9]+$，
-                                    // 禁止与已有插件重名、禁止以 "ccgui-" 开头（官方保留）
+                                    // 禁止与已有插件重名、禁止以 "hzkcode-" 开头（官方保留）
   "name": "用量统计",                // 显示名，≤ 30 字符
   "version": "1.2.0",               // semver，必须与 Release tag 一致
   "minAppVersion": "1.1.0",         // 最低宿主版本，低于此版本的 App 不加载本插件
   "author": "zhangsan",             // GitHub 用户名或组织名
   "description": "统计各引擎 token 用量与花费",  // ≤ 120 字符
-  "repo": "zhangsan/ccgui-plugin-usage-stats",  // owner/repo 形式
+  "repo": "zhangsan/hzkcode-plugin-usage-stats",  // owner/repo 形式
   "tier": "js",                     // "declarative" | "js"
   "license": "MIT",
 
@@ -142,7 +142,7 @@ ccgui-plugin-hello/
     "type": "object",
     "properties": {
       "currency":  { "type": "string", "enum": ["CNY", "USD"], "default": "CNY", "title": "货币" },
-      "apiToken":  { "type": "string", "title": "API Token", "ccgui:role": "secret" }
+      "apiToken":  { "type": "string", "title": "API Token", "hzkcode:role": "secret" }
       //                                                              ^ secret 字段仅写入不回显
     }
   },
@@ -168,7 +168,7 @@ ccgui-plugin-hello/
 `main.js` 的默认导出是唯一入口：
 
 ```ts
-import type { PluginContext } from '@ccgui/plugin-sdk';
+import type { PluginContext } from '@hzkcode/plugin-sdk';
 
 export default function activate(ctx: PluginContext): void | (() => void) {
   // 注册你的贡献。所有 ctx.*.register* 返回 Disposer，
@@ -273,7 +273,7 @@ Tier-0 插件 = `manifest.json` + CSS/i18n 资源，**不含任何 JS**。宿主
   "name": "Midnight 主题",
   "version": "1.0.0",
   "minAppVersion": "1.1.0",
-  "author": "you", "description": "深蓝午夜主题", "repo": "you/ccgui-plugin-midnight",
+  "author": "you", "description": "深蓝午夜主题", "repo": "you/hzkcode-plugin-midnight",
   "tier": "declarative",
   "license": "MIT",
   "contributes": {
@@ -300,7 +300,7 @@ Tier-0 插件 = `manifest.json` + CSS/i18n 资源，**不含任何 JS**。宿主
 
 ### 9.1 构建（模板已配置好，无需手改）
 
-- Vite lib mode 输出单文件 ESM；`react`、`react-dom/jsx-runtime`、`@ccgui/plugin-sdk` 标记 external（运行时由宿主基座注入）。
+- Vite lib mode 输出单文件 ESM；`react`、`react-dom/jsx-runtime`、`@hzkcode/plugin-sdk` 标记 external（运行时由宿主基座注入）。
 - `pnpm validate` 本地跑与市场 CI 相同的检查：manifest schema、bundle 体积、权限-代码比对、CSS 静态解析、黑名单扫描（`eval` / `new Function` / `__TAURI__` / `localStorage` / 远程 `import(`）。
 
 ### 9.2 发版
@@ -320,7 +320,7 @@ minisign -Sm dist/main.js -p your-plugin.pub   # main.js.minisig 一并传到 Re
 
 ## 10. 上架流程（提交到市场）
 
-市场 = 中央索引仓库 `ccgui-plugins`（纯 GitHub，无自建服务器）。
+市场 = 中央索引仓库 `hzkcode-plugins`（纯 GitHub，无自建服务器）。
 
 ### 10.1 首次上架
 
@@ -328,7 +328,7 @@ minisign -Sm dist/main.js -p your-plugin.pub   # main.js.minisig 一并传到 Re
 2. 在 `community-plugins.json` 追加一条（保持按 id 字典序）：
 
 ```json
-{ "id": "usage-stats", "repo": "zhangsan/ccgui-plugin-usage-stats" }
+{ "id": "usage-stats", "repo": "zhangsan/hzkcode-plugin-usage-stats" }
 ```
 
 3. 新增 `plugins/usage-stats.json`：
@@ -419,7 +419,7 @@ App 市场页 → Rust 拉索引 → 用户点安装 → 从 Release 下载三�
 ## 13. 用户数据与安全规范
 
 1. **最小采集**：只拿实现功能必需的数据；`events:usage`/`events:session` 数据**禁止外发**，只能本地展示/聚合。
-2. **secret 字段**（`ccgui:role: "secret"`）仅写入不回显，存于每插件隔离 KV；禁止把 secret 打到日志。
+2. **secret 字段**（`hzkcode:role: "secret"`）仅写入不回显，存于每插件隔离 KV；禁止把 secret 打到日志。
 3. **网络请求**：仅限声明域名；禁止把用户对话内容、文件路径、API key 作为请求参数发出。
 4. **依赖供应链**：构建期依赖锁定（lockfile 入库）；Release 产物必须由模板 Action 从源码构建——**禁止手工上传本地构建的产物**（CI 会比对）。
 5. 发现安全漏洞：向索引仓 Security Advisory 私密报告，48h 内响应；确认后下架受影响版本。

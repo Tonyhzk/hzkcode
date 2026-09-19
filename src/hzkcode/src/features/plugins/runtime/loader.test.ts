@@ -6,7 +6,7 @@ import {
   unloadPlugin,
   type LoaderBackend,
 } from "./loader";
-import { commandRegistry, settingsRegistry } from "@ccgui/plugin-sdk";
+import { commandRegistry, settingsRegistry } from "@hzkcode/plugin-sdk";
 import type { PluginInfo } from "@/lib/ipc";
 
 function fakeBackend(files: Record<string, string> = {}) {

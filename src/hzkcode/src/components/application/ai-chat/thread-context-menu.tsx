@@ -8,7 +8,7 @@ import {
   useRegistry,
   type SessionMenuItemDef,
   type SessionMenuTarget,
-} from "@ccgui/plugin-sdk";
+} from "@hzkcode/plugin-sdk";
 import { ContextMenu, type ContextMenuEntry } from "@/components/context-menu";
 import type { ThreadAction } from "@/components/application/ai-chat/sidebar-types";
 

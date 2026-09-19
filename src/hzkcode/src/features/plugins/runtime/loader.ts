@@ -17,7 +17,7 @@ import {
   satisfiesSdkRange,
   type Disposer,
   type PluginManifest,
-} from "@ccgui/plugin-sdk";
+} from "@hzkcode/plugin-sdk";
 
 /**
  * Plugin loader (plan §4.1 runtime/loader.ts + ADR-5 state machine).

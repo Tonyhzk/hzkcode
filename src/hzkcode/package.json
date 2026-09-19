@@ -1,5 +1,5 @@
 {
-  "name": "ccgui-next",
+  "name": "hzkcode",
   "private": true,
   "version": "1.0.5",
   "type": "module",
@@ -13,7 +13,7 @@
     "dev": "tauri dev"
   },
   "dependencies": {
-    "@ccgui/plugin-sdk": "workspace:*",
+    "@hzkcode/plugin-sdk": "workspace:*",
     "@codemirror/language": "^6.12.3",
     "@codemirror/language-data": "^6.5.2",
     "@codemirror/state": "^6.7.2",

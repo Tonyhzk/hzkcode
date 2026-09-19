@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { PluginBoundary } from "./PluginBoundary";
-import type { ComposerSlotId } from "@ccgui/plugin-sdk";
-import { compareByOrder, composerSlotRegistry, pluginIdFromRegistryKey, useRegistry } from "@ccgui/plugin-sdk";
+import type { ComposerSlotId } from "@hzkcode/plugin-sdk";
+import { compareByOrder, composerSlotRegistry, pluginIdFromRegistryKey, useRegistry } from "@hzkcode/plugin-sdk";
 
 /**
  * Extra composer-toolbar controls contributed by plugins (plan §4.2 #2).

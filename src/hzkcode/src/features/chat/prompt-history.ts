@@ -8,10 +8,10 @@
 
 import { readStoredBool, readStoredJson, writeStored } from "@/lib/storage";
 
-const ITEMS_KEY = "ccgui-next.promptHistory";
-const COUNTS_KEY = "ccgui-next.promptHistoryCounts";
-const ENABLED_KEY = "ccgui-next.promptHistoryEnabled";
-const CHANGED_EVENT = "ccgui-next:prompt-history-changed";
+const ITEMS_KEY = "hzkcode.promptHistory";
+const COUNTS_KEY = "hzkcode.promptHistoryCounts";
+const ENABLED_KEY = "hzkcode.promptHistoryEnabled";
+const CHANGED_EVENT = "hzkcode:prompt-history-changed";
 
 const MAX_ITEMS = 200;
 const MAX_TEXT_LENGTH = 300;

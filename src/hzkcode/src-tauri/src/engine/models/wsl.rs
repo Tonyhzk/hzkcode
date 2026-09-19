@@ -88,7 +88,7 @@ async fn kimi_config_model_remote(transport: &WslTransport) -> Option<EngineMode
 pub(super) async fn claude_catalog_remote(transport: &WslTransport) -> EngineCatalog {
     // 随机分隔符:固定串可能出现在 settings 内容里(env 值等),split_once
     // 取首次出现会把 user settings 后半截当 local 合并,优先级错乱。
-    let sep = format!("=CCGUI_SEP_{}=", uuid::Uuid::new_v4().simple());
+    let sep = format!("=HZKCODE_SEP_{}=", uuid::Uuid::new_v4().simple());
     let script = format!(
         r#"d="${{CLAUDE_CONFIG_DIR:-$HOME/.claude}}"; cat "$d/settings.json" 2>/dev/null; echo "{sep}"; cat "$d/settings.local.json" 2>/dev/null"#
     );

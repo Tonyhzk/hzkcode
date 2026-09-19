@@ -20,7 +20,7 @@ import { WebWanRiskDialog } from "./WebWanRiskDialog";
  * machine on purpose: the risk is about *this* desktop being reachable, and a
  * fresh install deserves to be told again.
  */
-const WAN_RISK_ACK_KEY = "ccgui-next.webWanRiskAccepted";
+const WAN_RISK_ACK_KEY = "hzkcode.webWanRiskAccepted";
 
 /**
  * Mobile/web access page: starts the LAN bridge (src-tauri/src/web.rs) and

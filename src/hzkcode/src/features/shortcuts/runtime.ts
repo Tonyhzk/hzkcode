@@ -1,4 +1,4 @@
-import { commandRegistry } from "@ccgui/plugin-sdk";
+import { commandRegistry } from "@hzkcode/plugin-sdk";
 import { listenSettingsChanged } from "@/lib/events";
 import { resolveShortcut, shortcutActions } from "./actions";
 import { registerKeydownHandler } from "./dispatcher";

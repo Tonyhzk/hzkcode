@@ -27,7 +27,7 @@ use super::state::{PluginInfo, PluginRecord};
 /// The central index repository (plan ADR-4, Obsidian-style). Plain raw
 /// file reads: no API rate limits, no self-hosted server.
 const INDEX_RAW_BASE: &str =
-    "https://raw.githubusercontent.com/zhukunpenglinyutong/ccgui-plugins/main";
+    "https://raw.githubusercontent.com/Tonyhzk/hzkcode-plugins/main";
 const INDEX_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(3600);
 /// community-plugins.json caps: the index is a small registry, not a data
 /// dump — a runaway response means something is wrong upstream.
@@ -414,7 +414,7 @@ async fn install_from_marketplace_at(
     // Download + verify into a private temp tree. install_from re-walks and
     // re-validates (manifest schema, permissions, minAppVersion, size caps),
     // so a verified-but-broken bundle still fails safely there.
-    let temp = std::env::temp_dir().join(format!("ccgui-market-{id}-{}", uuid::Uuid::new_v4()));
+    let temp = std::env::temp_dir().join(format!("hzkcode-market-{id}-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&temp).map_err(|e| format!("mkdir {}: {e}", temp.display()))?;
     let result = async {
         let mut names: Vec<&String> = entry.sha256.keys().collect();
@@ -480,7 +480,7 @@ mod tests {
     #[test]
     fn repo_slug_shape_is_strict() {
         assert!(is_valid_repo_slug("owner/repo"));
-        assert!(is_valid_repo_slug("zhukunpenglinyutong/ccgui-plugin-react-doctor"));
+        assert!(is_valid_repo_slug("Tonyhzk/hzkcode-plugin-react-doctor"));
         assert!(is_valid_repo_slug("a.b/c_d-e"));
         assert!(!is_valid_repo_slug("owner"));
         assert!(!is_valid_repo_slug("owner/repo/extra"));

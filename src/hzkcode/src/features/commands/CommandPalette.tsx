@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Search from "lucide-react/dist/esm/icons/search";
 import { cx } from "@/utils/cx";
-import { commandRegistry, useRegistry } from "@ccgui/plugin-sdk";
-import type { CommandDef } from "@ccgui/plugin-sdk";
+import { commandRegistry, useRegistry } from "@hzkcode/plugin-sdk";
+import type { CommandDef } from "@hzkcode/plugin-sdk";
 // Side-effect import: registers the builtin commands into commandRegistry.
 import "./builtins";
 import { registerShortcutHandler } from "@/features/shortcuts/runtime";

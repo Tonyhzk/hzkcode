@@ -523,7 +523,7 @@ mod tests {
 
     fn temp_path(name: &str) -> PathBuf {
         let dir =
-            std::env::temp_dir().join(format!("ccgui-ccs-test-{}-{}", std::process::id(), name));
+            std::env::temp_dir().join(format!("hzkcode-ccs-test-{}-{}", std::process::id(), name));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

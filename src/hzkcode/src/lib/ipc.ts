@@ -351,7 +351,7 @@ export interface SlashCommandEntry {
 }
 /** A user-defined agent persona (`agent_list`): picked in the composer `#`
  *  menu, its prompt appended to the outgoing message. Stored in
- *  `~/.ccgui-next/agents.json`. */
+ *  `~/.hzkcode/gui/agents.json`. */
 export interface AgentConfig {
   id: string;
   name: string;
@@ -418,8 +418,8 @@ export interface ResolvedBuiltInAgent {
   promptHash: string;
 }
 
-/** Where a custom prompt file lives: `<root>/.ccgui/prompts/` or the
- *  app-home `~/.ccgui-next/prompts/`. */
+/** Where a custom prompt file lives: `<root>/.hzkcode/prompts/` or the
+ *  app-home `~/.hzkcode/gui/prompts/`. */
 export type PromptScope = "workspace" | "global";
 
 /** A custom prompt (`prompts_list`): one markdown file with `---`
@@ -490,7 +490,7 @@ export interface RelayInfo {
 
 /** Outcome of a one-click relay deploy (mirrors Rust `RelayDeployResult`). */
 export interface RelayDeployResult {
-  /** `https://ccgui-relay.<subdomain>.workers.dev` — a suggestion, not a lock:
+  /** `https://hzkcode-relay.<subdomain>.workers.dev` — a suggestion, not a lock:
    *  the URL field stays editable so a custom domain can replace it. */
   url: string;
   /** The relay key that was uploaded with the Worker. */
@@ -910,7 +910,7 @@ export const ipc = {
    *  distinguished by `entry.kind`. */
   listSlashCommands: (path: string) =>
     withGrantRetry(() => invoke<SlashCommandEntry[]>("list_slash_commands", { path })),
-  // agents — user personas stored in ~/.ccgui-next/agents.json (app home,
+  // agents — user personas stored in ~/.hzkcode/gui/agents.json (app home,
   // so no grant flow); picked via the composer `#` menu, managed in
   // settings. agent_update takes a partial; absent fields stay unchanged.
   listAgents: () => invoke<AgentConfig[]>("agent_list"),
@@ -934,7 +934,7 @@ export const ipc = {
   resolveEnabledBuiltInAgent: (agentId: string) =>
     invoke<ResolvedBuiltInAgent>("resolve_enabled_built_in_agent", { agentId }),
   // custom prompts — markdown + frontmatter files under
-  // <root>/.ccgui/prompts (workspace scope) or ~/.ccgui-next/prompts
+  // <root>/.hzkcode/prompts (workspace scope) or ~/.hzkcode/gui/prompts
   // (global scope); picked via the composer `!` menu, managed in settings.
   listPrompts: (path: string) =>
     withGrantRetry(() => invoke<CustomPromptEntry[]>("prompts_list", { path })),

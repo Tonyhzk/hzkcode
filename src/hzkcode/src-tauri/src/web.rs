@@ -341,7 +341,7 @@ pub fn web_access_status(app: tauri::AppHandle) -> Option<WebAccessInfo> {
 /// approved device, and no script on any surface reads it. Lax rather than
 /// `Secure`: the phone arrives by tapping a link, and the bridge is plain http
 /// on the LAN, so `Secure` would never be sent at all.
-const DEVICE_COOKIE: &str = "ccgui_device";
+const DEVICE_COOKIE: &str = "hzkcode_device";
 /// A device that keeps polling must not write to sqlite on every asset hit.
 const TOUCH_INTERVAL_MS: i64 = 60_000;
 
@@ -458,7 +458,7 @@ fn unlock_page(error: Option<&str>) -> String {
         r#"<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CC GUI 需要配对密钥</title>
+<title>HZK CODE 需要配对密钥</title>
 <style>
 :root{{color-scheme:dark}}
 *{{box-sizing:border-box}}
@@ -499,7 +499,7 @@ fn waiting_page() -> String {
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="2; url=/">
-<title>CC GUI 等待授权</title>
+<title>HZK CODE 等待授权</title>
 <style>
 :root{color-scheme:dark}
 *{box-sizing:border-box}
@@ -905,7 +905,7 @@ fn read_scoped_file(path: &Path) -> Option<(Vec<u8>, &'static str)> {
     if !canon.starts_with(&home) {
         return None;
     }
-    for denied in [".ssh", ".aws", ".gnupg", ".ccgui-next"] {
+    for denied in [".ssh", ".aws", ".gnupg", ".hzkcode"] {
         if canon.starts_with(home.join(denied)) {
             return None;
         }

@@ -10,7 +10,7 @@ const text = (body: string): FileContent => ({
 });
 
 function bridge() {
-  const b = window.__ccguiFiles;
+  const b = window.__hzkcodeFiles;
   if (!b) throw new Error("files bridge not installed");
   return b;
 }

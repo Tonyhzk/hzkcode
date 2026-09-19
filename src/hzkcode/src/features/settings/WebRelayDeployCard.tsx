@@ -79,7 +79,7 @@ export function WebRelayDeployCard({
    *  the user can read it and `npx wrangler deploy` it themselves. */
   const exportDeployPack = useCallback(() => {
     void (async () => {
-      const path = await pickSavePath(t("settings.webRelayExportSource"), "ccgui-relay.zip");
+      const path = await pickSavePath(t("settings.webRelayExportSource"), "hzkcode-relay.zip");
       if (!path) return;
       try {
         const key = await ipc.relayDeployPack(path, relayKey.trim() || null);

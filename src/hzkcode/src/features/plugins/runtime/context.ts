@@ -17,13 +17,13 @@ import {
   statusBarRegistry,
   composerStatusRegistry,
   timelineRowRegistry,
-} from "@ccgui/plugin-sdk";
+} from "@hzkcode/plugin-sdk";
 import type {
   Disposer,
   MarkdownRendererDef,
   PluginContext,
   PluginManifest,
-} from "@ccgui/plugin-sdk";
+} from "@hzkcode/plugin-sdk";
 import { assertPluginEmitTopic, pluginBus } from "./events";
 import { setActiveComposerDraft } from "./composer-draft";
 import { addPluginWorkspace, openPluginSession } from "./workspace-bridge";
@@ -60,7 +60,7 @@ const REMOTE_CSS = /@import|url\(\s*['"]?https?:/i;
 /** Shared stylesheet mount: tagged `<style data-plugin=id>` in <head>,
  *  disposer removes it. Remote references rejected (plan §8 gate rule).
  *
- *  `layered` wraps the css in `@layer ccgui-plugins` — declared ahead of
+ *  `layered` wraps the css in `@layer hzkcode-plugins` — declared ahead of
  *  Tailwind's theme/base/components/utilities in index.css — so host rules
  *  win every specificity tie against bundle CSS. Without it, a bundle that
  *  accidentally ships its own Tailwind build lands after the host
@@ -76,7 +76,7 @@ function mountPluginCss(id: string, css: string, opts?: { layered?: boolean }): 
   }
   const style = document.createElement("style");
   style.dataset.plugin = id;
-  style.textContent = opts?.layered ? `@layer ccgui-plugins {\n${css}\n}` : css;
+  style.textContent = opts?.layered ? `@layer hzkcode-plugins {\n${css}\n}` : css;
   document.head.appendChild(style);
   return () => style.remove();
 }
@@ -103,7 +103,7 @@ function tokenBlock(selector: string, tokens: Record<string, string> | undefined
 
 /**
  * Builds the host implementation of the SDK's PluginContext contract
- * (@ccgui/plugin-sdk). Every registration returns a Disposer and is also
+ * (@hzkcode/plugin-sdk). Every registration returns a Disposer and is also
  * pushed onto the plugin's disposer stack, so unload reverses everything
  * even when the plugin forgot to return its own cleanup. Capability groups
  * are trimmed by the manifest's declared permissions (门面裁剪).

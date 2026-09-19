@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 /// Custom prompts (提示词) for the composer `!` picker (ported from
 /// desktop-cc-gui's prompts.rs, re-rooted: workspace scope now lives at
-/// `<workspace>/.ccgui/prompts/*.md` and global scope at
-/// `~/.ccgui-next/prompts/*.md`, next to the rest of this app's state).
+/// `<workspace>/.hzkcode/prompts/*.md` and global scope at
+/// `~/.hzkcode/gui/prompts/*.md`, next to the rest of this app's state).
 /// Each prompt is a markdown file whose optional `---` frontmatter carries
 /// `description` / `argument-hint`; the file stem is the prompt name and the
 /// absolute path round-trips through the frontend as the update/delete key.
@@ -45,7 +45,7 @@ pub struct PromptUpdates {
 }
 
 fn workspace_prompts_dir(root: &Path) -> PathBuf {
-    root.join(".ccgui").join("prompts")
+    root.join(".hzkcode").join("prompts")
 }
 
 fn global_prompts_dir() -> PathBuf {
@@ -472,7 +472,7 @@ pub async fn prompts_delete(
 /// Copy `*.md` files from `src` into `dest`, skipping names that already
 /// exist (files already in the new app always win). A missing or unreadable
 /// source dir is zero copies, not an error; `dest` is created lazily so no
-/// `.ccgui` directory appears in projects that have nothing to import.
+/// `.hzkcode` directory appears in projects that have nothing to import.
 /// Individual copy failures are logged and skipped — one unreadable file
 /// must not strand the rest of the import.
 fn copy_prompt_files(src: &Path, dest: &Path) -> usize {
@@ -559,11 +559,11 @@ fn legacy_custom_codex_home(
 /// - global: `<codex home>/prompts/*.md` — shared with the Codex CLI, so
 ///   files are COPIED (never moved) into the new global prompts dir;
 /// - workspace: `<legacy app-data>/workspaces/<id>/prompts/*.md`, mapped to
-///   `<workspace>/.ccgui/prompts` through the legacy workspaces.json id→path
+///   `<workspace>/.hzkcode/prompts` through the legacy workspaces.json id→path
 ///   list. The DB cannot provide that mapping: path conflicts during the
 ///   workspace import keep the new app's row id.
 /// Worktree children (parentId) were skipped by the workspace import, but
-/// their prompts still land in their own path's `.ccgui/prompts`, ready for
+/// their prompts still land in their own path's `.hzkcode/prompts`, ready for
 /// when the user re-adds them. Entries with a custom codex home also pull
 /// that home's prompts into their workspace scope — that was their
 /// per-workspace "global". Workspaces whose path no longer exists are
@@ -676,7 +676,7 @@ mod tests {
     // is covered by the desktop smoke path instead.
 
     fn scratch_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("ccgui-prompts-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hzkcode-prompts-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -840,11 +840,11 @@ mod tests {
             "only *.md files are imported"
         );
         assert_eq!(
-            fs::read_to_string(project.join(".ccgui/prompts/w.md")).unwrap(),
+            fs::read_to_string(project.join(".hzkcode/prompts/w.md")).unwrap(),
             "workspace body"
         );
         assert_eq!(
-            fs::read_to_string(project.join(".ccgui/prompts/c.md")).unwrap(),
+            fs::read_to_string(project.join(".hzkcode/prompts/c.md")).unwrap(),
             "custom home body",
             "a custom codex home's prompts land in the workspace scope"
         );
@@ -853,7 +853,7 @@ mod tests {
             "copy, never move: the Codex CLI still reads the legacy dir"
         );
         assert!(
-            !root.join("missing/.ccgui").exists(),
+            !root.join("missing/.hzkcode").exists(),
             "workspaces whose path is gone are skipped"
         );
     }
