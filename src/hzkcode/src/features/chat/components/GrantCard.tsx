@@ -1,0 +1,112 @@
+import { useTranslation } from "react-i18next";
+import FolderLock from "lucide-react/dist/esm/icons/folder-lock";
+import Check from "lucide-react/dist/esm/icons/check";
+import X from "lucide-react/dist/esm/icons/x";
+import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
+import type { Message } from "@/lib/ipc";
+import { sessionKey, useChatStore } from "../store";
+
+/**
+ * Permission-denial card: the CLI (headless) refused a tool call on an
+ * out-of-workspace path and the model cannot unblock itself — its "type y in
+ * the terminal" narration refers to a prompt that does not exist here. This
+ * card is the real answer: grant the directory (persisted; the next claude
+ * launch gets --add-dir) or decline.
+ */
+export function GrantCard({ message }: { message: Message }) {
+  const { t } = useTranslation();
+  const respondToGrant = useChatStore((s) => s.respondToGrant);
+  const resendLastUser = useChatStore((s) => s.resendLastUser);
+  const streaming = useChatStore((s) => {
+    const active = s.active;
+    if (!active) return false;
+    return Boolean(
+      s.streamingByKey[
+        sessionKey(active.engine, active.sessionId, active.workspacePath)
+      ],
+    );
+  });
+  // Cards render inside the active conversation, so the active tab's key is
+  // the row's session key.
+  const active = useChatStore((s) => s.active);
+  const key = active
+    ? sessionKey(active.engine, active.sessionId, active.workspacePath)
+    : "";
+  const grant = message.grant ?? { status: "pending" as const };
+  const path = message.path ?? "";
+
+  const answer = (accept: boolean) => {
+    if (key) void respondToGrant(key, message.seq, accept);
+  };
+
+  const btn =
+    "inline-flex cursor-pointer items-center gap-1 rounded-md px-2.5 py-1 text-caption-1-medium transition-colors";
+
+  return (
+    <div className="flex max-w-[85%] flex-col gap-2 rounded-xl border border-border-secondary bg-background-secondary-default px-3.5 py-2.5 text-left">
+      <div className="flex items-center gap-1.5 text-caption-1-medium text-text-primary">
+        <FolderLock className="size-3.5 shrink-0 text-foreground-icon-secondary" aria-hidden />
+        {t("chat.grantTitle")}
+      </div>
+      {message.text && (
+        <div className="break-words text-caption-1-regular text-text-secondary">
+          {message.text}
+        </div>
+      )}
+      {path && (
+        <div className="break-all rounded-md bg-background-tertiary-default px-2 py-1 font-mono text-caption-1-regular text-text-secondary">
+          {path}
+        </div>
+      )}
+      {grant.status === "pending" && (
+        <>
+          {grant.dir && (
+            <div className="text-caption-1-regular text-text-tertiary">
+              {t("chat.grantScopeNote", { dir: grant.dir })}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!path}
+              onClick={() => answer(true)}
+              className={`${btn} bg-button-primary text-text-white disabled:cursor-not-allowed disabled:text-button-primary-disabled-foreground`}
+            >
+              <Check className="size-3.5" aria-hidden />
+              {t("chat.grantAllow")}
+            </button>
+            <button
+              type="button"
+              onClick={() => answer(false)}
+              className={`${btn} bg-background-tertiary-default text-text-secondary hover:bg-background-tertiary-hover`}
+            >
+              <X className="size-3.5" aria-hidden />
+              {t("chat.grantDecline")}
+            </button>
+          </div>
+        </>
+      )}
+      {grant.status === "granted" && (
+        <div className="flex flex-wrap items-center gap-2 text-caption-1-regular text-text-secondary">
+          <span className="break-all">
+            {t("chat.grantGranted", { dir: grant.dir ?? path })}
+          </span>
+          <button
+            type="button"
+            disabled={streaming}
+            onClick={() => key && void resendLastUser(key)}
+            className={`${btn} bg-background-tertiary-default text-text-secondary hover:bg-background-tertiary-hover disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            <RotateCcw className="size-3.5" aria-hidden />
+            {t("chat.grantResend")}
+          </button>
+        </div>
+      )}
+      {grant.status === "declined" && (
+        <div className="text-caption-1-regular text-text-tertiary">
+          {t("chat.grantDeclined")}
+        </div>
+      )}
+    </div>
+  );
+}
