@@ -2,33 +2,11 @@
 
 import type { ProviderSection } from "@/lib/ipc";
 
-export const ENGINE_IDS = [
-  "claude",
-  "kimi",
-  "grok",
-  "codex",
-  "pi",
-  "omp",
-  "dsh",
-  "agy",
-  "opencode",
-  "qoder",
-  "qoder-cn",
-] as const;
+export const ENGINE_IDS = ["claude"] as const;
 export type EngineId = (typeof ENGINE_IDS)[number];
 /** Official docs per engine — the CLI 管理 header "官方文档" link. */
 export const ENGINE_DOCS_URLS: Record<EngineId, string> = {
   claude: "https://code.claude.com/docs/en/cli-reference",
-  kimi: "https://www.kimi.com/code/docs/en/",
-  grok: "https://x.ai/cli",
-  codex: "https://learn.chatgpt.com/docs/codex/cli",
-  pi: "https://pi.dev/docs/latest/usage",
-  omp: "https://omp.sh",
-  dsh: "https://github.com/deepseek-ai/dsh",
-  agy: "https://www.antigravity.google/docs/cli/headless/",
-  opencode: "https://opencode.ai/docs/",
-  qoder: "https://docs.qoder.com/en/cli/using-cli",
-  "qoder-cn": "https://docs.qoder.com/zh/cli/using-cli",
 };
 
 export const PSEUDO_LOCAL = "__local_settings_json__";
@@ -45,8 +23,6 @@ const asString = (v: unknown): string => (typeof v === "string" ? v : "");
 /** Per-engine model env var, mirroring the backend provider_files::env_mapping() table. */
 const ENV_MODEL_KEY: Partial<Record<EngineId, string>> = {
   claude: "ANTHROPIC_MODEL",
-  kimi: "KIMI_MODEL_NAME",
-  grok: "GROK_MODEL",
 };
 
 /**
@@ -77,9 +53,6 @@ export function providerModel(engine: EngineId, raw: unknown): string {
  */
 const ENV_CONVENTION_KEYS: Partial<Record<EngineId, string[]>> = {
   claude: ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL"],
-  kimi: ["KIMI_BASE_URL", "KIMI_API_KEY", "KIMI_MODEL_NAME"],
-  grok: ["GROK_BASE_URL", "GROK_API_KEY", "GROK_MODEL"],
-  codex: ["OPENAI_BASE_URL", "OPENAI_API_KEY"],
 };
 
 /** Copy `raw` with the convention env keys removed (empty maps/objects
@@ -122,26 +95,6 @@ export function claudeSettingsJson(raw: unknown): string {
   const env = o.env;
   if (env && typeof env === "object" && Object.keys(env).length > 0) {
     return JSON.stringify({ env }, null, 2);
-  }
-  return "";
-}
-
-/** codex edit-dialog seed: the channel's verbatim config.toml
- *  (settingsConfig.config), "" for flat channels. */
-export function codexConfigToml(raw: unknown): string {
-  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const sc = o.settingsConfig as Record<string, unknown> | undefined;
-  return asString(sc?.config);
-}
-
-/** codex edit-dialog seed: the channel's auth.json text
- *  (settingsConfig.auth pretty-printed), "" when absent. */
-export function codexAuthJson(raw: unknown): string {
-  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const sc = o.settingsConfig as Record<string, unknown> | undefined;
-  const auth = sc?.auth;
-  if (auth && typeof auth === "object" && Object.keys(auth).length > 0) {
-    return JSON.stringify(auth, null, 2);
   }
   return "";
 }

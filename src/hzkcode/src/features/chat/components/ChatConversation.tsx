@@ -29,7 +29,6 @@ import { useComposerImages } from "./use-composer-images";
 import { useEngineModels } from "./use-engine-models";
 import { useTabModelDisplay } from "./use-tab-model-display";
 import type { EngineInfo, Workspace } from "@/lib/ipc";
-import type { OmpServiceTier } from "@/lib/omp-service-tier";
 import { EmptyState } from "@/components/base/empty-state";
 import { parseUsage } from "../usage";
 import { rememberContextWindow, resolveContextMax } from "../context-window-memory";
@@ -77,16 +76,12 @@ function useConversationMenus({
   displayEfforts,
   channelsByEngine,
   displayProviders,
-  ompServiceTier,
-  codexServiceTier,
   permission,
   setActiveEngine,
   setPermission,
   setModel,
   setEffort,
   setProvider,
-  setOmpServiceTier,
-  setCodexServiceTier,
   refreshModels,
   loadingEngines,
   allowedEngines,
@@ -102,16 +97,12 @@ function useConversationMenus({
   displayEfforts: Record<string, EffortLevel>;
   channelsByEngine: Record<string, { id: string; label: string }[]>;
   displayProviders: Record<string, string>;
-  ompServiceTier: OmpServiceTier;
-  codexServiceTier: OmpServiceTier;
   permission: ComposerPermission;
   setActiveEngine: (engine: string) => void;
   setPermission: (permission: ComposerPermission) => void;
   setModel: (engine: string, model: string) => Promise<void>;
   setEffort: (engine: string, effort: EffortLevel) => Promise<void>;
   setProvider: (engine: string, providerId: string) => Promise<void>;
-  setOmpServiceTier: (tier: OmpServiceTier) => Promise<void>;
-  setCodexServiceTier: (tier: OmpServiceTier) => Promise<void>;
   refreshModels: () => Promise<void>;
   loadingEngines: readonly string[];
   /** 接管工作区(桥返回非 null):仅列允许表内引擎(null = 不过滤)。 */
@@ -174,10 +165,6 @@ function useConversationMenus({
           channelsByEngine={channelsByEngine}
           selectedChannels={displayProviders}
           onChannelChange={handleChannelChange}
-          ompServiceTier={ompServiceTier}
-          onOmpServiceTierChange={setOmpServiceTier}
-          codexServiceTier={codexServiceTier}
-          onCodexServiceTierChange={setCodexServiceTier}
           onRefreshModels={refreshModels}
           loadingEngines={loadingEngines}
         />
@@ -197,10 +184,6 @@ function useConversationMenus({
       channelsByEngine,
       displayProviders,
       handleChannelChange,
-      ompServiceTier,
-      setOmpServiceTier,
-      codexServiceTier,
-      setCodexServiceTier,
       refreshModels,
       loadingEngines,
     ],
@@ -261,12 +244,10 @@ export const ChatConversation = memo(function ChatConversation({
   const draft = useChatStore((s) => s.drafts[key] ?? "");
   const sendShortcut = useChatStore((s) => s.sendShortcut);
   // Engine/effort/model prefs: low-frequency, grouped into one shallow watch.
-  const { activeEngine, efforts, models, providers, ompServiceTier, codexServiceTier } = useChatStore(
+  const { activeEngine, efforts, models, providers } = useChatStore(
     useShallow((s) => ({
       activeEngine: s.activeEngine,
       efforts: s.efforts,
-      ompServiceTier: s.ompServiceTier,
-      codexServiceTier: s.codexServiceTier,
       models: s.models,
       providers: s.providers,
     })),
@@ -274,8 +255,6 @@ export const ChatConversation = memo(function ChatConversation({
   const {
     setActiveEngine,
     setEffort,
-    setOmpServiceTier,
-    setCodexServiceTier,
     setModel,
     setProvider,
     pinModels,
@@ -287,8 +266,6 @@ export const ChatConversation = memo(function ChatConversation({
     useShallow((s) => ({
       setActiveEngine: s.setActiveEngine,
       setEffort: s.setEffort,
-      setOmpServiceTier: s.setOmpServiceTier,
-      setCodexServiceTier: s.setCodexServiceTier,
       setModel: s.setModel,
       setProvider: s.setProvider,
       pinModels: s.pinModels,
@@ -409,16 +386,12 @@ export const ChatConversation = memo(function ChatConversation({
       displayEfforts,
       channelsByEngine,
       displayProviders,
-      ompServiceTier,
-      codexServiceTier,
       permission,
       setActiveEngine,
       setPermission,
       setModel,
       setEffort,
       setProvider,
-      setOmpServiceTier,
-      setCodexServiceTier,
       refreshModels,
       loadingEngines,
     });

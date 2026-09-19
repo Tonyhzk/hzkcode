@@ -1,23 +1,10 @@
-pub mod agy;
 pub mod claude;
 mod claude_channel;
-pub mod codex;
-mod codex_provider_env;
-mod codex_usage;
 #[cfg(windows)]
 pub(crate) mod job;
-pub mod dsh;
-mod dsh_session;
-pub mod grok;
 pub mod images;
-pub mod kimi;
 pub mod models;
-pub mod opencode;
-pub mod pi_family;
 pub mod wsl_transport;
-pub mod pi_family_auth;
-pub mod qoder;
-mod qoder_session;
 pub mod resolve;
 
 pub(crate) use resolve::command_for_binary;
@@ -51,9 +38,6 @@ pub struct SendRequest {
     /// Reasoning effort ("low" | "medium" | "high" | "xhigh" | "max" | "ultra"); engines without an
     /// effort knob ignore it, engines with a narrower knob clamp.
     pub effort: Option<String>,
-    /// OpenAI service tier override (OMP `--service-tier` / Codex `-c service_tier`),
-    /// independent of reasoning effort.
-    pub service_tier: Option<String>,
     /// Permission mode ("auto" | "manual" | "plan" | "bypass"); each engine
     /// resolves it against the modes it can actually honor at spawn (see
     /// `Engine::resolve_permission`).
@@ -78,7 +62,8 @@ pub struct BuiltCommand {
     pub keep_stdin_open: bool,
     /// Private staging files/directories to remove once the process exits.
     pub cleanup_files: Vec<PathBuf>,
-    /// Session id assigned before spawn (grok `-s <uuid>`).
+    /// Session id assigned before spawn, when the CLI supports one
+    /// (`--session-id <uuid>`).
     pub preassigned_session_id: Option<String>,
 }
 
@@ -98,8 +83,8 @@ pub enum EngineEvent {
         role: String,
         text: String,
         path: Option<String>,
-        /// Todo-list snapshot/patch from a todo tool call (claude TodoWrite,
-        /// omp todo op); feeds the run-status strip's task pill.
+        /// Todo-list snapshot/patch from a todo tool call (claude TodoWrite);
+        /// feeds the run-status strip's task pill.
         todos: Option<TodosPayload>,
         args: Option<Value>,
         result: Option<Value>,
@@ -118,7 +103,7 @@ pub enum EngineEvent {
     /// Keep its outcome for EOF; unlike Error/Done, this never ends the run.
     AttemptEnd { error: Option<String> },
     /// The CLI is backing off before re-issuing a request (claude
-    /// `system/api_retry`, omp `auto_retry_start`). Distinct from `Warn`
+    /// `system/api_retry`). Distinct from `Warn`
     /// because the UI shows it as live progress ("重试中 2/5") in the run
     /// status line rather than as an error banner; cleared by the next
     /// content event or by the turn settling.
@@ -182,10 +167,9 @@ pub struct TodosPayload {
     pub replace: bool,
 }
 
-/// Normalize a CLI's todo status onto the four the UI renders. Every CLI
-/// spells these differently (claude `in_progress`, omp `running`/`active`,
-/// `abandoned` for a dropped task), and a status the UI does not know reads
-/// as "pending" - showing finished or abandoned work as still to do.
+/// Normalize a CLI's todo status onto the four the UI renders. A status the
+/// UI does not know reads as "pending" - showing finished or abandoned work
+/// as still to do.
 fn todo_status(raw: Option<&str>) -> &'static str {
     match raw.unwrap_or("") {
         "in_progress" | "running" | "active" => "active",
@@ -258,13 +242,10 @@ pub(crate) fn tool_call_patch(name: impl Into<String>, args: Option<&Value>) -> 
 
 /// Todo state echoed by the todo tool's own result (`details.phases`).
 ///
-/// This is the authoritative snapshot: omp answers every todo call (init,
-/// start, done, block, append, view) with the complete post-op list, where
-/// each phase carries its tasks and their current status. Reading it avoids
-/// two live-path gaps at once — the start event carries no `args` for this
-/// tool, and `done`/`block` may name a PHASE instead of one task, which a
-/// task-keyed patch could never apply. `replace: true` because the payload
-/// is a full list, not a delta.
+/// When present this is the authoritative snapshot: it carries the complete
+/// post-op list, closing two live-path gaps at once — the start event carries
+/// no `args` for this tool, and a phase-wide move may name a PHASE instead of
+/// one task. `replace: true` because the payload is a full list, not a delta.
 pub(crate) fn parse_todo_result(result: &Value) -> Option<TodosPayload> {
     let phases = result
         .get("details")
@@ -318,19 +299,6 @@ pub(crate) fn tool_result_patch(name: impl Into<String>, result: Option<&Value>)
     }
 }
 
-/// Assistant snapshot with no tool metadata.
-pub(crate) fn assistant_message(text: String) -> EngineEvent {
-    EngineEvent::Message {
-        role: "assistant".to_string(),
-        text,
-        path: None,
-        todos: None,
-        args: None,
-        result: None,
-        patch: false,
-    }
-}
-
 /// First path-like argument of a tool call (`read`/`edit`/`write` use
 /// `path`, claude's tools use `file_path`). Returns None for tools whose
 /// args carry no file target (e.g. bash `command`). Glob patterns are kept
@@ -344,10 +312,9 @@ pub(crate) fn tool_path_arg(args: &Value) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// Parse a tool call's args into a todo-list payload. Two shapes: claude's
-/// TodoWrite (`todos` array, a full snapshot) and the omp harness todo
-/// protocol (`op` + task/list, mostly patches). None when the args carry
-/// no todo data.
+/// Parse a tool call's args into a todo-list payload: claude's TodoWrite
+/// (`todos` array, a full snapshot) plus the TaskCreate/TaskUpdate patches.
+/// None when the args carry no todo data.
 pub(crate) fn parse_todo_args(args: &Value) -> Option<TodosPayload> {
     // Normal tools (e.g. Bash, Edit, Read, Write) carry command or file_path;
     // their description must NEVER be mistaken for a Todo item.
@@ -359,26 +326,6 @@ pub(crate) fn parse_todo_args(args: &Value) -> Option<TodosPayload> {
         return None;
     }
 
-    let pending_item = |content: &str| TodoItem {
-        id: None,
-        content: content.to_string(),
-        status: "pending".to_string(),
-    };
-    // `list` phases, each with an `items` string array, flattened.
-    let phase_items = |args: &Value| -> Vec<TodoItem> {
-        args.get("list")
-            .and_then(Value::as_array)
-            .map(|phases| {
-                phases
-                    .iter()
-                    .filter_map(|phase| phase.get("items").and_then(Value::as_array))
-                    .flatten()
-                    .filter_map(Value::as_str)
-                    .map(pending_item)
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
     if let Some(todos) = args.get("todos").and_then(Value::as_array) {
         let items = todos
             .iter()
@@ -451,53 +398,7 @@ pub(crate) fn parse_todo_args(args: &Value) -> Option<TodosPayload> {
         });
     }
 
-    let op = args.get("op").and_then(Value::as_str)?;
-    match op {
-        "init" => Some(TodosPayload {
-            items: phase_items(args),
-            replace: true,
-        }),
-        "append" => {
-            let items = match args.get("items").and_then(Value::as_array) {
-                Some(items) => items.iter().filter_map(Value::as_str).map(pending_item).collect(),
-                None => phase_items(args),
-            };
-            Some(TodosPayload {
-                items,
-                replace: false,
-            })
-        }
-        "start" | "done" | "block" | "unblock" | "drop" => {
-            // `task` names ONE item. A phase-wide op names a `phase` instead
-            // (the CLI pairs it with an empty `items` array) and must NOT be
-            // emitted here: the frontend matches patches by `content`, so a
-            // phase name would find no item and get APPENDED as a phantom
-            // row. Phase-wide moves travel via the tool's own result
-            // snapshot (`parse_todo_result`), which always carries the
-            // complete post-op list.
-            let task = args.get("task").and_then(Value::as_str)?;
-            let status = match op {
-                "start" => "active",
-                "done" => "complete",
-                "block" => "blocked",
-                "unblock" => "pending",
-                _ => "dropped",
-            };
-            Some(TodosPayload {
-                items: vec![TodoItem {
-                    id: None,
-                    content: task.to_string(),
-                    status: status.to_string(),
-                }],
-                replace: false,
-            })
-        }
-        "rm" | "clear" => Some(TodosPayload {
-            items: Vec::new(),
-            replace: true,
-        }),
-        _ => None,
-    }
+    None
 }
 
 pub trait Engine: Send + Sync {
@@ -505,13 +406,6 @@ pub trait Engine: Send + Sync {
     fn build_command(&self, req: &SendRequest, bin: &str) -> Result<BuiltCommand, String>;
     /// Parse one NDJSON stdout line into zero or more events.
     fn parse_line(&self, line: &str, out: &mut Vec<EngineEvent>);
-    /// True when the engine drives its own transport (e.g. a host WS session)
-    /// instead of spawning a child process. send_message routes these to a
-    /// virtual run: no spawn, no pid — the registry entry carries only the
-    /// abort handle, and the transport task settles the turn itself.
-    fn drives_own_transport(&self) -> bool {
-        false
-    }
     /// Whether this engine accepts image attachments.
     fn supports_images(&self) -> bool;
     /// Permission modes this engine can honor at spawn ("auto" | "manual" |
@@ -534,20 +428,6 @@ pub trait Engine: Send + Sync {
 pub fn engine_by_id(id: &str) -> Option<Box<dyn Engine>> {
     match id {
         "claude" => Some(Box::new(claude::ClaudeEngine::new())),
-        "kimi" => Some(Box::new(kimi::KimiEngine)),
-        "grok" => Some(Box::new(grok::GrokEngine)),
-        "codex" => Some(Box::new(codex::CodexEngine)),
-        "pi" => Some(Box::new(pi_family::pi())),
-        "omp" => Some(Box::new(pi_family::omp())),
-        "dsh" => Some(Box::new(dsh::DshEngine)),
-        "agy" => Some(Box::new(agy::AgyEngine)),
-        "opencode" => Some(Box::new(opencode::OpenCodeEngine)),
-        "qoder" => Some(Box::new(qoder::QoderEngine::new(
-            qoder::QoderDistribution::Global,
-        ))),
-        "qoder-cn" => Some(Box::new(qoder::QoderEngine::new(
-            qoder::QoderDistribution::Cn,
-        ))),
         _ => None,
     }
 }
@@ -567,28 +447,6 @@ pub(crate) fn engine_home(env_key: Option<&str>, default_dir: &str) -> PathBuf {
     fallback_home().join(default_dir)
 }
 
-/// Codex config/session home. Settings override wins in production so CLI
-/// 管理's directory is what history, official config, and `codex exec` all
-/// read — not a leftover `~/.codex` default. Tests keep using `CODEX_HOME`
-/// / `HOME/.codex` so HomeGuard scratch dirs stay isolated.
-pub(crate) fn codex_home() -> PathBuf {
-    #[cfg(not(test))]
-    if let Some(path) = settings_codex_home() {
-        return path;
-    }
-    engine_home(Some("CODEX_HOME"), ".codex")
-}
-
-#[cfg(not(test))]
-fn settings_codex_home() -> Option<PathBuf> {
-    let custom = crate::settings::read_settings().ok()?.codex_home?;
-    let trimmed = custom.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    crate::open_app::expand_user_path(trimmed).ok()
-}
-
 /// Home dir for the default engine path. Production uses `dirs` (Known
 /// Folder API on Windows); tests steer the fallback through HOME /
 /// USERPROFILE env instead, because `dirs` ignores env on Windows and would
@@ -605,16 +463,6 @@ fn fallback_home() -> PathBuf {
         }
     }
     dirs::home_dir().unwrap_or_default()
-}
-
-/// A leading '-' would parse as a flag (pi also treats '@' as a file
-/// reference): prefix a space so the prompt stays positional text.
-pub(crate) fn safe_prompt_arg(prompt: &str) -> String {
-    if prompt.starts_with('-') || prompt.starts_with('@') {
-        format!(" {prompt}")
-    } else {
-        prompt.to_string()
-    }
 }
 
 /// Push a `SessionId` event from a JSON string field; blank values are ignored.
@@ -636,10 +484,9 @@ pub(crate) fn push_session_id(value: &Value, key: &str, out: &mut Vec<EngineEven
 /// `rekey`) — so either route can interrupt it.
 #[derive(Clone)]
 pub struct ChildEntry {
-    /// The child process. `None` for virtual runs (host-stream engines): the
-    /// entry then only routes interrupt to the transport task via `killed` /
-    /// `reader_abort`, and `pid` is a synthetic identity token (see
-    /// `next_virtual_pid`), never a real process id.
+    /// The child process. `None` for the pre-spawn run-id reservation
+    /// (`pid` 0): the entry only carries the reservation's `killed` /
+    /// `reader_abort` handles until the real child is registered.
     pub child: Option<Arc<TokioMutex<Child>>>,
     pub pid: u32,
     /// The run id this entry started under; after a rekey the map key is the
@@ -768,8 +615,8 @@ impl ProcessRegistry {
     }
 
     /// Drop a pre-spawn run-id reservation after a failed launch. Only the
-    /// placeholder (no child, pid 0) is removed — a registered run, real or
-    /// virtual, is never touched.
+    /// placeholder (no child, pid 0) is removed — a registered run with a
+    /// live child is never touched.
     fn remove_reservation(&self, key: &str) {
         if let Ok(mut map) = self.0.lock() {
             let reserved = map
@@ -794,9 +641,8 @@ impl ProcessRegistry {
     }
 
     /// Kill one entry (pid-reuse guarded). Returns false when the child was
-    /// already reaped — nothing left to signal. Virtual runs (no child) only
-    /// raise the killed flag: the transport task observes it on its next
-    /// loop tick, cancels the host-side turn, and settles the turn itself.
+    /// already reaped — nothing left to signal. A child-less entry (pre-spawn
+    /// reservation) only raises the killed flag.
     fn kill_entry(child: Option<&Arc<TokioMutex<tokio::process::Child>>>, pid: u32, killed: &Arc<std::sync::atomic::AtomicBool>) -> bool {
         killed.store(true, std::sync::atomic::Ordering::SeqCst);
         let Some(child) = child else {
@@ -893,8 +739,7 @@ impl ProcessRegistry {
         entries.sort_by_key(|e| e.pid);
         entries.dedup_by_key(|e| e.pid);
         for entry in entries {
-            // Virtual runs own no process group; their task aborts below/via
-            // the abort handle.
+            // A child-less reservation owns no process group to signal.
             if let Some(child) = entry.child.as_ref() {
                 kill_process_group(entry.pid);
                 if let Ok(mut guard) = child.try_lock() {
@@ -922,8 +767,7 @@ impl Drop for ProcessRegistry {
         entries.sort_by_key(|e| e.pid);
         entries.dedup_by_key(|e| e.pid);
         for entry in entries {
-            // Virtual runs own no process group; their task aborts below/via
-            // the abort handle.
+            // A child-less reservation owns no process group to signal.
             if let Some(child) = entry.child.as_ref() {
                 kill_process_group(entry.pid);
                 if let Ok(mut guard) = child.try_lock() {
@@ -1032,33 +876,8 @@ pub struct EngineInfo {
     pub permissions: Vec<String>,
 }
 
-fn codex_bin_from_home(settings: &crate::settings::AppSettings) -> Option<String> {
-    let home = settings.codex_home.as_deref()?.trim();
-    if home.is_empty() {
-        return None;
-    }
-    let expanded = crate::open_app::expand_user_path(home).ok()?;
-    let candidate = expanded.join("bin").join("codex");
-    candidate
-        .exists()
-        .then(|| resolve::resolve_launchable_cli_binary(&candidate.to_string_lossy()))
-}
-
-/// CLI binary name behind an engine id, when they differ: qoder's engine ids
-/// name the product/distribution, but only the `qodercli*` binaries speak
-/// ACP (the `qoder` binary is the IDE launcher and is rejected at spawn).
-pub(crate) fn cli_binary_name(engine_id: &str) -> &str {
-    match engine_id {
-        "qoder" => qoder::QoderDistribution::Global.cli_name(),
-        "qoder-cn" => qoder::QoderDistribution::Cn.cli_name(),
-        _ => engine_id,
-    }
-}
-
 pub(crate) fn engine_bin(settings: &crate::settings::AppSettings, engine_id: &str) -> String {
-    // An explicit bin override always wins: it predates the codex-home row
-    // (hidden for codex in the UI), and a stale codexBin in an upgraded
-    // settings.json must not be silently overridden by $home/bin/codex.
+    // An explicit bin override always wins over PATH discovery.
     if let Some(custom) = settings.bin_override(engine_id) {
         let trimmed = custom.trim();
         if !trimmed.is_empty() {
@@ -1072,12 +891,7 @@ pub(crate) fn engine_bin(settings: &crate::settings::AppSettings, engine_id: &st
             }
         }
     }
-    if engine_id == "codex" {
-        if let Some(from_home) = codex_bin_from_home(settings) {
-            return from_home;
-        }
-    }
-    resolve::resolve_launchable_cli_binary(cli_binary_name(engine_id))
+    resolve::resolve_launchable_cli_binary(engine_id)
 }
 
 #[tauri::command]
@@ -1092,8 +906,7 @@ pub fn list_engines() -> Vec<EngineInfo> {
                 Some(custom) if !custom.trim().is_empty() => {
                     crate::settings::validate_bin_override(custom).is_ok()
                 }
-                _ if *id == "codex" && codex_bin_from_home(&settings).is_some() => true,
-                _ => resolve::find_cli_binary(cli_binary_name(id), None).is_some(),
+                _ => resolve::find_cli_binary(id, None).is_some(),
             };
             EngineInfo {
                 id: id.to_string(),
@@ -1177,11 +990,6 @@ fn prepare_launch(
         images: image_paths.unwrap_or_default(),
         model,
         effort,
-        service_tier: match engine {
-            "omp" => settings.omp_openai_service_tier.clone(),
-            "codex" => settings.codex_service_tier.clone(),
-            _ => None,
-        },
         permission: permission.filter(|p| !p.trim().is_empty()),
         // Cap defensively: the list lands on a command line, and a
         // hand-edited db should not produce an argv bomb.
@@ -1194,30 +1002,12 @@ fn prepare_launch(
         provider_id,
     };
     let bin = engine_bin(&settings, engine);
-    // Host-stream engines never spawn: hand back a placeholder command so
-    // prepare_launch stays shape-compatible; send_message branches to the
-    // virtual path before anything would touch it.
-    let mut built = if engine_impl.drives_own_transport() {
-        BuiltCommand {
-            command: Command::new("unused-virtual-engine"),
-            stdin_payload: None,
-            keep_stdin_open: false,
-            cleanup_files: Vec::new(),
-            preassigned_session_id: None,
-        }
-    } else if engine == "kimi" && provider.is_some() {
-        kimi::build_channel_command(&req, &bin)?
-    } else {
-        engine_impl.build_command(&req, &bin)?
-    };
+    let mut built = engine_impl.build_command(&req, &bin)?;
     for (key, value) in &channel_env {
         built.command.env(key, value);
     }
     let configured = match (engine, provider.as_ref()) {
         ("claude", Some(provider)) => claude_channel::apply(&mut built, provider, &channel_env, &req),
-        ("kimi", Some(_)) => kimi::apply_channel(&mut built.command, &channel_env, &req),
-        ("codex", Some(provider)) => codex::apply_channel(&mut built.command, provider, &channel_env, &req),
-        ("grok", Some(provider)) => grok::isolate_channel(&mut built, provider, &req),
         _ => Ok(()),
     };
     if let Err(error) = configured {
@@ -1315,7 +1105,7 @@ struct TurnState {
     // NOTE: TurnState lives for the whole process (one run_reader per
     // spawn), so once saw_error is set every later event in this process
     // is suppressed. That is correct for the current one-process-per-turn
-    // engines (omp --print, codex exec); a future multi-turn-per-process
+    // engines; a future multi-turn-per-process
     // engine must reset this per turn instead.
     saw_any_output: bool,
 }
@@ -1363,7 +1153,7 @@ struct RunContext {
     core: TurnCore,
     engine_impl: Box<dyn Engine>,
     pid: u32,
-    /// Session id fixed before spawn (grok `-s`); seeds TurnState.
+    /// Session id fixed before spawn; seeds TurnState.
     preassigned_session_id: Option<String>,
     initial_model: Option<String>,
     child: Arc<TokioMutex<Child>>,
@@ -1388,13 +1178,13 @@ impl Drop for RunContext {
     }
 }
 
-/// Remove leftover channel staging dirs (`claude-staging`/`grok-staging`
-/// under app_home) from a crashed run: they hold per-send credentials and
-/// must not linger on disk. Live runs recreate them per send, so sweeping
-/// at startup is safe. Only these two known names are touched.
+/// Remove leftover channel staging dirs (`claude-staging` under app_home)
+/// from a crashed run: they hold per-send credentials and must not linger on
+/// disk. Live runs recreate them per send, so sweeping at startup is safe.
+/// Only this known name is touched.
 pub fn sweep_staging_dirs() {
     let home = crate::paths::app_home();
-    for name in ["claude-staging", "grok-staging"] {
+    for name in ["claude-staging"] {
         let dir = home.join(name);
         if dir.exists() {
             if let Err(error) = std::fs::remove_dir_all(&dir) {
@@ -1438,8 +1228,8 @@ mod staging_tests {
             let mut child = command.spawn().unwrap();
             child.wait().await.unwrap();
             let ctx = RunContext {
-                core: TurnCore {sink: event_sink::EventSink::new(Arc::new(Noop)), registry: Arc::new(ProcessRegistry::default()), engine_id: "grok".into(), run_id: "test".into()},
-                engine_impl: Box::new(grok::GrokEngine), pid: 0,
+                core: TurnCore {sink: event_sink::EventSink::new(Arc::new(Noop)), registry: Arc::new(ProcessRegistry::default()), engine_id: "claude".into(), run_id: "test".into()},
+                engine_impl: Box::new(claude::ClaudeEngine::new()), pid: 0,
                 preassigned_session_id: None, initial_model: None,
                 child: Arc::new(TokioMutex::new(child)), killed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 cleanup_files: vec![directory.clone()], stderr_buf: Arc::new(Mutex::new(String::new())),
@@ -1495,8 +1285,7 @@ mod terminal_event_tests {
     }
 }
 
-/// Event-routing core shared by process runs ([`RunContext`]) and virtual
-/// host-stream runs ([`dsh_session::run_host_turn`]): the fields
+/// Event-routing core for process runs ([`RunContext`]): the fields
 /// `dispatch_event` needs to route engine events to the UI sink and keep the
 /// registry's session aliasing in step.
 pub(crate) struct TurnCore {
@@ -1821,54 +1610,13 @@ async fn run_reader(stdout: ChildStdout, ctx: RunContext) {
     if let Some(model) = ctx.initial_model.clone() {
         ctx.dispatch_event(&mut state, EngineEvent::Model(model));
     }
-    // codex reports usage into its own session log instead of the stdout
-    // stream (the stream only carries it with `turn.completed`), so a long
-    // turn would otherwise show nothing until it ended. Poll that log
-    // alongside the stream once the thread id is known. `read_line_capped`
-    // is what makes the select safe: partial bytes stay in the caller-owned
-    // buffer across polls, so a tick landing mid-line consumes and drops
-    // nothing, and one runaway line can't grow without bound.
+    // `read_line_capped` keeps partial bytes in the caller-owned buffer, so a
+    // line split across pipe reads is never consumed early or dropped, and one
+    // runaway line can't grow without bound.
     let mut reader = BufReader::new(stdout);
     let mut line_buf = Vec::new();
-    let is_codex = ctx.core.engine_id == "codex";
-    let mut usage_tail: Option<codex_usage::UsageTail> = None;
-    // Only the stream's own thread id (thread.started) may open the log: a
-    // resumed run's preassigned id can name a thread the CLI is no longer
-    // writing to, and tailing that file would miss this run's reports.
-    let mut stream_session_id = false;
-    // The CLI writes the rollout at thread start, so the open normally
-    // succeeds on the first tick. Bound the retries anyway: each one walks
-    // the whole `sessions/**` tree, and a run whose home is not the one being
-    // written would walk it every tick for the length of the turn.
-    let mut tail_attempts = 0u32;
-    let mut poll = tokio::time::interval(std::time::Duration::from_millis(500));
-    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
-        let read = if is_codex && !state.saw_done && !state.saw_error {
-            tokio::select! {
-                line = read_line_capped(&mut reader, &mut line_buf) => line,
-                _ = poll.tick() => {
-                    if let Some(tail) = usage_tail.as_mut() {
-                        for usage in tail.poll() {
-                            ctx.dispatch_event(&mut state, EngineEvent::Usage(usage));
-                        }
-                    } else if stream_session_id && tail_attempts < 20 {
-                        // The CLI creates the log a moment after the thread
-                        // id arrives. Attempt every tick rather than backing
-                        // off: the tail starts at the file's end, so any wait
-                        // here is a window in which a record lands unread.
-                        tail_attempts += 1;
-                        usage_tail = state
-                            .native_session_id
-                            .as_deref()
-                            .and_then(codex_usage::UsageTail::open);
-                    }
-                    continue;
-                }
-            }
-        } else {
-            read_line_capped(&mut reader, &mut line_buf).await
-        };
+        let read = read_line_capped(&mut reader, &mut line_buf).await;
         let line = match read {
             Ok(LineRead::Line(bytes)) => bytes,
             Ok(LineRead::Eof) => break,
@@ -1902,33 +1650,8 @@ async fn run_reader(stdout: ChildStdout, ctx: RunContext) {
         }
         let mut events = Vec::new();
         ctx.engine_impl.parse_line(trimmed, &mut events);
-        stream_session_id |= events
-            .iter()
-            .any(|event| matches!(event, EngineEvent::SessionId(_)));
-        for mut event in events {
-            // Flush the final rollout records BEFORE done/error. Sending them
-            // afterwards made observers adopt the already-finished run again.
-            if matches!(event, EngineEvent::Done { .. } | EngineEvent::Error(_))
-                && !state.saw_done && !state.saw_error
-            {
-                if let Some(tail) = usage_tail.as_mut() {
-                    for usage in tail.poll() {
-                        ctx.dispatch_event(&mut state, EngineEvent::Usage(usage));
-                    }
-                    if let EngineEvent::Done { usage: Some(usage), .. } = &mut event {
-                        *usage = tail.with_window(usage);
-                    }
-                }
-            }
+        for event in events {
             ctx.dispatch_event(&mut state, event);
-        }
-    }
-
-    // Last look at the session log: the final response's record may have
-    // landed after the last poll tick.
-    if let Some(tail) = usage_tail.as_mut() {
-        for usage in tail.poll() {
-            ctx.dispatch_event(&mut state, EngineEvent::Usage(usage));
         }
     }
 
@@ -1966,7 +1689,7 @@ async fn run_reader(stdout: ChildStdout, ctx: RunContext) {
         ctx.core.registry.remove_if_pid(&key, ctx.pid);
     }
     ctx.core.registry.remove_if_pid(&ctx.core.run_id, ctx.pid);
-    // omp writes some failures (upstream 403/5xx, quota exhaustion) to
+    // The CLI writes some failures (upstream 403/5xx, quota exhaustion) to
     // stderr and then exits — sometimes cleanly, after a normal turn_end.
     // A non-empty stderr on a failed exit must reach the user even when a
     // done/error event already settled the turn; dropping it hides exactly
@@ -2032,7 +1755,7 @@ async fn run_reader(stdout: ChildStdout, ctx: RunContext) {
                 Value::String(message),
             );
         } else {
-            // Clean EOF without an explicit done line (kimi).
+            // Clean EOF without an explicit done line.
             state.push(
                 &ctx.core.sink,
                 &ctx.core.run_id,
@@ -2192,18 +1915,9 @@ async fn send_reserved(
 
     // WSL 远程工作区:引擎进程经 ssh 在发行版内执行(见 wsl_transport)。
     let wsl_tp = wsl_transport::transport_for_workspace(&state.db, &workspace_path);
-    // Host-stream engines drive their own transport: no child process — the
-    // registry entry only routes interrupts to the transport task. 远程
-    // 工作区下没有可包装的子进程,本机 host 又对远端路径无意义,显式拒绝。
-    if launch.engine_impl.drives_own_transport() {
-        if wsl_tp.is_some() {
-            return Err(format!("引擎 {engine} 不支持远程工作区(WSL)"));
-        }
-        return send_host_stream(state, launch, engine, run_id, killed, reader_abort).await;
-    }
     let (mut command, extra_cleanup, skip_local_cwd) = match &wsl_tp {
         Some(tp) => {
-            // 依赖本机 staging 文件的引擎(grok 等 cleanup_files 非空):
+            // 依赖本机 staging 文件的引擎(cleanup_files 非空):
             // 远端 CLI 读不到本机文件,直接拒绝而非跑出莫名其妙的失败;
             // 已写盘的 staging 文件顺手清掉,不 strand。
             if !launch.built.cleanup_files.is_empty() {
@@ -2229,15 +1943,6 @@ async fn send_reserved(
     };
     let mut cleanup_files = launch.built.cleanup_files;
     cleanup_files.extend(extra_cleanup);
-    // 本地 env 不跨 ssh:WSL 分支的 command 是本地 ssh 进程,apply 无意义
-    // (还白跑一次登录 shell 解析);远端 codex 用发行版自己的配置。
-    if engine == "codex" && wsl_tp.is_none() {
-        // v1.0.0 switched codex to `codex exec --json`: a CLI that predates
-        // the exec transport exits 1 before any event, surfacing as a bare
-        // "exit code: 1" banner. Fail fast with an actionable message.
-        codex::check_exec_support(&launch.bin, launch.req.session_id.is_some()).await?;
-        codex_provider_env::apply(&mut command).await;
-    }
     command
         .stdin(if launch.built.stdin_payload.is_some() || launch.built.keep_stdin_open {
             std::process::Stdio::piped()
@@ -2262,7 +1967,7 @@ async fn send_reserved(
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
-            // Never strand the staging files build_command wrote (grok).
+            // Never strand the staging files build_command wrote.
             cleanup_staged_files(&cleanup_files);
             return Err(format!("failed to spawn {}: {error}", launch.bin));
         }
@@ -2275,7 +1980,6 @@ async fn send_reserved(
     );
     let questions: Arc<Mutex<HashMap<String, Value>>> = Arc::new(Mutex::new(HashMap::new()));
 
-    let run_id = uuid::Uuid::new_v4().to_string();
     // Join a kill-on-close job before the run can settle: an orphaned
     // grandchild (claude's pwsh.exe/conhost.exe) must die with the run's
     // context, not accumulate outside every tree taskkill can still walk.
@@ -2362,71 +2066,6 @@ async fn send_reserved(
     Ok(SendResult {
         run_id,
         session_id: launch.built.preassigned_session_id,
-    })
-}
-
-/// Synthetic registry identity for virtual (host-stream) runs: they own no
-/// process, but the registry's dedup/remove paths are pid-keyed, so each run
-/// gets a unique token well above any real pid. Never passed to an OS call.
-fn next_virtual_pid() -> u32 {
-    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX / 2);
-    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-}
-
-/// Virtual run path for engines that drive their own transport
-/// ([`Engine::drives_own_transport`]): register a child-less entry whose
-/// `killed` flag and abort handle route interrupts into the transport task,
-/// then detach it. The task dispatches the same event kinds as `run_reader`
-/// and settles the turn itself (done/error + registry cleanup).
-async fn send_host_stream(
-    state: &crate::AppState,
-    launch: Launch,
-    engine: String,
-    run_id: String,
-    killed: Arc<std::sync::atomic::AtomicBool>,
-    reader_abort: Arc<std::sync::OnceLock<tokio::task::AbortHandle>>,
-) -> Result<SendResult, String> {
-    let pid = next_virtual_pid();
-    let entry = ChildEntry {
-        child: None,
-        pid,
-        run_id: run_id.clone(),
-        killed: Arc::clone(&killed),
-        reader_abort: Arc::clone(&reader_abort),
-        stdin: None,
-        questions: Arc::new(Mutex::new(HashMap::new())),
-    };
-    state.processes.insert(run_id.clone(), entry.clone());
-    if let Some(session_id) = launch.req.session_id.as_deref() {
-        // A resumed host session is keyed up front (same contract as grok's
-        // preassigned id): interrupt by conversation session id must route.
-        state.processes.insert_alias(session_id.to_string(), entry);
-    }
-
-    let core = TurnCore {
-        sink: Arc::clone(&state.sink),
-        registry: Arc::clone(&state.processes),
-        engine_id: engine.clone(),
-        run_id: run_id.clone(),
-    };
-    let resume_session_id = launch.req.session_id.clone();
-    let task = match engine.as_str() {
-        "dsh" => tokio::spawn(dsh_session::run_host_turn(
-            core,
-            launch.req,
-            state.dsh_host.clone(),
-            killed,
-            pid,
-        )),
-        "qoder" | "qoder-cn" => tokio::spawn(qoder_session::run_acp_turn(
-            core, launch.req, launch.bin, killed, pid,
-        )),
-        _ => unreachable!("send_host_stream only routes drives_own_transport engines: {engine}"),
-    };
-    let _ = reader_abort.set(task.abort_handle());
-    Ok(SendResult {
-        run_id,
-        session_id: resume_session_id,
     })
 }
 
@@ -2520,7 +2159,6 @@ mod permission_tests {
             images: Vec::new(),
             model: None,
             effort: None,
-            service_tier: None,
             permission: permission.map(str::to_string),
             additional_dirs: Vec::new(),
             provider_id: None,
@@ -2535,101 +2173,6 @@ mod permission_tests {
             .get_args()
             .map(|a| a.to_string_lossy().to_string())
             .collect()
-    }
-
-    #[test]
-    fn pi_prompt_goes_through_stdin_not_argv() {
-        // Windows resolves the pi install to a `.cmd` shim spawned via `cmd /c`;
-        // cmd.exe cuts a multiline argument at the first newline, so only line 1
-        // ever reached the model. The prompt must ride stdin verbatim, and the
-        // `@<abs path>` image refs must stay in argv.
-        let mut request = req(None);
-        request.prompt = "first line\nsecond line\n%PATH%".to_string();
-        request.images = vec!["C:/tmp/paste.png".to_string()];
-        let engines: [&dyn Engine; 2] = [&pi_family::pi(), &pi_family::omp()];
-        for engine in engines {
-            let built = engine.build_command(&request, "fake-bin").unwrap();
-            let args: Vec<String> = built
-                .command
-                .as_std()
-                .get_args()
-                .map(|a| a.to_string_lossy().to_string())
-                .collect();
-            assert!(!args.iter().any(|a| a.contains("first line")), "{args:?}");
-            assert!(args.iter().any(|a| a.contains("paste.png")), "{args:?}");
-            assert_eq!(built.stdin_payload.as_deref(), Some(request.prompt.as_str()));
-        }
-    }
-
-    #[test]
-    fn omp_fast_tier_is_explicit_and_independent_of_effort() {
-        let mut request = req(None);
-        request.model = Some("openai-codex/gpt-5.4".into());
-        request.effort = Some("high".into());
-        for tier in [None, Some("priority"), Some("default")] {
-            request.service_tier = tier.map(str::to_string);
-            let args = argv(&pi_family::omp(), &request);
-            let actual = args
-                .iter()
-                .position(|a| a == "--service-tier")
-                .map(|i| args[i + 1].as_str());
-            assert_eq!(actual, tier);
-            assert!(args.windows(2).any(|a| a == ["--thinking", "high"]));
-        }
-    }
-
-    #[test]
-    fn omp_fast_tier_does_not_leak_to_other_models_or_pi() {
-        let mut request = req(None);
-        request.service_tier = Some("priority".into());
-        for model in [
-            None,
-            Some("anthropic/claude"),
-            Some("google/gemini"),
-            Some("gpt-5.4"),
-            Some("openai/"),
-            Some("openai/gpt-5.4"),
-            Some("openai-codex/"),
-            Some("custom/gpt-5.4"),
-        ] {
-            request.model = model.map(str::to_string);
-            assert!(!argv(&pi_family::omp(), &request)
-                .iter()
-                .any(|a| a == "--service-tier"));
-        }
-        request.model = Some("openai-codex/gpt-5.4".into());
-        assert!(!argv(&pi_family::pi(), &request)
-            .iter()
-            .any(|a| a == "--service-tier"));
-        assert!(argv(&pi_family::omp(), &request)
-            .iter()
-            .any(|a| a == "--service-tier"));
-        request.service_tier = Some("invalid".into());
-        assert!(pi_family::omp()
-            .build_command(&request, "fake-bin")
-            .is_err());
-    }
-
-    #[test]
-    fn omp_tier_settings_are_backward_compatible_and_roundtrip() {
-        let mut settings: crate::settings::AppSettings = serde_json::from_str("{}").unwrap();
-        assert_eq!(settings.omp_openai_service_tier, None);
-        for tier in [Some("priority"), Some("default"), None] {
-            settings.omp_openai_service_tier = tier.map(str::to_string);
-            let encoded = serde_json::to_string(&settings).unwrap();
-            let decoded: crate::settings::AppSettings = serde_json::from_str(&encoded).unwrap();
-            assert_eq!(decoded.omp_openai_service_tier.as_deref(), tier);
-        }
-    }
-
-    #[test]
-    fn unsupported_mode_falls_back_to_first_supported() {
-        let codex = codex::CodexEngine;
-        assert_eq!(codex.resolve_permission(Some("plan")), "auto");
-        assert_eq!(codex.resolve_permission(Some("manual")), "manual");
-        assert_eq!(codex.resolve_permission(None), "auto");
-        let grok = grok::GrokEngine;
-        assert_eq!(grok.resolve_permission(Some("auto")), "bypass");
     }
 
     #[test]
@@ -2656,139 +2199,6 @@ mod permission_tests {
     }
 
     #[test]
-    fn codex_maps_modes_to_sandbox_flags() {
-        let e = codex::CodexEngine;
-        let auto = argv(&e, &req(Some("auto")));
-        assert!(auto.contains(&"sandbox_mode=\"workspace-write\"".to_string()));
-        assert!(!auto.contains(&"--dangerously-bypass-approvals-and-sandbox".to_string()));
-
-        let manual = argv(&e, &req(Some("manual")));
-        assert!(manual.contains(&"sandbox_mode=\"read-only\"".to_string()));
-
-        let bypass = argv(&e, &req(Some("bypass")));
-        assert!(bypass.contains(&"--dangerously-bypass-approvals-and-sandbox".to_string()));
-    }
-
-    #[test]
-    fn codex_resume_avoids_unsupported_sandbox_flag() {
-        // `codex exec resume` rejects --sandbox (clap exit 2); the sandbox must
-        // travel via -c sandbox_mode on both fresh and resumed sessions.
-        let e = codex::CodexEngine;
-        let mut resume = req(Some("manual"));
-        resume.session_id = Some("00000000-0000-0000-0000-000000000000".to_string());
-        let args = argv(&e, &resume);
-        assert!(args.contains(&"resume".to_string()));
-        assert!(!args.contains(&"--sandbox".to_string()));
-        assert!(args.contains(&"sandbox_mode=\"read-only\"".to_string()));
-
-        let fresh = argv(&e, &req(Some("auto")));
-        assert!(!fresh.contains(&"--sandbox".to_string()));
-        assert!(fresh.contains(&"sandbox_mode=\"workspace-write\"".to_string()));
-    }
-
-    #[test]
-    fn codex_prompt_goes_through_stdin_not_argv() {
-        // Windows resolves npm codex to a `.cmd` shim spawned via `cmd /c`;
-        // cmd.exe cuts a multiline argument at the first newline, so only line
-        // 1 ever reached the model. The prompt must ride stdin (`-`) verbatim.
-        let e = codex::CodexEngine;
-        let mut request = req(Some("auto"));
-        request.prompt = "first line\nmodel = \"gpt-5\"\n%PATH%".to_string();
-        let built = e.build_command(&request, "fake-bin").unwrap();
-        let args: Vec<String> = built
-            .command
-            .as_std()
-            .get_args()
-            .map(|a| a.to_string_lossy().to_string())
-            .collect();
-        assert!(args.contains(&"-".to_string()));
-        assert!(!args.iter().any(|a| a.contains("first line")));
-        assert_eq!(built.stdin_payload.as_deref(), Some(request.prompt.as_str()));
-
-        let mut resume = req(Some("auto"));
-        resume.session_id = Some("00000000-0000-0000-0000-000000000000".to_string());
-        let built = e.build_command(&resume, "fake-bin").unwrap();
-        let args: Vec<String> = built
-            .command
-            .as_std()
-            .get_args()
-            .map(|a| a.to_string_lossy().to_string())
-            .collect();
-        assert!(args.contains(&"-".to_string()));
-        assert_eq!(built.stdin_payload.as_deref(), Some("hi"));
-    }
-
-    #[test]
-    fn kimi_maps_plan_and_bypass() {
-        let e = kimi::KimiEngine;
-        let auto = argv(&e, &req(Some("auto")));
-        assert!(!auto.contains(&"--yolo".to_string()));
-        assert!(!auto.contains(&"--plan".to_string()));
-
-        let plan = argv(&e, &req(Some("plan")));
-        assert!(plan.contains(&"--plan".to_string()));
-
-        let bypass = argv(&e, &req(Some("bypass")));
-        assert!(bypass.contains(&"--yolo".to_string()));
-
-        // Manual is unsupported: falls back to auto (no flags).
-        let manual = argv(&e, &req(Some("manual")));
-        assert!(!manual.contains(&"--yolo".to_string()));
-        assert!(!manual.contains(&"--plan".to_string()));
-    }
-
-    #[test]
-    fn omp_offers_plan_and_bypass_while_pi_stays_auto() {
-        // omp 18.1.x grew real approval switches plus a headless plan flow; pi
-        // 0.85 still exposes none of them. Declaring only the modes a CLI can
-        // actually honor is the whole point of supported_permissions — the
-        // picker greys out the rest instead of sending a mode that is ignored.
-        assert_eq!(pi_family::omp().supported_permissions(), ["auto", "plan", "bypass"]);
-        assert_eq!(pi_family::pi().supported_permissions(), ["auto"]);
-
-        // "manual" must stay unsupported: always-ask/write leave write/exec
-        // tools on a prompt policy, and print mode has no UI to answer with —
-        // the CLI aborts the turn ("requires approval but no interactive UI
-        // available") the moment a gated tool runs.
-        assert_eq!(pi_family::omp().resolve_permission(Some("manual")), "auto");
-        // pi falls back to its only mode for anything else.
-        assert_eq!(pi_family::pi().resolve_permission(Some("bypass")), "auto");
-
-        let auto = argv(&pi_family::omp(), &req(Some("auto")));
-        assert!(!auto.contains(&"--approval-mode".to_string()));
-        assert!(!auto.contains(&"--auto-approve".to_string()));
-        assert!(!auto.contains(&"--plan-yolo".to_string()));
-
-        let bypass = argv(&pi_family::omp(), &req(Some("bypass")));
-        assert!(bypass.contains(&"--auto-approve".to_string()));
-        assert!(!bypass.contains(&"--plan-yolo".to_string()));
-
-        // The plan flow pins the implementation phase to the picked model;
-        // otherwise --plan-yolo-into drops to the cheap "smol" role.
-        let mut plan_req = req(Some("plan"));
-        plan_req.model = Some("openai-codex/gpt-5.4".into());
-        let plan = argv(&pi_family::omp(), &plan_req);
-        assert!(plan.contains(&"--plan-yolo".to_string()));
-        let pin = plan
-            .iter()
-            .position(|a| a == "--plan-yolo-into")
-            .expect("plan pins the implementation model");
-        assert_eq!(plan[pin + 1], "openai-codex/gpt-5.4");
-
-        // No model picked yet: --plan-yolo alone must not invent one.
-        let bare = argv(&pi_family::omp(), &req(Some("plan")));
-        assert!(bare.contains(&"--plan-yolo".to_string()));
-        assert!(!bare.contains(&"--plan-yolo-into".to_string()));
-
-        // pi never receives any of these flags, even when it is asked for one.
-        for mode in [Some("plan"), Some("bypass"), Some("manual")] {
-            let args = argv(&pi_family::pi(), &req(mode));
-            assert!(!args.contains(&"--plan-yolo".to_string()), "{args:?}");
-            assert!(!args.contains(&"--auto-approve".to_string()), "{args:?}");
-        }
-    }
-
-    #[test]
     fn claude_passes_granted_dirs_as_add_dir() {
         let e = claude::ClaudeEngine::new();
         let mut r = req(Some("auto"));
@@ -2806,24 +2216,6 @@ mod permission_tests {
             .collect();
         assert_eq!(pairs.len(), 1, "{args:?}");
         assert_eq!(pairs[0][1], "/data/shared");
-
-        // Other engines have no equivalent flag: the field stays inert.
-        let codex_args = argv(&codex::CodexEngine, &r);
-        assert!(!codex_args.iter().any(|a| a == "--add-dir"));
-    }
-
-    #[test]
-    fn grok_always_approves_regardless_of_request() {
-        let e = grok::GrokEngine;
-        for mode in [
-            Some("auto"),
-            Some("manual"),
-            Some("plan"),
-            Some("bypass"),
-            None,
-        ] {
-            assert!(argv(&e, &req(mode)).contains(&"--always-approve".to_string()));
-        }
     }
 }
 
@@ -2883,10 +2275,10 @@ mod retry_lifecycle_tests {
             core: TurnCore {
                 sink: event_sink::EventSink::new(emitter.clone()),
                 registry: Arc::new(ProcessRegistry::default()),
-                engine_id: "omp".to_string(),
+                engine_id: "claude".to_string(),
                 run_id: "pipe-retry-run".to_string(),
             },
-            engine_impl: Box::new(pi_family::omp()),
+            engine_impl: Box::new(claude::ClaudeEngine::new()),
             pid: child.id().unwrap(),
             preassigned_session_id: Some("session".to_string()),
             initial_model: None,
@@ -2930,10 +2322,10 @@ mod retry_lifecycle_tests {
             core: TurnCore {
                 sink: event_sink::EventSink::new(emitter.clone()),
                 registry: Arc::new(ProcessRegistry::default()),
-                engine_id: "codex".to_string(),
+                engine_id: "claude".to_string(),
                 run_id: "plain-stdout-run".to_string(),
             },
-            engine_impl: Box::new(codex::CodexEngine),
+            engine_impl: Box::new(claude::ClaudeEngine::new()),
             pid: child.id().unwrap(),
             preassigned_session_id: None,
             initial_model: None,
@@ -2951,7 +2343,7 @@ mod retry_lifecycle_tests {
         let last = events.last().unwrap();
         assert_eq!(last["kind"], "error");
         let data = last["data"].as_str().unwrap();
-        assert!(data.contains("codex exited with status"), "{data}");
+        assert!(data.contains("claude exited with status"), "{data}");
         assert!(data.contains("unrecognized arguments"), "{data}");
     }
 
@@ -2969,14 +2361,11 @@ mod retry_lifecycle_tests {
     }
 
     #[tokio::test]
-    async fn legacy_agent_end_can_retry_and_recover_before_eof() {
+    async fn api_retry_progress_recovers_before_eof() {
         let events = replay_cli_output(&[
-            serde_json::json!({"type":"turn_end","message":{"role":"assistant","stopReason":"error","errorMessage":"socket closed"}}),
-            serde_json::json!({"type":"agent_end","messages":[{"role":"assistant","stopReason":"error","errorMessage":"socket closed"}]}),
-            serde_json::json!({"type":"auto_retry_start","attempt":1,"maxAttempts":50}),
-            serde_json::json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"recovered"}}),
-            serde_json::json!({"type":"turn_end","message":{"role":"assistant","stopReason":"stop"}}),
-            serde_json::json!({"type":"agent_end","messages":[{"role":"assistant","stopReason":"stop"}]}),
+            serde_json::json!({"type":"system","subtype":"api_retry","attempt":1,"max_retries":50,"retry_delay_ms":1000,"error":"socket closed"}),
+            serde_json::json!({"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"recovered"}}}),
+            serde_json::json!({"type":"result","subtype":"success","result":"recovered"}),
         ]).await;
         let kinds: Vec<_> = events.iter().map(|event| event["kind"].as_str().unwrap()).collect();
         assert_eq!(kinds, ["retry", "delta", "done"]);
@@ -2986,8 +2375,8 @@ mod retry_lifecycle_tests {
     #[tokio::test]
     async fn clean_eof_preserves_a_final_model_failure() {
         for failure in [
-            serde_json::json!({"type":"turn_end","message":{"role":"assistant","stopReason":"error","errorMessage":"401 Invalid token"}}),
-            serde_json::json!({"type":"auto_retry_end","success":false,"finalError":"socket closed"}),
+            serde_json::json!({"type":"result","is_error":true,"result":"401 Invalid token"}),
+            serde_json::json!({"type":"result","subtype":"error_during_execution","result":"socket closed"}),
         ] {
             let events = replay_cli_output(&[failure]).await;
             let last = events.last().unwrap();
@@ -3205,42 +2594,5 @@ mod tool_args_tests {
             EngineEvent::Message { patch, .. } => assert!(patch),
             _ => panic!("expected patch"),
         }
-    }
-}
-
-#[cfg(test)]
-mod codex_home_bin_tests {
-    use super::*;
-
-    #[test]
-    fn engine_bin_prefers_codex_home_bin() {
-        let dir = std::env::temp_dir().join(format!(
-            "hzkcode-codex-home-bin-{}",
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(dir.join("bin")).unwrap();
-        let candidate = dir.join("bin").join("codex");
-        std::fs::write(&candidate, "#!/bin/sh\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&candidate, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
-        let mut settings = crate::settings::AppSettings::default();
-        settings.codex_home = Some(dir.to_string_lossy().into_owned());
-        let resolved = engine_bin(&settings, "codex");
-        assert_eq!(PathBuf::from(&resolved), candidate);
-
-        // An explicit codexBin override (set before the home row existed, or
-        // hand-edited) still wins over $home/bin/codex.
-        #[cfg(unix)]
-        {
-            settings.bin_overrides.insert(
-                "codexBin".to_string(),
-                serde_json::Value::String("/bin/sh".to_string()),
-            );
-            assert_eq!(engine_bin(&settings, "codex"), "/bin/sh");
-        }
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

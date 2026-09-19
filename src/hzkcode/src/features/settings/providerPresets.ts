@@ -6,10 +6,8 @@ import deepseekIcon from "@lobehub/icons-static-svg/icons/deepseek-color.svg";
 import kimiIcon from "@lobehub/icons-static-svg/icons/kimi.svg";
 import longcatIcon from "@lobehub/icons-static-svg/icons/longcat-color.svg";
 import minimaxIcon from "@lobehub/icons-static-svg/icons/minimax-color.svg";
-import moonshotIcon from "@lobehub/icons-static-svg/icons/moonshot.svg";
 import opencodeIcon from "@lobehub/icons-static-svg/icons/opencode.svg";
 import openrouterIcon from "@lobehub/icons-static-svg/icons/openrouter-color.svg";
-import xaiIcon from "@lobehub/icons-static-svg/icons/xai.svg";
 import xiaomimimoIcon from "@lobehub/icons-static-svg/icons/xiaomimimo.svg";
 import zhipuIcon from "@lobehub/icons-static-svg/icons/zhipu-color.svg";
 import type { EngineId } from "./providers";
@@ -28,9 +26,6 @@ export interface ProviderPreset {
   /** claude: extra env merged into the JSON config on preset pick —
    *  ANTHROPIC_DEFAULT_<TIER>_MODEL slots plus per-provider tuning vars. */
   env?: Record<string, string>;
-  /** codex: wire_api for the generated config.toml (default "chat" — the
-   *  relays below are chat-completions compatible). */
-  wireApi?: "responses" | "chat";
 }
 
 /** Monochrome SVGs use currentColor, which stays black inside an <img>. */
@@ -39,7 +34,6 @@ const DARK_MONO_ICON_CLASS = "dark:invert";
 /** Claude-only: the official direct endpoint. Selecting the official card
  *  locks API URL to this value, mirroring the reference's 官方直连 preset. */
 export const OFFICIAL_BASE_URL = "https://api.anthropic.com";
-export const OFFICIAL_CODEX_BASE_URL = "https://api.openai.com/v1";
 
 /** Model-slot env keys, in the grid's display order. */
 export const CLAUDE_MODEL_SLOTS = [
@@ -101,73 +95,10 @@ export function claudeTemplateJson(
   return JSON.stringify(config, null, 2);
 }
 
-// ── codex config.toml ───────────────────────────────────────────────────────
-
-const tomlString = (value: string): string => JSON.stringify(value);
-
-/** The reference's buildCodexProviderConfigToml: a managed config.toml with
- *  one model_providers table. */
-export function buildCodexConfigToml(
-  providerName: string,
-  baseUrl: string,
-  model: string,
-  wireApi: "responses" | "chat" = "responses",
-  providerId = "custom",
-): string {
-  return `disable_response_storage = true
-model = ${tomlString(model)}
-model_reasoning_effort = "high"
-model_provider = ${tomlString(providerId)}
-
-[model_providers.${providerId}]
-base_url = ${tomlString(baseUrl)}
-name = ${tomlString(providerName)}
-requires_openai_auth = true
-wire_api = ${tomlString(wireApi)}`;
-}
-
-export const DEFAULT_CODEX_AUTH_JSON = `{
-  "OPENAI_API_KEY": ""
-}`;
-
-export const OFFICIAL_CODEX_CONFIG_TOML = buildCodexConfigToml(
-  "openai",
-  OFFICIAL_CODEX_BASE_URL,
-  "gpt-5.1-codex",
-  "responses",
-  "openai",
-);
-
-/** First `base_url = "…"` in a config.toml — display/preset-match mirror; the
- *  backend applies the TOML itself, this is only for the UI. */
-export function tomlBaseUrl(toml: string): string {
-  return toml.match(/^\s*base_url\s*=\s*"([^"]*)"/m)?.[1] ?? "";
-}
-
-/** Top-level `model = "…"`. */
-export function tomlModel(toml: string): string {
-  return toml.match(/^\s*model\s*=\s*"([^"]+)"/m)?.[1] ?? "";
-}
-
-/** OPENAI_API_KEY out of an auth.json text; "" when unparseable/absent. */
-export function authJsonApiKey(authJson: string): string {
-  try {
-    const parsed: unknown = JSON.parse(authJson);
-    if (parsed && typeof parsed === "object") {
-      const key = (parsed as Record<string, unknown>).OPENAI_API_KEY;
-      return typeof key === "string" ? key : "";
-    }
-  } catch {
-    // invalid JSON — the dialog surfaces this separately
-  }
-  return "";
-}
-
 // ── preset tables ───────────────────────────────────────────────────────────
 
-/** Third-party relay presets per engine. Claude's table is ported from the
- *  reference's CLAUDE_PROVIDER_PRESETS (per-tier model env included); codex's
- *  from CODEX_PROVIDER_PRESETS (wire_api drives the generated config.toml). */
+/** Third-party relay presets, keyed by engine. Claude's table is ported from
+ *  the reference's CLAUDE_PROVIDER_PRESETS (per-tier model env included). */
 export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
   claude: [
     {
@@ -305,23 +236,6 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
         ANTHROPIC_DEFAULT_OPUS_MODEL: "anthropic/claude-opus-4.5",
       },
     },
-  ],
-  kimi: [
-    { name: "Kimi Coding", baseUrl: "https://api.kimi.com/coding/v1", model: "kimi-for-coding", iconSrc: kimiIcon, iconClassName: DARK_MONO_ICON_CLASS },
-    { name: "Moonshot", baseUrl: "https://api.moonshot.cn/v1", model: "", iconSrc: moonshotIcon, iconClassName: DARK_MONO_ICON_CLASS },
-  ],
-  grok: [{ name: "xAI Official", baseUrl: "https://api.x.ai/v1", model: "grok-build", iconSrc: xaiIcon, iconClassName: DARK_MONO_ICON_CLASS }],
-  codex: [
-    { name: "Zhipu GLM", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.2", iconSrc: zhipuIcon, wireApi: "chat" },
-    { name: "Kimi", baseUrl: "https://api.moonshot.cn/v1", model: "kimi-k3", iconSrc: kimiIcon, iconClassName: DARK_MONO_ICON_CLASS, wireApi: "chat" },
-    { name: "Kimi Coding", baseUrl: "https://api.kimi.com/coding/v1", model: "kimi-k3", iconSrc: kimiIcon, iconClassName: DARK_MONO_ICON_CLASS, wireApi: "chat" },
-    { name: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", iconSrc: deepseekIcon, wireApi: "chat" },
-    { name: "MiniMax", baseUrl: "https://api.minimaxi.com/v1", model: "MiniMax-M3", iconSrc: minimaxIcon, wireApi: "chat" },
-    { name: "Xiaomi MiMo", baseUrl: "https://api.xiaomimimo.com/v1", model: "mimo-v2.5-pro", iconSrc: xiaomimimoIcon, iconClassName: DARK_MONO_ICON_CLASS, wireApi: "chat" },
-    { name: "Bailian Coding", baseUrl: "https://coding.dashscope.aliyuncs.com/v1", model: "qwen3-coder-plus", iconSrc: bailianIcon, wireApi: "chat" },
-    { name: "LongCat", baseUrl: "https://api.longcat.chat/openai/v1", model: "LongCat-2.0", iconSrc: longcatIcon, wireApi: "chat" },
-    { name: "OpenCode Go", baseUrl: "https://opencode.ai/zen/go/v1", model: "glm-5.2", iconSrc: opencodeIcon, iconClassName: DARK_MONO_ICON_CLASS, wireApi: "chat" },
-    { name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", model: "", iconSrc: openrouterIcon, wireApi: "chat" },
   ],
 };
 

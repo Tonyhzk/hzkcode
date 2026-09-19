@@ -56,16 +56,6 @@ pub struct AppSettings {
     pub custom_models: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub default_efforts: HashMap<String, String>,
-    /// Per-app OMP OpenAI tier override; None preserves native CLI settings.
-    #[serde(default)]
-    pub omp_openai_service_tier: Option<String>,
-    /// Per-app Codex Fast override (`service_tier`); None preserves ~/.codex.
-    #[serde(default)]
-    pub codex_service_tier: Option<String>,
-    /// Codex config/session home (`CODEX_HOME`). None keeps ~/.codex, or a
-    /// CODEX_HOME already present in the process environment at launch.
-    #[serde(default)]
-    pub codex_home: Option<String>,
     /// Require a pairing key before the bridge serves a browser (设置 → 远程
     /// 访问 → 启用授权). Off by default: on the LAN the token URL is enough.
     #[serde(default)]
@@ -129,17 +119,8 @@ pub struct AppSettings {
     /// Validated with the same spawn-target rules as bin overrides.
     #[serde(default)]
     pub terminal_shell_path: Option<String>,
-    /// DeepSeek Harness host address; None/empty = 127.0.0.1.
-    #[serde(default)]
-    pub dsh_host: Option<String>,
-    /// DeepSeek Harness host port; None/0 = 3080.
-    #[serde(default)]
-    pub dsh_port: Option<u16>,
-    /// Auto-start the DSH host at app launch; None = on (`!= Some(false)`).
-    #[serde(default)]
-    pub dsh_auto_start: Option<bool>,
     /// Global network proxy switch; applied to this process's env so spawned
-    /// children (engine CLIs, terminals, dsh host) inherit it.
+    /// children (engine CLIs, terminals) inherit it.
     #[serde(default)]
     pub system_proxy_enabled: bool,
     /// Proxy URL (http/https/socks5); None/empty = unset.
@@ -233,9 +214,6 @@ impl Default for AppSettings {
             default_models: HashMap::new(),
             custom_models: HashMap::new(),
             default_efforts: HashMap::new(),
-            omp_openai_service_tier: None,
-            codex_service_tier: None,
-            codex_home: None,
             sidebar_thread_limit: default_sidebar_thread_limit(),
             composer_send_shortcut: default_composer_send_shortcut(),
             new_session_shortcut: default_new_session_shortcut(),
@@ -252,9 +230,6 @@ impl Default for AppSettings {
             reset_ui_scale_shortcut: default_reset_ui_scale_shortcut(),
             thinking_auto_collapse: None,
             terminal_shell_path: None,
-            dsh_host: None,
-            dsh_port: None,
-            dsh_auto_start: None,
             system_proxy_enabled: false,
             system_proxy_url: None,
             bin_overrides: HashMap::new(),
@@ -324,49 +299,6 @@ fn reject_temp_root(path: &std::path::Path, kind: &str) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-/// Codex home override: absolute directory (may not exist yet). `~` is
-/// expanded. Same temp-dir refusal as bin overrides.
-fn validate_home_override(value: &str) -> Result<std::path::PathBuf, String> {
-    let expanded = crate::open_app::expand_user_path(value.trim())?;
-    if !expanded.is_absolute() {
-        return Err(format!("{}: not an absolute path", expanded.display()));
-    }
-    if expanded.exists() && !expanded.is_dir() {
-        return Err(format!("{}: not a directory", expanded.display()));
-    }
-    let check = if expanded.exists() {
-        std::fs::canonicalize(&expanded).unwrap_or_else(|_| expanded.clone())
-    } else {
-        expanded.clone()
-    };
-    reject_temp_root(&check, "homes")?;
-    Ok(expanded)
-}
-
-/// Push `settings.codex_home` into this process's `CODEX_HOME` so every
-/// existing `engine_home(Some("CODEX_HOME"), ".codex")` call site — official
-/// config, history, skills, catalog probes, and spawned `codex` — sees the
-/// same directory. Clearing the setting only unsets an env we previously
-/// applied, so a launch-time `CODEX_HOME` survives.
-pub(crate) fn apply_codex_home(settings: &AppSettings) {
-    static APPLIED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if let Some(home) = settings
-        .codex_home
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        if let Ok(expanded) = validate_home_override(home) {
-            std::env::set_var("CODEX_HOME", expanded);
-            APPLIED.store(true, std::sync::atomic::Ordering::Relaxed);
-            return;
-        }
-    }
-    if APPLIED.swap(false, std::sync::atomic::Ordering::Relaxed) {
-        std::env::remove_var("CODEX_HOME");
-    }
 }
 
 pub fn read_settings() -> Result<AppSettings, String> {
@@ -596,22 +528,10 @@ pub fn update_app_settings<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     mut settings: AppSettings,
 ) -> Result<(), String> {
-    let prev_home = read_settings().ok().and_then(|s| s.codex_home);
     let result = persist_settings(&mut settings);
     // Other surfaces (the composer's proxy toggle) follow along without
     // re-reading settings.json.
     let _ = app.emit("settings://changed", ());
-    // persist_settings reports committed-with-warnings as Err; the home change
-    // is already on disk by then, so gate on the value, not on result.
-    if prev_home != settings.codex_home {
-        use tauri::Manager;
-        if let Some(state) = app.try_state::<crate::AppState>() {
-            crate::history::scanner::spawn_scan(
-                std::sync::Arc::clone(&state.db),
-                std::sync::Arc::clone(&state.sink),
-            );
-        }
-    }
     result
 }
 
@@ -641,20 +561,6 @@ fn persist_settings_to(
     settings: &mut AppSettings,
     path: &std::path::Path,
 ) -> Result<Option<String>, String> {
-    if settings
-        .omp_openai_service_tier
-        .as_deref()
-        .is_some_and(|tier| !matches!(tier, "default" | "priority"))
-    {
-        return Err("Invalid OMP OpenAI service tier".to_string());
-    }
-    if settings
-        .codex_service_tier
-        .as_deref()
-        .is_some_and(|tier| !matches!(tier, "default" | "priority"))
-    {
-        return Err("Invalid Codex service tier".to_string());
-    }
     if settings.web_auth_enabled && settings.web_auth_key.is_none() {
         settings.web_auth_key = Some(generate_pair_key());
     } else if !settings.web_auth_enabled {
@@ -689,15 +595,6 @@ fn persist_settings_to(
             }
         }
     }
-    if let Some(home) = settings.codex_home.take() {
-        let trimmed = home.trim().to_string();
-        if !trimmed.is_empty() {
-            match validate_home_override(&trimmed) {
-                Ok(path) => settings.codex_home = Some(path.to_string_lossy().into_owned()),
-                Err(reason) => rejected.push(format!("codexHome: {reason}")),
-            }
-        }
-    }
     let content = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     // Reject before persisting: an invalid proxy URL must not be saved (the
     // frontend rolls its drafts back on this error).
@@ -713,9 +610,6 @@ fn persist_settings_to(
     if let Err(error) = crate::proxy::apply_app_proxy_settings(&settings) {
         warnings.push(error);
     }
-    // Infallible: an invalid home was already rejected above, and a stale
-    // value simply leaves CODEX_HOME untouched.
-    apply_codex_home(settings);
     Ok((!warnings.is_empty()).then(|| warnings.join("; ")))
 }
 
@@ -1064,26 +958,6 @@ mod tests {
         assert!(!pairing_key_matches("", "--------"));
         assert!(!pairing_key_matches("", ""));
         assert!(!pairing_key_matches("BCDF2345", "BCDF2346"));
-    }
-
-    #[test]
-    fn home_override_expands_tilde_and_rejects_temp() {
-        // Tilde expansion is race-safe to assert directly: parallel scanner
-        // tests mutate HOME, so validating `~/...` here can spuriously hit
-        // the temp-root rejection.
-        let expanded = crate::open_app::expand_user_path("~/.codex-cli").unwrap();
-        assert!(expanded.is_absolute());
-        assert!(expanded.ends_with(".codex-cli"));
-
-        // A fixed absolute path outside any temp root validates as-is.
-        let ok = if cfg!(windows) {
-            r"C:\hzkcode-codex-home-probe"
-        } else {
-            "/opt/hzkcode-codex-home-probe"
-        };
-        assert_eq!(validate_home_override(ok).unwrap(), std::path::PathBuf::from(ok));
-        assert!(validate_home_override("/tmp/codex-home").is_err());
-        assert!(validate_home_override("relative/codex").is_err());
     }
 
     /// The property the relay's whole gate rests on: a code opens exactly one

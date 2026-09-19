@@ -138,12 +138,7 @@ fn build_windows_extra_search_paths(
         // Fallback: npm global install path via USERPROFILE.
         paths.push(user_profile.join("AppData\\Roaming\\npm"));
         paths.push(user_profile.join(".local\\bin"));
-        paths.push(user_profile.join(".codex-cli\\bin"));
         paths.push(user_profile.join(".local\\share\\mise\\shims"));
-        // Hermes ships dsh as a Node-global bin, same layout as ~/.hermes/node/bin.
-        paths.push(user_profile.join(".hermes\\node"));
-        paths.push(user_profile.join(".hermes\\node\\bin"));
-        paths.push(user_profile.join(".omp\\bin"));
         paths.push(user_profile.join(".cargo\\bin"));
         paths.push(user_profile.join(".bun\\bin"));
         // Legacy codemoss builds bundled the Claude Agent SDK under the app
@@ -196,12 +191,6 @@ fn build_windows_extra_search_paths(
         }
     }
     if let Some(local_app_data) = local_app_data {
-        // Official OMP CLI Windows installer layout: %LOCALAPPDATA%\omp\omp.exe.
-        paths.push(local_app_data.join("omp"));
-        // Hermes prefixes also live under %LOCALAPPDATA% (per-shell layout);
-        // dsh ships as a Node-global bin there.
-        paths.push(local_app_data.join("hermes\\node"));
-        paths.push(local_app_data.join("hermes\\node\\bin"));
         paths.push(local_app_data.join("Volta\\bin"));
         paths.push(local_app_data.join("pnpm"));
         paths.push(local_app_data.join("mise\\shims"));
@@ -218,10 +207,6 @@ fn build_windows_extra_search_paths(
         let programs_root = local_app_data.join("Programs");
         if programs_root.is_dir() {
             paths.push(programs_root.join("nodejs"));
-            // Official OpenAI Codex Windows installer layout:
-            // %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe. The installer
-            // only appends to User PATH, which a stale-PATH GUI process misses.
-            paths.push(programs_root.join("OpenAI\\Codex\\bin"));
             if let Ok(entries) = std::fs::read_dir(&programs_root) {
                 for entry in entries.flatten() {
                     let candidate = entry.path();
@@ -262,12 +247,10 @@ fn build_unix_extra_search_paths() -> Vec<PathBuf> {
     ];
     if let Some(home) = dirs::home_dir() {
         paths.push(home.join(".local/bin"));
-        paths.push(home.join(".codex-cli/bin"));
         paths.push(home.join(".local/share/mise/shims"));
         paths.push(home.join(".cargo/bin"));
         paths.push(home.join(".bun/bin"));
         paths.push(home.join(".volta/bin"));
-        paths.push(home.join(".omp/bin"));
         // nvm: globally installed CLIs land in the active version's bin.
         let nvm_root = home.join(".nvm/versions/node");
         if let Ok(entries) = std::fs::read_dir(nvm_root) {
@@ -378,12 +361,6 @@ fn get_extra_search_paths() -> Vec<PathBuf> {
     #[cfg(not(windows))]
     {
         paths.extend(build_unix_extra_search_paths());
-    }
-
-    if let Ok(codex_home) = std::env::var("CODEX_HOME") {
-        if !codex_home.trim().is_empty() {
-            push_unique_path(&mut paths, PathBuf::from(codex_home.trim()).join("bin"));
-        }
     }
 
     for prefix_key in ["NPM_CONFIG_PREFIX", "npm_config_prefix"] {
@@ -634,8 +611,8 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("hzkcode-posix-shim-{}", std::process::id()));
         std::fs::create_dir_all(&root).expect("create temp dir");
-        let posix_shim = root.join("dsh");
-        let cmd_path = root.join("dsh.cmd");
+        let posix_shim = root.join("claude");
+        let cmd_path = root.join("claude.cmd");
         std::fs::write(&posix_shim, "#!/bin/sh\n").expect("write shim");
         std::fs::write(&cmd_path, "@echo off\n").expect("write cmd");
 
@@ -645,7 +622,7 @@ mod tests {
             prefer_windows_executable_variant(cmd_path.clone()),
             cmd_path
         );
-        let missing = PathBuf::from(r"C:\definitely\missing\dsh");
+        let missing = PathBuf::from(r"C:\definitely\missing\claude");
         assert_eq!(prefer_windows_executable_variant(missing.clone()), missing);
 
         let _ = std::fs::remove_dir_all(root);
@@ -713,25 +690,6 @@ mod tests {
     }
 
     #[test]
-    fn windows_extra_search_paths_cover_openai_codex_installer() {
-        // The Programs dir must exist for the installer path to be pushed;
-        // emulate %LOCALAPPDATA% with a temp dir.
-        let temp = std::env::temp_dir().join(format!("hzkcode-openai-codex-{}", std::process::id()));
-        let programs = temp.join("Programs");
-        std::fs::create_dir_all(&programs).expect("create Programs dir");
-
-        let paths = build_windows_extra_search_paths(None, None, Some(&temp), None, None);
-        let expected = programs.join("OpenAI\\Codex\\bin");
-        assert!(
-            paths.iter().any(|p| p == &expected),
-            "missing {} in {paths:?}",
-            expected.display()
-        );
-
-        let _ = std::fs::remove_dir_all(temp);
-    }
-
-    #[test]
     fn windows_extra_search_paths_cover_codemoss_bundled_claude() {
         let temp = std::env::temp_dir().join(format!("hzkcode-codemoss-sdk-{}", std::process::id()));
         // Build the expectation the same way the resolver does: the
@@ -772,13 +730,13 @@ mod tests {
     fn parse_registry_path_value_splits_and_expands() {
         std::env::set_var("HZKCODE_TEST_PATH_ROOT", r"C:\Users\demo");
         let paths = parse_registry_path_value(
-            r"C:\Windows;;%HZKCODE_TEST_PATH_ROOT%\AppData\Local\Programs\OpenAI\Codex\bin; ",
+            r"C:\Windows;;%HZKCODE_TEST_PATH_ROOT%\AppData\Local\Programs\nodejs; ",
         );
         assert_eq!(
             paths,
             vec![
                 PathBuf::from(r"C:\Windows"),
-                PathBuf::from(r"C:\Users\demo\AppData\Local\Programs\OpenAI\Codex\bin"),
+                PathBuf::from(r"C:\Users\demo\AppData\Local\Programs\nodejs"),
             ]
         );
         std::env::remove_var("HZKCODE_TEST_PATH_ROOT");

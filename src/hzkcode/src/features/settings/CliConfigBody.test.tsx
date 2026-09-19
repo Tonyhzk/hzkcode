@@ -8,12 +8,6 @@ vi.mock("@/lib/ipc", () => ({
     getAppSettings: () => Promise.resolve({ customModels: {} }),
   },
 }));
-// The auth section owns its own ipc state; CliConfigBody only places it.
-vi.mock("./PiFamilyAuthSection", () => ({
-  PiFamilyAuthSection: () => <div data-testid="pi-auth-section" />,
-}));
-
-import { CLI_DISPLAY_NAMES } from "@/components/foundations/icons/engine-brands";
 import i18n from "@/lib/i18n";
 import { CliConfigBody } from "./CliConfigBody";
 import type { CliConfigState } from "./useCliConfig";
@@ -29,7 +23,7 @@ function makeCli(over: Partial<CliConfigState> = {}): CliConfigState {
   return {
     t: i18n.t,
     config: null,
-    engine: "pi",
+    engine: "claude",
     error: null,
     notice: null,
     busy: false,
@@ -84,7 +78,7 @@ describe("CliConfigBody disabled overlay", () => {
     return (node?.parentElement as HTMLElement) ?? null;
   }
 
-  it("disabled: overlay wrapper contains official config, auth and channels — but not the enable switch", async () => {
+  it("disabled: overlay wrapper contains official config and channels — but not the enable switch", async () => {
     await render(makeCli({ enabled: false }));
 
     const mask = overlay();
@@ -96,11 +90,10 @@ describe("CliConfigBody disabled overlay", () => {
 
     // Everything below the enable switch is under the mask.
     expect(wrapper.textContent).toContain(i18n.t("settings.cliOfficial"));
-    expect(wrapper.querySelector("[data-testid='pi-auth-section']")).not.toBeNull();
     expect(wrapper.textContent).toContain(i18n.t("settings.cliChannels"));
 
     // The enable switch sits above the mask, still reachable.
-    const enableTitle = i18n.t("settings.cliEnableTitle", { name: "PI CLI" });
+    const enableTitle = i18n.t("settings.cliEnableTitle", { name: "Claude Code" });
     expect(wrapper.textContent).not.toContain(enableTitle);
     expect(container.textContent).toContain(enableTitle);
   });
@@ -151,30 +144,5 @@ describe("CliEngineSettingsCard official edit entry", () => {
     expect(editButton().disabled).toBe(false);
     await act(async () => editButton().click());
     expect(setOfficialEditing).toHaveBeenCalledWith(true);
-  });
-
-  it("pi/omp: 编辑 is never gated (files are not hzkcode-managed)", async () => {
-    await render(makeCli({ engine: "pi", officialActive: false, currentId: "chan-a" }));
-    expect(editButton().disabled).toBe(false);
-  });
-
-  it("dsh: no official config row at all (no native config file)", async () => {
-    await render(makeCli({ engine: "dsh" }));
-    expect(container.textContent).not.toContain(i18n.t("settings.cliOfficial"));
-  });
-
-  it("codex: one path row (config home), not a separate binary override", async () => {
-    await render(makeCli({ engine: "codex" }));
-    expect(container.textContent).toContain(
-      i18n.t("settings.cliCustomHome", { name: CLI_DISPLAY_NAMES.codex }),
-    );
-    expect(container.textContent).not.toContain(i18n.t("settings.cliCustomPathUnset"));
-  });
-
-  it("claude: does not show a Codex config-home row", async () => {
-    await render(makeCli({ engine: "claude" }));
-    expect(container.textContent).not.toContain(
-      i18n.t("settings.cliCustomHome", { name: CLI_DISPLAY_NAMES.codex }),
-    );
   });
 });

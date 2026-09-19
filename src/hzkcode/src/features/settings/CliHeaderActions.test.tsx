@@ -32,8 +32,9 @@ function versionStatus(engine: EngineId, over: Partial<CliVersionStatus> = {}): 
   };
 }
 
-// The version store is module-level session state keyed by engine: each
-// test uses its own engine so it starts cold without resetting the module.
+// The version store is module-level session state: status carries over
+// between tests on the single engine, so each render is followed by one
+// extra flush that lets the mount probe settle onto the fresh mock value.
 describe("CliHeaderActions", () => {
   let container: HTMLDivElement;
   let root: Root | null;
@@ -54,17 +55,18 @@ describe("CliHeaderActions", () => {
     container.remove();
   });
 
-  async function render(engine: EngineId) {
+  async function render() {
     const nextRoot = createRoot(container);
     root = nextRoot;
     await act(async () => {
-      nextRoot.render(<CliHeaderActions engine={engine} />);
+      nextRoot.render(<CliHeaderActions engine="claude" />);
     });
+    await act(async () => {});
   }
 
   it("update available: version and CTA ride in one segmented pill", async () => {
     mocks.cliVersionStatus.mockResolvedValue(versionStatus("claude"));
-    await render("claude");
+    await render();
     const text = container.textContent ?? "";
     expect(text).toContain("v2.1.228 (Claude Code)");
     expect(text).toContain("更新至 2.1.267");
@@ -83,9 +85,9 @@ describe("CliHeaderActions", () => {
 
   it("up to date: the check rides inside the pill's status segment, no CTA segment", async () => {
     mocks.cliVersionStatus.mockResolvedValue(
-      versionStatus("codex", { updateAvailable: false }),
+      versionStatus("claude", { updateAvailable: false }),
     );
-    await render("codex");
+    await render();
     const text = container.textContent ?? "";
     expect(text).toContain("v2.1.228 (Claude Code)");
     expect(text).not.toContain("已是最新");
@@ -95,14 +97,14 @@ describe("CliHeaderActions", () => {
 
   it("not installed: badge plus install CTA", async () => {
     mocks.cliVersionStatus.mockResolvedValue(
-      versionStatus("pi", {
+      versionStatus("claude", {
         installed: false,
         localVersion: null,
         latestVersion: null,
         updateAvailable: false,
       }),
     );
-    await render("pi");
+    await render();
     const text = container.textContent ?? "";
     expect(text).toContain("未安装");
     expect(text).toContain("安装");
@@ -113,7 +115,11 @@ describe("CliHeaderActions", () => {
     mocks.cliVersionStatus.mockImplementation(
       () => new Promise<CliVersionStatus>((resolve) => { resolveProbe = resolve; }),
     );
-    await render("omp");
+    const nextRoot = createRoot(container);
+    root = nextRoot;
+    await act(async () => {
+      nextRoot.render(<CliHeaderActions engine="claude" />);
+    });
     const refreshBtn = container.querySelector<HTMLButtonElement>(
       '[aria-label="刷新版本信息"]',
     );
@@ -121,7 +127,7 @@ describe("CliHeaderActions", () => {
     expect(refreshBtn!.disabled).toBe(true);
     expect(refreshBtn!.className).toContain("animate-spin");
     await act(async () => {
-      resolveProbe(versionStatus("omp"));
+      resolveProbe(versionStatus("claude"));
     });
   });
 });

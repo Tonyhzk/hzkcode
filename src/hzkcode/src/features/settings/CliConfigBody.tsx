@@ -1,4 +1,3 @@
-import { useState } from "react";
 import Plus from "lucide-react/dist/esm/icons/plus";
 import { Button } from "@/components/base/buttons/button";
 import {
@@ -13,12 +12,10 @@ import { CliEngineCard } from "./CliEngineCard";
 import { CliEngineSettingsCard } from "./CliEngineSettingsCard";
 import { CliImportMenu } from "./CliImportMenu";
 import { CliSyncBanner } from "./CliSyncBanner";
-import { DshHostSection } from "./DshHostSection";
-import { PiFamilyAuthSection } from "./PiFamilyAuthSection";
 import type { CliConfigState } from "./useCliConfig";
 
 /** Engines cc-switch manages — the import dropdown only shows on these tabs. */
-const CCS_IMPORT_ENGINES: readonly EngineId[] = ["claude", "codex", "grok"];
+const CCS_IMPORT_ENGINES: readonly EngineId[] = ["claude"];
 
 /**
  * The loaded CLI config UI:
@@ -27,8 +24,6 @@ const CCS_IMPORT_ENGINES: readonly EngineId[] = ["claude", "codex", "grok"];
  *   → everything below the switch lives in one overlay wrapper so a disabled
  *     engine masks all of it:
  *       官方配置 fallback row
- *       → Pi-family auth section (pi/omp only)
- *       → DSH local host section (dsh only)
  *       → 供应商渠道 card (avatar/switch/⋯-menu rows + drag sorting)
  *       → empty state.
  */
@@ -49,9 +44,6 @@ export function CliConfigBody({ cli }: { cli: CliConfigState }) {
     importCcSwitchFile,
     dismissCcSwitch,
   } = cli;
-  // pi/omp official files are never hzkcode-managed: their 编辑 entry opens
-  // the models.json/models.yml editor already living in the auth section.
-  const [customEditorSignal, setCustomEditorSignal] = useState(0);
 
   return (
     <>
@@ -74,16 +66,8 @@ export function CliConfigBody({ cli }: { cli: CliConfigState }) {
       <div className="relative flex w-full flex-col gap-6">
         <CliEngineSettingsCard
           cli={cli}
-          onEditOfficial={() => {
-            if (engine === "pi" || engine === "omp") setCustomEditorSignal((n) => n + 1);
-            else cli.setOfficialEditing(true);
-          }}
+          onEditOfficial={() => cli.setOfficialEditing(true)}
         />
-
-        {(engine === "pi" || engine === "omp") && (
-          <PiFamilyAuthSection engine={engine} openCustomEditorSignal={customEditorSignal} />
-        )}
-        {engine === "dsh" && <DshHostSection />}
 
         <div className="flex w-full flex-col gap-2">
           <div className="flex items-center justify-between gap-3">

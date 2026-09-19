@@ -1,15 +1,11 @@
 import { ConfirmDialog } from "@/components/dialogs";
 import { CLI_DISPLAY_NAMES } from "@/components/foundations/icons/engine-brands";
 import { ProviderDialog } from "./ProviderDialog";
-import {
-  claudeSettingsJson,
-  codexAuthJson,
-  codexConfigToml,
-} from "./providers";
+import { claudeSettingsJson } from "./providers";
 import type { CliConfigState } from "./useCliConfig";
 
 /** Add/edit provider dialog; the stored settingsConfig becomes the initial
- *  editor text for claude (settings.json) and codex (config.toml/auth.json). */
+ *  editor text for the claude settings.json. */
 export function CliProviderDialog({ cli }: { cli: CliConfigState }) {
   const { t, engine, dialog, setDialog, saveProvider } = cli;
   if (!dialog) return null;
@@ -29,9 +25,7 @@ export function CliProviderDialog({ cli }: { cli: CliConfigState }) {
               baseUrl: dialog.entry.baseUrl,
               apiKey: dialog.entry.apiKey,
               model: dialog.entry.model,
-              settingsJson: engine === "claude" ? claudeSettingsJson(dialog.entry.raw) : "",
-              configToml: engine === "codex" ? codexConfigToml(dialog.entry.raw) : "",
-              authJson: engine === "codex" ? codexAuthJson(dialog.entry.raw) : "",
+              settingsJson: claudeSettingsJson(dialog.entry.raw),
             }
           : undefined
       }

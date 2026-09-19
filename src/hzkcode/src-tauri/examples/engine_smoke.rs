@@ -2,7 +2,7 @@
 //! real parse_line, print the event sequence. Verifies spawn args + parsing
 //! against the installed CLIs.
 //!
-//!   cargo run --example engine_smoke -- [claude kimi grok]
+//!   cargo run --example engine_smoke -- [claude]
 
 use hzkcode_lib::engine::{engine_by_id, EngineEvent, SendRequest};
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 async fn main() {
     let engines: Vec<String> = std::env::args().skip(1).collect();
     let engines = if engines.is_empty() {
-        vec!["claude".into(), "kimi".into(), "grok".into()]
+        vec!["claude".into()]
     } else {
         engines
     };
@@ -36,7 +36,6 @@ async fn run_one(engine_id: &str, workspace: &PathBuf) -> Result<(), String> {
         images: Vec::new(),
         model: None,
         effort: None,
-        service_tier: None,
         permission: None,
         additional_dirs: Vec::new(),
         provider_id: None,
@@ -129,6 +128,15 @@ async fn run_one(engine_id: &str, workspace: &PathBuf) -> Result<(), String> {
                 }
                 EngineEvent::PermissionDenied { tool, path, .. } => {
                     println!("  permission denied: tool={tool:?} path={path:?}")
+                }
+                EngineEvent::Question { request_id, .. } => {
+                    println!("  question parked: {request_id}")
+                }
+                EngineEvent::QuestionSettled { request_id } => {
+                    println!("  question settled: {request_id}")
+                }
+                EngineEvent::ControlPermissionDeny { tool_name, .. } => {
+                    println!("  control permission denied: {tool_name}")
                 }
                 EngineEvent::Done { usage, .. } => {
                     println!("  done (usage: {})", usage.is_some());

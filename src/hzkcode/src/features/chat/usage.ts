@@ -55,9 +55,8 @@ function cacheInsideInput(u: Record<string, unknown>): boolean {
   return typeof u.cached_input_tokens === "number";
 }
 
-/** Normalize the per-engine usage shapes (snake_case for claude/codex, bare
- * keys for pi/omp) into one token breakdown. Returns null when no tokens
- * were reported at all. */
+/** Normalize the usage payload's shapes (snake_case or bare keys) into one
+ * token breakdown. Returns null when no tokens were reported at all. */
 export function parseUsage(usage: unknown): ParsedUsage | null {
   const raw = asRecord(usage);
   if (!raw) return null;

@@ -30,13 +30,10 @@ import { ENGINE_IDS, type EngineId } from "./providers";
  * registry's upsert semantics make HMR re-runs harmless.
  */
 
-/** Nav-rail mark for one CLI engine: the rail passes size classes but the
- *  dsh mark is an <img> with an intrinsic px size, so pin it at the rail's
- *  md size. The rail colors every icon foreground-icon-secondary (gray);
- *  the monochrome brand glyphs (kimi/grok/codex/pi follow currentColor)
- *  read as disabled at that shade, so bump them to icon-primary. Image and
- *  gradient marks (claude/dsh/omp) carry their own colors and ignore the
- *  text color either way. */
+/** Nav-rail mark for one CLI engine: the rail colors every icon
+ *  foreground-icon-secondary (gray), which reads as disabled on a brand
+ *  mark, so pin the wrapper at icon-primary. Image and gradient marks
+ *  (claude) carry their own colors and ignore the text color either way. */
 const engineNavIcon = (engine: EngineId): SettingsNavItem["icon"] => {
   const EngineNavIcon = ({ className }: { className?: string }) => (
     <EngineIcon engine={engine} size={20} className={cx(className, "text-foreground-icon-primary")} />

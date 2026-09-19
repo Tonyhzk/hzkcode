@@ -1,4 +1,3 @@
-import { supportsOmpFastMode, type OmpServiceTier } from "@/lib/omp-service-tier";
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
@@ -162,9 +161,6 @@ function CliMenuTrigger({
   engineName,
   model,
   effort,
-  ompServiceTier,
-  codexServiceTier,
-  modelId,
   isOpen,
 }: {
   triggerRef: Ref<HTMLButtonElement>;
@@ -174,17 +170,11 @@ function CliMenuTrigger({
   /** Selected model of the active engine, when it has a model list. */
   model: ModelOption | undefined;
   effort: EffortLevel;
-  ompServiceTier: OmpServiceTier;
-  codexServiceTier: OmpServiceTier;
-  modelId: string;
   /** While open, lock the trigger's min-width so model picks don't shrink it
    *  and nudge the top-end popover. */
   isOpen: boolean;
 }) {
   const { t } = useTranslation();
-  const showFast =
-    (engine === "omp" && supportsOmpFastMode(modelId) && ompServiceTier === "priority") ||
-    (engine === "codex" && codexServiceTier === "priority");
   // Snapshot width on open; clear on close. Shorter model labels then can't
   // shrink the trigger mid-session and slide the popover.
   const lockedMinWidth = useLockedMinWidth(isOpen, triggerRef);
@@ -217,9 +207,6 @@ function CliMenuTrigger({
             </span>
           ))}
         </span>
-        {(engine === "omp" && supportsOmpFastMode(modelId)) || engine === "codex" ? (
-          <span aria-hidden={!showFast} className={cx("w-7 shrink-0 text-center text-text-primary", !showFast && "invisible")}>Fast</span>
-        ) : null}
       </span>
     </AriaButton>
   );
@@ -246,10 +233,6 @@ function EngineMenuBody({
   channelsByEngine,
   selectedChannels,
   onPickChannel,
-  ompServiceTier,
-  onOmpServiceTierChange,
-  codexServiceTier,
-  onCodexServiceTierChange,
   onRefreshModels,
   loadingEngines,
 }: {
@@ -271,10 +254,6 @@ function EngineMenuBody({
   channelsByEngine?: Record<string, ChannelOption[]>;
   selectedChannels?: Record<string, string>;
   onPickChannel?: (engine: string, id: string) => void;
-  ompServiceTier: OmpServiceTier;
-  onOmpServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
-  codexServiceTier: OmpServiceTier;
-  onCodexServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
   onRefreshModels?: () => void | Promise<void>;
   /** Engine ids whose catalog probe has not returned yet. */
   loadingEngines?: readonly string[];
@@ -318,10 +297,6 @@ function EngineMenuBody({
               channels={channelsByEngine?.[flyoutOption.id]}
               selectedChannelId={selectedChannels?.[flyoutOption.id]}
               onPickChannel={onPickChannel}
-              ompServiceTier={ompServiceTier}
-              onOmpServiceTierChange={onOmpServiceTierChange}
-              codexServiceTier={codexServiceTier}
-              onCodexServiceTierChange={onCodexServiceTierChange}
             onRefresh={onRefreshModels}
             loading={loadingEngines?.includes(flyoutOption.id)}
           />
@@ -345,10 +320,6 @@ function EngineModelDialog({
   channelsByEngine,
   selectedChannels,
   onPickChannel,
-  ompServiceTier,
-  onOmpServiceTierChange,
-  codexServiceTier,
-  onCodexServiceTierChange,
   onRefreshModels,
   onClose,
 }: {
@@ -364,10 +335,6 @@ function EngineModelDialog({
   channelsByEngine?: Record<string, ChannelOption[]>;
   selectedChannels?: Record<string, string>;
   onPickChannel?: (engine: string, id: string) => void;
-  ompServiceTier: OmpServiceTier;
-  onOmpServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
-  codexServiceTier: OmpServiceTier;
-  onCodexServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
   onRefreshModels?: () => void | Promise<void>;
   onClose: () => void;
 }) {
@@ -389,10 +356,6 @@ function EngineModelDialog({
         channels={option ? channelsByEngine?.[option.id] : undefined}
         selectedChannelId={option ? selectedChannels?.[option.id] : undefined}
         onPickChannel={onPickChannel}
-        ompServiceTier={ompServiceTier}
-        onOmpServiceTierChange={onOmpServiceTierChange}
-        codexServiceTier={codexServiceTier}
-        onCodexServiceTierChange={onCodexServiceTierChange}
         onRefresh={onRefreshModels}
         onClose={onClose}
       />
@@ -420,10 +383,6 @@ export function CliMenu({
   channelsByEngine,
   selectedChannels,
   onChannelChange,
-  ompServiceTier,
-  onOmpServiceTierChange,
-  codexServiceTier,
-  onCodexServiceTierChange,
   onRefreshModels,
   loadingEngines,
 }: {
@@ -441,10 +400,6 @@ export function CliMenu({
   channelsByEngine?: Record<string, ChannelOption[]>;
   selectedChannels?: Record<string, string>;
   onChannelChange?: (engine: string, id: string) => void;
-  ompServiceTier: OmpServiceTier;
-  onOmpServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
-  codexServiceTier: OmpServiceTier;
-  onCodexServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
   /** Re-probe provider configs and model catalogs (flyout refresh button). */
   onRefreshModels?: () => void | Promise<void>;
   /** Engine ids whose catalog probe has not returned yet (loading hint). */
@@ -548,9 +503,6 @@ export function CliMenu({
         engineName={engineName}
         model={selectedModel}
         effort={triggerEffort}
-        ompServiceTier={ompServiceTier}
-        codexServiceTier={codexServiceTier}
-        modelId={selectedModelId}
         isOpen={isOpen}
       />
 
@@ -579,10 +531,6 @@ export function CliMenu({
             channelsByEngine={channelsByEngine}
             selectedChannels={selectedChannels}
             onPickChannel={pickChannel}
-            ompServiceTier={ompServiceTier}
-            onOmpServiceTierChange={onOmpServiceTierChange}
-            codexServiceTier={codexServiceTier}
-            onCodexServiceTierChange={onCodexServiceTierChange}
             onRefreshModels={onRefreshModels}
             loadingEngines={loadingEngines}
           />
@@ -602,10 +550,6 @@ export function CliMenu({
       channelsByEngine={channelsByEngine}
       selectedChannels={selectedChannels}
       onPickChannel={pickChannel}
-      ompServiceTier={ompServiceTier}
-      onOmpServiceTierChange={onOmpServiceTierChange}
-      codexServiceTier={codexServiceTier}
-      onCodexServiceTierChange={onCodexServiceTierChange}
       onRefreshModels={onRefreshModels}
       onClose={() => setDialogEngine(null)}
     />

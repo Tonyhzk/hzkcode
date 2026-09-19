@@ -1,18 +1,8 @@
 import type { EngineIconId } from "./engine-icon";
 
-/** Brand names stay literal in every locale (Claude Code, Codex CLI, …). */
+/** Brand names stay literal in every locale (Claude Code, …). */
 export const CLI_DISPLAY_NAMES: Record<string, string> = {
   claude: "Claude Code",
-  codex: "Codex CLI",
-  grok: "Grok CLI",
-  kimi: "Kimi CLI",
-  pi: "PI CLI",
-  omp: "OMP CLI",
-  dsh: "DeepSeek Harness",
-  agy: "Antigravity CLI",
-  opencode: "OpenCode",
-  qoder: "Qoder CLI",
-  "qoder-cn": "Qoder CLI CN",
 };
 
 /**

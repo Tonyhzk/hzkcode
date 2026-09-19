@@ -57,7 +57,6 @@ fn build_app(
         emitters: hzkcode_lib::event_sink::BroadcastEmit::new(Arc::new(app.handle().clone())),
         web: hzkcode_lib::web::WebAccessState::default(),
         relay: hzkcode_lib::relay::RelayState::default(),
-        dsh_host: Arc::new(hzkcode_lib::dsh_host::DshHostState::default()),
     };
     app.manage(state);
     app.manage(ConfigStore::default());
@@ -288,7 +287,6 @@ fn ipc_send_message_accepts_camel_case_args() {
         emitters: hzkcode_lib::event_sink::BroadcastEmit::new(Arc::new(app.handle().clone())),
         web: hzkcode_lib::web::WebAccessState::default(),
         relay: hzkcode_lib::relay::RelayState::default(),
-        dsh_host: Arc::new(hzkcode_lib::dsh_host::DshHostState::default()),
     });
     app.manage(ConfigStore::default());
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -318,91 +316,4 @@ fn ipc_send_message_accepts_camel_case_args() {
     let value = body.deserialize::<Value>().unwrap();
     let run_id = value.get("runId").and_then(Value::as_str).unwrap_or("");
     assert!(!run_id.is_empty(), "expected runId in response: {value}");
-}
-
-#[tokio::test]
-#[allow(clippy::await_holding_lock)]
-async fn omp_send_uses_persisted_tier_and_model_without_touching_cli_config() {
-    let _env_guard = ENV_LOCK.lock().unwrap();
-    let home = temp_home("omp-tier");
-    std::fs::create_dir_all(home.join(".hzkcode/gui")).unwrap();
-    let bin_dir = home.join("bin");
-    std::fs::create_dir_all(&bin_dir).unwrap();
-    let script = bin_dir.join("omp");
-    std::fs::write(
-        &script,
-        r#"#!/bin/sh
-printf '%s\n' "$@" > omp-args.txt
-echo '{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"ok"}}'
-echo '{"type":"agent_end"}'
-"#,
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-    std::env::set_var("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()));
-    let workspace = home.join("ws");
-    std::fs::create_dir_all(&workspace).unwrap();
-    let (app, events) = build_app(&home);
-    let mut settings = hzkcode_lib::settings::AppSettings::default();
-    for (model, tier) in [
-        ("openai-codex/gpt-5.4", Some("priority")),
-        ("openai-codex/gpt-5.4", Some("default")),
-        ("openai-codex/gpt-5.4", None),
-        ("openai/gpt-5.4", Some("priority")),
-        ("anthropic/claude", Some("priority")),
-        ("google/gemini", Some("priority")),
-        ("openai-codex/gpt-5.4", Some("priority")),
-    ] {
-        settings.default_models.insert("omp".into(), model.into());
-        settings.omp_openai_service_tier = tier.map(str::to_string);
-        hzkcode_lib::settings::update_app_settings(app.handle().clone(), settings.clone())
-            .unwrap();
-        events.lock().unwrap().clear();
-        engine::send_message(
-            app.state(),
-            "omp".into(),
-            workspace.to_string_lossy().into(),
-            None,
-            "hi".into(),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        loop {
-            if events.lock().unwrap().iter().any(|e| e["kind"] == "done") {
-                break;
-            }
-            assert!(std::time::Instant::now() < deadline, "OMP did not complete");
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        let text = std::fs::read_to_string(workspace.join("omp-args.txt")).unwrap();
-        let args: Vec<_> = text.lines().collect();
-        assert!(args.windows(2).any(|a| a == ["--model", model]));
-        let actual = args
-            .iter()
-            .position(|a| *a == "--service-tier")
-            .map(|i| args[i + 1]);
-        let expected = if model.starts_with("openai-codex/") {
-            tier
-        } else {
-            None
-        };
-        assert_eq!(actual, expected, "model {model}");
-        assert!(events
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|e| e["kind"] == "delta" && e["data"] == "ok"));
-    }
-    assert!(!home.join(".omp/agent/config.yml").exists());
 }

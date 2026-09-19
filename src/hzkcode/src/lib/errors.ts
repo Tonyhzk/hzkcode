@@ -17,9 +17,6 @@ export function errorText(err: unknown): string {
         }
       } catch { /* Preserve malformed/unknown backend errors verbatim. */ }
     }
-    if (text === "Invalid Codex channel config.toml") {
-      return i18n.t("settings.cliCodexConfigInvalid") || text;
-    }
     return text;
   }
   try {

@@ -208,8 +208,8 @@ const pendingStreams = new Map<string, PendingStream>();
 let rafScheduled = false;
 let fallbackScheduled = false;
 
-/** Fold stream parts into the message list in place. omp interleaves the
- *  thinking and text channels within ONE assistant message (GLM emits
+/** Fold stream parts into the message list in place. The CLI interleaves
+ *  the thinking and text channels within ONE assistant message (GLM emits
  *  reasoning deltas between text deltas), so each channel must grow a
  *  single row: appending to the last live row OF THAT ROLE — skipping the
  *  other channel's live row — instead of the last row overall. Text

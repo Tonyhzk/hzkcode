@@ -16,7 +16,6 @@ import {
   PSEUDO_LOCAL,
   notifyCliConfigChanged,
   providerEntries,
-  stripConventionEnv,
   type EngineId,
   type ProviderEntry,
 } from "./providers";
@@ -36,7 +35,7 @@ export interface CliConfigState {
   setDialog: Dispatch<SetStateAction<DialogState>>;
   pendingDelete: ProviderEntry | null;
   setPendingDelete: Dispatch<SetStateAction<ProviderEntry | null>>;
-  /** 官方配置 edit dialog open state (claude/codex/kimi/grok only). */
+  /** 官方配置 edit dialog open state. */
   officialEditing: boolean;
   setOfficialEditing: Dispatch<SetStateAction<boolean>>;
   /** Save the edited official files; returns the error message (dialog
@@ -134,19 +133,11 @@ export function useCliConfig(engine: EngineId): CliConfigState {
       dialog?.entry?.raw && typeof dialog.entry.raw === "object"
         ? (dialog.entry.raw as Record<string, unknown>)
         : {};
-    let next: Record<string, unknown>;
-    if (engine === "claude" || engine === "codex") {
-      // The claude/codex dialogs own env/settingsConfig outright (JSON and
-      // TOML editors); unknown top-level keys (source, customModels, …)
-      // survive.
-      next = { ...rawObj };
-      for (const key of ["name", "remark", "baseUrl", "apiKey", "model", "settingsConfig", "env"]) {
-        delete next[key];
-      }
-    } else {
-      // stripConventionEnv keeps unknown fields (source, customModels, …), so
-      // editing a cc-switch-imported channel preserves its origin marker.
-      next = dialog?.entry ? stripConventionEnv(engine, rawObj) : {};
+    // The dialog owns env/settingsConfig outright (JSON editor); unknown
+    // top-level keys (source, customModels, …) survive.
+    const next: Record<string, unknown> = { ...rawObj };
+    for (const key of ["name", "remark", "baseUrl", "apiKey", "model", "settingsConfig", "env"]) {
+      delete next[key];
     }
     const put = (key: string, val: string) => {
       const trimmed = val.trim();
@@ -156,39 +147,15 @@ export function useCliConfig(engine: EngineId): CliConfigState {
     put("remark", value.remark);
     put("baseUrl", value.baseUrl);
     put("apiKey", value.apiKey);
-    if (engine === "claude") {
-      // The JSON editor is the source of truth for env; the flat `model`
-      // field is migrated into it (ANTHROPIC_MODEL) at dialog open.
-      try {
-        const parsed: unknown = JSON.parse(value.settingsJson || "{}");
-        if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
-          next.settingsConfig = parsed;
-        }
-      } catch {
-        // The dialog blocks submit on invalid JSON.
+    // The JSON editor is the source of truth for env; the flat `model`
+    // field is migrated into it (ANTHROPIC_MODEL) at dialog open.
+    try {
+      const parsed: unknown = JSON.parse(value.settingsJson || "{}");
+      if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+        next.settingsConfig = parsed;
       }
-    } else if (engine === "codex") {
-      put("model", value.model);
-      // The TOML/auth editors own settingsConfig.config/auth; other keys a
-      // cc-switch import may have added survive.
-      const sc: Record<string, unknown> = {};
-      const prevSc = rawObj.settingsConfig;
-      if (prevSc && typeof prevSc === "object") {
-        for (const [k, v] of Object.entries(prevSc)) {
-          if (k !== "config" && k !== "auth") sc[k] = v;
-        }
-      }
-      if (value.configToml.trim()) sc.config = value.configToml.trim();
-      if (value.authJson.trim()) {
-        try {
-          sc.auth = JSON.parse(value.authJson);
-        } catch {
-          // The dialog blocks submit on invalid JSON.
-        }
-      }
-      if (Object.keys(sc).length > 0) next.settingsConfig = sc;
-    } else {
-      put("model", value.model);
+    } catch {
+      // The dialog blocks submit on invalid JSON.
     }
     const id = dialog?.entry?.id ?? newId();
     setDialog(null);

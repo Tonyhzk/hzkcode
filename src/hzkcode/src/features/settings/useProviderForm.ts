@@ -4,17 +4,10 @@ import { ipc } from "@/lib/ipc";
 import type { EngineId } from "./providers";
 import type { ProviderFormValue } from "./ProviderDialog";
 import {
-  DEFAULT_CODEX_AUTH_JSON,
   OFFICIAL_BASE_URL,
-  OFFICIAL_CODEX_BASE_URL,
-  OFFICIAL_CODEX_CONFIG_TOML,
   PRESETS,
-  authJsonApiKey,
-  buildCodexConfigToml,
   claudeTemplateJson,
   findMatchedPreset,
-  tomlBaseUrl,
-  tomlModel,
   type ClaudeModelSlot,
   type ProviderPreset,
 } from "./providerPresets";
@@ -26,53 +19,31 @@ const EMPTY_FORM: ProviderFormValue = {
   apiKey: "",
   model: "",
   settingsJson: "",
-  configToml: "",
-  authJson: "",
 };
 
 const EMPTY_SLOTS: Record<ClaudeModelSlot, string> = { fable: "", sonnet: "", opus: "", haiku: "" };
 
-/** Initial form state per engine. Claude seeds the JSON editor from the
- *  stored settingsConfig (edit), the flat fields (legacy channels), or the
- *  official-direct template (add); codex seeds config.toml/auth.json the
- *  same way. */
-function initialForm(engine: EngineId, initial?: ProviderFormValue): ProviderFormValue {
+/** Initial form state: seed the JSON editor from the stored settingsConfig
+ *  (edit), the flat fields (legacy channels), or the official-direct
+ *  template (add). */
+function initialForm(initial?: ProviderFormValue): ProviderFormValue {
   const base: ProviderFormValue = { ...EMPTY_FORM, ...initial };
-  if (engine === "claude") {
-    if (base.settingsJson.trim()) return base;
-    if (initial) {
-      // Legacy flat channel: migrate its fields into the default template.
-      const extra: Record<string, string> = {};
-      if (base.model.trim()) extra.ANTHROPIC_MODEL = base.model.trim();
-      return {
-        ...base,
-        settingsJson: claudeTemplateJson(base.baseUrl.trim(), base.apiKey.trim(), extra),
-      };
-    }
-    // New channel: official direct selected, matching the reference dialog.
+  if (base.settingsJson.trim()) return base;
+  if (initial) {
+    // Legacy flat channel: migrate its fields into the default template.
+    const extra: Record<string, string> = {};
+    if (base.model.trim()) extra.ANTHROPIC_MODEL = base.model.trim();
     return {
       ...base,
-      baseUrl: OFFICIAL_BASE_URL,
-      settingsJson: claudeTemplateJson(OFFICIAL_BASE_URL, ""),
+      settingsJson: claudeTemplateJson(base.baseUrl.trim(), base.apiKey.trim(), extra),
     };
   }
-  if (engine === "codex") {
-    return {
-      ...base,
-      configToml: base.configToml.trim()
-        ? base.configToml
-        : initial
-          ? buildCodexConfigToml(
-              "hzkcode",
-              base.baseUrl.trim() || "https://api.example.com/v1",
-              base.model.trim() || "gpt-5.1-codex",
-              "chat",
-            )
-          : OFFICIAL_CODEX_CONFIG_TOML,
-      authJson: base.authJson.trim() ? base.authJson : DEFAULT_CODEX_AUTH_JSON,
-    };
-  }
-  return base;
+  // New channel: official direct selected, matching the reference dialog.
+  return {
+    ...base,
+    baseUrl: OFFICIAL_BASE_URL,
+    settingsJson: claudeTemplateJson(OFFICIAL_BASE_URL, ""),
+  };
 }
 
 /** Claude model-slot values parsed out of a settings.json text. */
@@ -99,8 +70,8 @@ function slotsFromJson(settingsJson: string): Record<ClaudeModelSlot, string> {
 /**
  * Form state + mutations for ProviderDialog: the flat ProviderFormValue, the
  * claude model slots mirrored into the JSON editor both ways, preset
- * selection, 拉取模型, and the per-engine validity/submit mapping. The dialog
- * component itself only wires these into the section components.
+ * selection, 拉取模型, and validity/submit mapping. The dialog component
+ * itself only wires these into the section components.
  */
 export function useProviderForm({
   engine,
@@ -112,16 +83,13 @@ export function useProviderForm({
   onSubmit: (value: ProviderFormValue) => void;
 }): ProviderForm {
   const { t } = useTranslation();
-  const isClaude = engine === "claude";
-  const isCodex = engine === "codex";
-  const [value, setValue] = useState<ProviderFormValue>(() => initialForm(engine, initial));
+  const [value, setValue] = useState<ProviderFormValue>(() => initialForm(initial));
   // Model slots start empty on add (the template's env carries the defaults,
   // same as the reference); on edit they mirror the stored settings.json.
   const [slots, setSlots] = useState<Record<ClaudeModelSlot, string>>(() =>
-    isClaude && initial?.settingsJson ? slotsFromJson(initial.settingsJson) : { ...EMPTY_SLOTS },
+    initial?.settingsJson ? slotsFromJson(initial.settingsJson) : { ...EMPTY_SLOTS },
   );
   const [jsonError, setJsonError] = useState("");
-  const [authError, setAuthError] = useState("");
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
@@ -129,7 +97,7 @@ export function useProviderForm({
   const presets = PRESETS[engine] ?? [];
   const patch = (p: Partial<ProviderFormValue>) => setValue((v) => ({ ...v, ...p }));
 
-  // ── claude JSON <-> field sync ────────────────────────────────────────────
+  // ── JSON <-> field sync ───────────────────────────────────────────────────
 
   /** Write one env key into the JSON editor's text. A text the user broke
    *  (invalid JSON) is left untouched — the editor error is already shown. */
@@ -188,86 +156,45 @@ export function useProviderForm({
     }
   };
 
-  const handleFormatAuthJson = () => {
-    try {
-      patch({ authJson: JSON.stringify(JSON.parse(value.authJson), null, 2) });
-      setAuthError("");
-    } catch {
-      setAuthError(t("settings.cliAuthJsonError"));
-    }
-  };
-
   // ── presets ───────────────────────────────────────────────────────────────
 
   const selectPreset = (preset: ProviderPreset) => {
-    if (isClaude) {
-      const slotEnv = preset.env ?? {};
-      setSlots({
-        fable: slotEnv.ANTHROPIC_DEFAULT_FABLE_MODEL ?? "",
-        sonnet: slotEnv.ANTHROPIC_DEFAULT_SONNET_MODEL ?? "",
-        opus: slotEnv.ANTHROPIC_DEFAULT_OPUS_MODEL ?? "",
-        haiku: slotEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? "",
-      });
-      setValue((v) => ({
-        ...v,
-        name: preset.name,
-        baseUrl: preset.baseUrl,
-        settingsJson: claudeTemplateJson(preset.baseUrl, v.apiKey.trim(), slotEnv),
-      }));
-      setJsonError("");
-    } else if (isCodex) {
-      setValue((v) => ({
-        ...v,
-        name: preset.name,
-        configToml: buildCodexConfigToml(
-          preset.name,
-          preset.baseUrl,
-          preset.model || "gpt-5.1-codex",
-          preset.wireApi ?? "chat",
-        ),
-      }));
-    } else {
-      setValue((v) => ({ ...v, name: preset.name, baseUrl: preset.baseUrl, model: preset.model }));
-    }
+    const slotEnv = preset.env ?? {};
+    setSlots({
+      fable: slotEnv.ANTHROPIC_DEFAULT_FABLE_MODEL ?? "",
+      sonnet: slotEnv.ANTHROPIC_DEFAULT_SONNET_MODEL ?? "",
+      opus: slotEnv.ANTHROPIC_DEFAULT_OPUS_MODEL ?? "",
+      haiku: slotEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? "",
+    });
+    setValue((v) => ({
+      ...v,
+      name: preset.name,
+      baseUrl: preset.baseUrl,
+      settingsJson: claudeTemplateJson(preset.baseUrl, v.apiKey.trim(), slotEnv),
+    }));
+    setJsonError("");
     resetFetch();
   };
 
   const selectOfficial = () => {
-    if (isClaude) {
-      setSlots({ ...EMPTY_SLOTS });
-      setValue((v) => ({
-        ...v,
-        baseUrl: OFFICIAL_BASE_URL,
-        settingsJson: claudeTemplateJson(OFFICIAL_BASE_URL, v.apiKey.trim()),
-      }));
-      setJsonError("");
-    } else if (isCodex) {
-      patch({ configToml: OFFICIAL_CODEX_CONFIG_TOML });
-    }
+    setSlots({ ...EMPTY_SLOTS });
+    setValue((v) => ({
+      ...v,
+      baseUrl: OFFICIAL_BASE_URL,
+      settingsJson: claudeTemplateJson(OFFICIAL_BASE_URL, v.apiKey.trim()),
+    }));
+    setJsonError("");
     resetFetch();
   };
 
   const selectCustom = () => {
-    if (isClaude) {
-      setSlots({ ...EMPTY_SLOTS });
-      setValue((v) => ({
-        ...v,
-        baseUrl: "",
-        settingsJson: claudeTemplateJson("", v.apiKey.trim()),
-      }));
-      setJsonError("");
-    } else if (isCodex) {
-      patch({
-        configToml: buildCodexConfigToml(
-          "custom",
-          "https://api.example.com/v1",
-          "gpt-5.1-codex",
-          "responses",
-        ),
-      });
-    } else {
-      patch({ baseUrl: "" });
-    }
+    setSlots({ ...EMPTY_SLOTS });
+    setValue((v) => ({
+      ...v,
+      baseUrl: "",
+      settingsJson: claudeTemplateJson("", v.apiKey.trim()),
+    }));
+    setJsonError("");
     resetFetch();
   };
 
@@ -279,8 +206,8 @@ export function useProviderForm({
   }
 
   const handleFetchModels = async () => {
-    const baseUrl = isCodex ? tomlBaseUrl(value.configToml) : value.baseUrl.trim();
-    const apiKey = isCodex ? authJsonApiKey(value.authJson) : value.apiKey;
+    const baseUrl = value.baseUrl.trim();
+    const apiKey = value.apiKey;
     if (!baseUrl) {
       setFetchError(t("settings.cliFetchModelsNeedUrl"));
       return;
@@ -301,18 +228,10 @@ export function useProviderForm({
 
   // ── validity & submit ─────────────────────────────────────────────────────
 
-  const official = isClaude
-    ? value.baseUrl === OFFICIAL_BASE_URL
-    : isCodex
-      ? tomlBaseUrl(value.configToml) === OFFICIAL_CODEX_BASE_URL
-      : false;
-  const matchedPreset = findMatchedPreset(
-    presets,
-    isCodex ? tomlBaseUrl(value.configToml) : value.baseUrl,
-  );
+  const official = value.baseUrl === OFFICIAL_BASE_URL;
+  const matchedPreset = findMatchedPreset(presets, value.baseUrl);
 
   const jsonValid = (() => {
-    if (!isClaude) return true;
     try {
       JSON.parse(value.settingsJson || "{}");
       return true;
@@ -320,34 +239,10 @@ export function useProviderForm({
       return false;
     }
   })();
-  const authValid = (() => {
-    if (!isCodex || !value.authJson.trim()) return true;
-    try {
-      JSON.parse(value.authJson);
-      return true;
-    } catch {
-      return false;
-    }
-  })();
-  const valid =
-    value.name.trim() !== "" &&
-    (isCodex ? value.configToml.trim() !== "" : value.baseUrl.trim() !== "") &&
-    jsonValid &&
-    authValid;
+  const valid = value.name.trim() !== "" && value.baseUrl.trim() !== "" && jsonValid;
 
   const submit = () => {
     if (!valid) return;
-    if (isCodex) {
-      // Flat mirrors for the row display and model picker; the backend
-      // applies the TOML/auth.json themselves.
-      onSubmit({
-        ...value,
-        baseUrl: tomlBaseUrl(value.configToml),
-        apiKey: authJsonApiKey(value.authJson),
-        model: tomlModel(value.configToml),
-      });
-      return;
-    }
     onSubmit(value);
   };
 
@@ -357,8 +252,6 @@ export function useProviderForm({
     slots,
     setSlots,
     jsonError,
-    authError,
-    setAuthError,
     fetchedModels,
     fetching,
     fetchError,
@@ -366,12 +259,10 @@ export function useProviderForm({
     official,
     matchedPreset,
     jsonValid,
-    authValid,
     valid,
     updateClaudeEnv,
     onJsonChange,
     handleFormatJson,
-    handleFormatAuthJson,
     selectPreset,
     selectOfficial,
     selectCustom,
@@ -388,8 +279,6 @@ export interface ProviderForm {
   slots: Record<ClaudeModelSlot, string>;
   setSlots: Dispatch<SetStateAction<Record<ClaudeModelSlot, string>>>;
   jsonError: string;
-  authError: string;
-  setAuthError: Dispatch<SetStateAction<string>>;
   fetchedModels: string[];
   fetching: boolean;
   fetchError: string;
@@ -397,12 +286,10 @@ export interface ProviderForm {
   official: boolean;
   matchedPreset: ProviderPreset | undefined;
   jsonValid: boolean;
-  authValid: boolean;
   valid: boolean;
   updateClaudeEnv: (key: string, val: string) => void;
   onJsonChange: (text: string) => void;
   handleFormatJson: () => void;
-  handleFormatAuthJson: () => void;
   selectPreset: (preset: ProviderPreset) => void;
   selectOfficial: () => void;
   selectCustom: () => void;

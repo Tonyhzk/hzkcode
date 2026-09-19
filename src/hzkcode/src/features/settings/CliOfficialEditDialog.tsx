@@ -1,8 +1,7 @@
 /**
  * 编辑官方配置 dialog: one raw-text pane per native config file of the
- * engine's 官方配置 (claude settings.json; codex config.toml + auth.json;
- * kimi/grok config.toml). Panes come from `official_config_read`, so the
- * frontend never hardcodes paths or formats.
+ * engine's 官方配置 (claude settings.json). Panes come from
+ * `official_config_read`, so the frontend never hardcodes paths or formats.
  *
  * The backend retires known legacy channel writes before reading these
  * files; migration conflicts are shown without overwriting either copy.

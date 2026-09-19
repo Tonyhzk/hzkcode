@@ -1,10 +1,9 @@
 use base64::Engine as _;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-/// Pasted clipboard images arrive as bytes with no path; every engine consumes
-/// real files (codex `-i`, kimi path injection, pi/omp `@file`), so persist
-/// them under app home and hand back the absolute path. Mirrors the 8MB cap
-/// `load_image` enforces on read.
+/// Pasted clipboard images arrive as bytes with no path; the CLI consumes
+/// real files, so persist them under app home and hand back the absolute
+/// path. Mirrors the 8MB cap `load_image` enforces on read.
 const MAX_PASTED_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 const PASTED_IMAGE_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
 
@@ -243,61 +242,4 @@ pub fn claude_stdin_message(
         "message": { "role": "user", "content": content }
     });
     serde_json::to_string(&message).map_err(|e| e.to_string())
-}
-
-/// Kimi image injection: absolute path tags the CLI reads via ReadMediaFile.
-/// Marker lets history parsing strip the instruction block.
-pub const KIMI_IMAGE_MARKER: &str = "\n\n<!-- hzkcode:kimi-image-attachments -->\n";
-
-pub fn kimi_prompt_with_images(prompt: &str, images: &[String], workspace: &Path) -> String {
-    let paths: Vec<PathBuf> = images
-        .iter()
-        .filter_map(|raw| absolutize_image_path(raw, workspace))
-        .collect();
-    if paths.is_empty() {
-        return prompt.to_string();
-    }
-    let mut out = prompt.trim_end().to_string();
-    out.push_str(KIMI_IMAGE_MARKER);
-    out.push_str("The user attached the following image file(s). ");
-    out.push_str("You MUST call ReadMediaFile on each path below before answering any question about visual content.\n");
-    for (index, path) in paths.iter().enumerate() {
-        out.push_str(&format!("{}. {}\n", index + 1, path.display()));
-        out.push_str(&format!("<image path=\"{}\"></image>\n", path.display()));
-    }
-    out
-}
-
-/// Grok ACP content blocks for `--prompt-file`; None when no images.
-pub fn grok_prompt_json(
-    prompt: &str,
-    images: &[String],
-    workspace: &Path,
-) -> Result<Option<String>, String> {
-    if images.iter().all(|i| i.trim().is_empty()) {
-        return Ok(None);
-    }
-    let mut blocks: Vec<Value> = Vec::new();
-    if !prompt.trim().is_empty() {
-        blocks.push(json!({ "type": "text", "text": prompt }));
-    }
-    for raw in images {
-        if raw.trim().is_empty() {
-            continue;
-        }
-        let (mime, data) = load_image(raw, workspace)?;
-        blocks.push(json!({ "type": "image", "mimeType": mime, "data": data }));
-    }
-    if blocks
-        .iter()
-        .all(|b| b.get("type").and_then(Value::as_str) != Some("text"))
-    {
-        blocks.insert(
-            0,
-            json!({ "type": "text", "text": "Please analyze the attached image(s)." }),
-        );
-    }
-    serde_json::to_string(&blocks)
-        .map(Some)
-        .map_err(|e| e.to_string())
 }

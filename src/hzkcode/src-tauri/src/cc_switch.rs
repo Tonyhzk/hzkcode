@@ -21,18 +21,16 @@ use crate::config::{self, ConfigStore};
 use crate::paths;
 
 /// Our engine id -> cc-switch app key (legacy json `apps` key / db
-/// `app_type`). Engines cc-switch doesn't manage (kimi/pi/omp/dsh) have no
-/// mapping and are skipped on import.
+/// `app_type`). Engines cc-switch doesn't manage have no mapping and are
+/// skipped on import.
 fn ccs_app_key(engine: &str) -> Option<&'static str> {
     match engine {
         "claude" => Some("claude"),
-        "codex" => Some("codex"),
-        "grok" => Some("grokbuild"),
         _ => None,
     }
 }
 
-const IMPORT_ENGINES: [&str; 3] = ["claude", "codex", "grok"];
+const IMPORT_ENGINES: [&str; 1] = ["claude"];
 
 fn ccs_dir() -> PathBuf {
     dirs::home_dir()
@@ -328,18 +326,14 @@ fn convert_provider(engine: &str, id: &str, p: &Value) -> Value {
 
     let sc = &p["settingsConfig"];
     match engine {
-        // Claude/Grok: convention fields live in settingsConfig.env.
-        "claude" | "grok" => {
+        // Convention fields live in settingsConfig.env.
+        "claude" => {
             let env = &sc["env"];
-            let (base, key, model) = if engine == "claude" {
-                (
-                    "ANTHROPIC_BASE_URL",
-                    "ANTHROPIC_AUTH_TOKEN",
-                    "ANTHROPIC_MODEL",
-                )
-            } else {
-                ("GROK_BASE_URL", "GROK_API_KEY", "GROK_MODEL")
-            };
+            let (base, key, model) = (
+                "ANTHROPIC_BASE_URL",
+                "ANTHROPIC_AUTH_TOKEN",
+                "ANTHROPIC_MODEL",
+            );
             if let Some(v) = env_str(env, base) {
                 out.insert("baseUrl".into(), Value::String(v));
             }
@@ -348,28 +342,6 @@ fn convert_provider(engine: &str, id: &str, p: &Value) -> Value {
             }
             if let Some(v) = env_str(env, model) {
                 out.insert("model".into(), Value::String(v));
-            }
-        }
-        // Codex: { auth: { OPENAI_API_KEY }, config: <config.toml text> }.
-        "codex" => {
-            if let Some(v) = env_str(&sc["auth"], "OPENAI_API_KEY") {
-                out.insert("apiKey".into(), Value::String(v));
-            }
-            if let Some(toml_text) = sc["config"].as_str() {
-                if let Ok(tbl) = toml::from_str::<Value>(toml_text) {
-                    if let Some(m) = tbl["model"].as_str() {
-                        out.insert("model".into(), Value::String(m.to_string()));
-                    }
-                    // First model_providers.*.base_url wins.
-                    if let Some(providers) = tbl["model_providers"].as_object() {
-                        for mp in providers.values() {
-                            if let Some(u) = mp["base_url"].as_str() {
-                                out.insert("baseUrl".into(), Value::String(u.to_string()));
-                                break;
-                            }
-                        }
-                    }
-                }
             }
         }
         _ => {}
@@ -538,35 +510,38 @@ mod tests {
               "providers": {
                 "p1": { "name": "Map Entry", "settingsConfig": { "env": { "ANTHROPIC_BASE_URL": "https://a.example" } } }
               }
-            },
-            "codex": {
-              "providers": [
-                { "id": "p2", "name": "Array Entry", "settingsConfig": { "auth": { "OPENAI_API_KEY": "sk-x" }, "config": "model = \"gpt-x\"\n[model_providers.foo]\nbase_url = \"https://b.example/v1\"" } }
-              ]
             }
           }
         }"#;
         std::fs::write(&path, json).unwrap();
 
-        let loaded = load_from_json(&path, &["claude", "codex", "grok"]).unwrap();
-        assert_eq!(loaded.len(), 3);
+        let loaded = load_from_json(&path, &["claude"]).unwrap();
+        assert_eq!(loaded.len(), 1);
         let claude = loaded[0].1.as_ref().unwrap();
         assert_eq!(claude.len(), 1);
         assert_eq!(claude[0].0, "p1");
-        let codex = loaded[1].1.as_ref().unwrap();
-        assert_eq!(codex.len(), 1);
-        assert_eq!(codex[0].0, "p2");
-        // grokbuild section absent → None (no import, no prune).
-        assert!(loaded[2].1.is_none());
-
-        // Flat fields extract through convert_provider for both shapes.
         let converted = convert_provider("claude", "p1", &claude[0].1);
         assert_eq!(converted["baseUrl"], "https://a.example");
         assert_eq!(converted["source"], "cc-switch");
-        let converted = convert_provider("codex", "p2", &codex[0].1);
-        assert_eq!(converted["apiKey"], "sk-x");
-        assert_eq!(converted["baseUrl"], "https://b.example/v1");
-        assert_eq!(converted["model"], "gpt-x");
+
+        // Array shape: entries carry their own id.
+        let path = dir.join("config-array.json");
+        let json = r#"{
+          "apps": {
+            "claude": {
+              "providers": [
+                { "id": "p2", "name": "Array Entry", "settingsConfig": { "env": { "ANTHROPIC_MODEL": "m-2" } } }
+              ]
+            }
+          }
+        }"#;
+        std::fs::write(&path, json).unwrap();
+        let loaded = load_from_json(&path, &["claude"]).unwrap();
+        let claude = loaded[0].1.as_ref().unwrap();
+        assert_eq!(claude.len(), 1);
+        assert_eq!(claude[0].0, "p2");
+        let converted = convert_provider("claude", "p2", &claude[0].1);
+        assert_eq!(converted["model"], "m-2");
     }
 
     #[test]
@@ -606,7 +581,7 @@ mod tests {
         // Corrupt row still imports, with an empty settingsConfig.
         assert!(claude[1].1["settingsConfig"].is_object());
         // Unmapped engine → None.
-        let loaded = load_from_db(&path, &["kimi"]).unwrap();
+        let loaded = load_from_db(&path, &["unknown-engine"]).unwrap();
         assert!(loaded[0].1.is_none());
     }
 }

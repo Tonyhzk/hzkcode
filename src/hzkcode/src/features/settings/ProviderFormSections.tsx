@@ -36,8 +36,8 @@ function PresetIcon({ preset }: { preset: ProviderPreset }) {
   );
 }
 
-/** Official direct-connection card (claude/codex); selecting it pins the
- *  channel to the vendor's own endpoint. */
+/** Official direct-connection card: selecting it pins the channel to the
+ *  vendor's own endpoint. */
 function OfficialPresetSection({
   engine,
   official,
@@ -48,7 +48,6 @@ function OfficialPresetSection({
   onSelect: () => void;
 }) {
   const { t } = useTranslation();
-  const isClaude = engine === "claude";
   return (
     <div className="flex flex-col gap-2">
       <p className="text-body-2-medium text-text-secondary">
@@ -70,12 +69,10 @@ function OfficialPresetSection({
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-body-medium text-text-primary">
-            {isClaude ? t("settings.cliOfficialPreset") : t("settings.cliCodexOfficialPreset")}
+            {t("settings.cliOfficialPreset")}
           </span>
           <span className="text-body-2-regular text-text-secondary">
-            {isClaude
-              ? t("settings.cliOfficialPresetDesc")
-              : t("settings.cliCodexOfficialPresetDesc")}
+            {t("settings.cliOfficialPresetDesc")}
           </span>
         </span>
       </button>
@@ -86,14 +83,12 @@ function OfficialPresetSection({
 /** Third-party relay preset grid, plus the 自定义配置 escape hatch that
  *  unlocks the URL without prefilling anything. */
 function ProxyPresetSection({
-  engine,
   presets,
   official,
   matchedPreset,
   onSelectCustom,
   onSelectPreset,
 }: {
-  engine: EngineId;
   presets: ProviderPreset[];
   official: boolean;
   matchedPreset: ProviderPreset | undefined;
@@ -143,11 +138,9 @@ function ProxyPresetSection({
           </button>
         ))}
       </div>
-      {engine === "claude" && (
-        <p className="text-body-2-regular text-text-tertiary">
-          {t("settings.cliProxyHint")}
-        </p>
-      )}
+      <p className="text-body-2-regular text-text-tertiary">
+        {t("settings.cliProxyHint")}
+      </p>
     </div>
   );
 }
@@ -189,7 +182,7 @@ function FetchModelsControl({
   );
 }
 
-/** Official card (claude/codex only) plus the relay preset grid. */
+/** Official card plus the relay preset grid. */
 export function ProviderPresetSections({
   engine,
   form,
@@ -197,20 +190,15 @@ export function ProviderPresetSections({
   engine: EngineId;
   form: ProviderForm;
 }) {
-  const isClaude = engine === "claude";
-  const isCodex = engine === "codex";
   return (
     <>
-      {(isClaude || isCodex) && (
-        <OfficialPresetSection
-          engine={engine}
-          official={form.official}
-          onSelect={form.selectOfficial}
-        />
-      )}
+      <OfficialPresetSection
+        engine={engine}
+        official={form.official}
+        onSelect={form.selectOfficial}
+      />
       {form.presets.length > 0 && (
         <ProxyPresetSection
-          engine={engine}
           presets={form.presets}
           official={form.official}
           matchedPreset={form.matchedPreset}
@@ -222,19 +210,10 @@ export function ProviderPresetSections({
   );
 }
 
-/** name/remark plus the flat URL/key pair (hidden for codex, which edits
- *  config.toml/auth.json instead). The claude fields mirror every keystroke
- *  into the JSON editor's env. */
-export function ProviderBasicFields({
-  engine,
-  form,
-}: {
-  engine: EngineId;
-  form: ProviderForm;
-}) {
+/** name/remark plus the flat URL/key pair. Both fields mirror every
+ *  keystroke into the JSON editor's env. */
+export function ProviderBasicFields({ form }: { form: ProviderForm }) {
   const { t } = useTranslation();
-  const isClaude = engine === "claude";
-  const isCodex = engine === "codex";
   const [showKey, setShowKey] = useState(false);
   const { value, patch } = form;
   return (
@@ -255,65 +234,53 @@ export function ProviderBasicFields({
         value={value.remark}
         onChange={(remark) => patch({ remark })}
       />
-      {!isCodex && (
+      <Input
+        label={t("settings.cliBaseUrl")}
+        isRequired
+        size="small"
+        placeholder="https://…"
+        value={value.baseUrl}
+        onChange={(baseUrl) => {
+          patch({ baseUrl });
+          form.updateClaudeEnv("ANTHROPIC_BASE_URL", baseUrl);
+        }}
+        isDisabled={form.official}
+      />
+      <div className="relative">
         <Input
-          label={t("settings.cliBaseUrl")}
+          label={t("settings.cliApiKey")}
           isRequired
           size="small"
-          placeholder="https://…"
-          value={value.baseUrl}
-          onChange={(baseUrl) => {
-            patch({ baseUrl });
-            if (isClaude) form.updateClaudeEnv("ANTHROPIC_BASE_URL", baseUrl);
+          type={showKey ? "text" : "password"}
+          placeholder="sk-ant-..."
+          value={value.apiKey}
+          onChange={(apiKey) => {
+            patch({ apiKey });
+            form.updateClaudeEnv("ANTHROPIC_AUTH_TOKEN", apiKey);
           }}
-          isDisabled={form.official}
+          fieldClassName="pr-8"
         />
-      )}
-      {!isCodex && (
-        <div className="relative">
-          <Input
-            label={t("settings.cliApiKey")}
-            isRequired
-            size="small"
-            type={showKey ? "text" : "password"}
-            placeholder={isClaude ? "sk-ant-..." : "…"}
-            value={value.apiKey}
-            onChange={(apiKey) => {
-              patch({ apiKey });
-              if (isClaude) form.updateClaudeEnv("ANTHROPIC_AUTH_TOKEN", apiKey);
-            }}
-            fieldClassName="pr-8"
-          />
-          <button
-            type="button"
-            aria-label={t("settings.cliApiKey")}
-            onClick={() => setShowKey((s) => !s)}
-            className="absolute right-2 bottom-1.5 flex size-5 items-center justify-center rounded text-foreground-icon-tertiary hover:text-foreground-icon-primary"
-          >
-            {showKey ? (
-              <EyeOff className="size-4" aria-hidden />
-            ) : (
-              <Eye className="size-4" aria-hidden />
-            )}
-          </button>
-        </div>
-      )}
+        <button
+          type="button"
+          aria-label={t("settings.cliApiKey")}
+          onClick={() => setShowKey((s) => !s)}
+          className="absolute right-2 bottom-1.5 flex size-5 items-center justify-center rounded text-foreground-icon-tertiary hover:text-foreground-icon-primary"
+        >
+          {showKey ? (
+            <EyeOff className="size-4" aria-hidden />
+          ) : (
+            <Eye className="size-4" aria-hidden />
+          )}
+        </button>
+      </div>
     </div>
   );
 }
 
-/** Claude-only blocks: relay warning, 模型映射 slot inputs, and the
- *  collapsible JSON 配置 editor. */
-export function ClaudeFormSections({
-  engine,
-  form,
-}: {
-  engine: EngineId;
-  form: ProviderForm;
-}) {
+/** Relay warning, 模型映射 slot inputs, and the collapsible JSON 配置 editor. */
+export function ClaudeFormSections({ form }: { form: ProviderForm }) {
   const { t } = useTranslation();
   const [jsonOpen, setJsonOpen] = useState(true);
-  if (engine !== "claude") return null;
   const { value, slots, setSlots } = form;
   return (
     <>
@@ -403,97 +370,6 @@ export function ClaudeFormSections({
             />
           </>
         )}
-      </div>
-    </>
-  );
-}
-
-/** Flat engines (kimi/grok/pi/omp/dsh): 拉取模型 plus the model input fed by
- *  the shared datalist. */
-export function FlatModelSection({
-  engine,
-  form,
-}: {
-  engine: EngineId;
-  form: ProviderForm;
-}) {
-  const { t } = useTranslation();
-  if (engine === "claude" || engine === "codex") return null;
-  return (
-    <div className="flex flex-col gap-2">
-      <FetchModelsControl
-        fetching={form.fetching}
-        error={form.fetchError}
-        count={form.fetchedModels.length}
-        disabled={!form.value.baseUrl.trim()}
-        onFetch={() => void form.handleFetchModels()}
-      />
-      <datalist id={FETCH_DATALIST_ID}>
-        {form.fetchedModels.map((model) => (
-          <option key={model} value={model} />
-        ))}
-      </datalist>
-      <Input
-        label={t("settings.cliModel")}
-        size="small"
-        list={FETCH_DATALIST_ID}
-        value={form.value.model}
-        onChange={(model) => form.patch({ model })}
-      />
-    </div>
-  );
-}
-
-/** Codex-only editors: config.toml plus auth.json with its format button. */
-export function CodexFormSections({
-  engine,
-  form,
-}: {
-  engine: EngineId;
-  form: ProviderForm;
-}) {
-  const { t } = useTranslation();
-  if (engine !== "codex") return null;
-  const { value, patch } = form;
-  return (
-    <>
-      <TextArea
-        mono
-        rows={10}
-        spellCheck={false}
-        label={t("settings.cliConfigToml")}
-        hint={t("settings.cliConfigTomlHint")}
-        value={value.configToml}
-        onChange={(configToml) => patch({ configToml })}
-        inputClassName="whitespace-pre"
-      />
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-body-medium text-text-primary">
-            {t("settings.cliAuthJson")}
-          </p>
-          <button
-            type="button"
-            onClick={form.handleFormatAuthJson}
-            className="rounded-lg border border-border-button-default px-2 py-0.5 text-body-2-medium text-text-secondary transition-colors hover:bg-background-secondary-hover"
-          >
-            {t("settings.cliFormatJson")}
-          </button>
-        </div>
-        <TextArea
-          mono
-          rows={4}
-          spellCheck={false}
-          aria-label={t("settings.cliAuthJson")}
-          value={value.authJson}
-          onChange={(authJson) => {
-            patch({ authJson });
-            form.setAuthError("");
-          }}
-          isInvalid={!form.authValid}
-          hint={form.authError || t("settings.cliAuthJsonHint")}
-          inputClassName="whitespace-pre"
-        />
       </div>
     </>
   );

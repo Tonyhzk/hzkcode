@@ -5,24 +5,16 @@ import { ModalShell } from "@/components/dialogs";
 import type { EngineId } from "./providers";
 import {
   ClaudeFormSections,
-  CodexFormSections,
-  FlatModelSection,
   ProviderBasicFields,
   ProviderPresetSections,
 } from "./ProviderFormSections";
 import { useProviderForm } from "./useProviderForm";
 
 /**
- * Add/edit one provider channel, per engine:
- *   - claude: preset cards → name/remark/URL/key → 模型映射 (per-tier default
- *     models) → JSON 配置 editor. Fields and the JSON editor stay in sync
- *     both ways; the JSON is saved as the channel's settingsConfig.
- *   - codex: preset cards → name/remark → config.toml + auth.json editors
- *     (saved as settingsConfig.config / settingsConfig.auth; flat baseUrl/
- *     apiKey/model mirrors are extracted from them at submit for the row
- *     display and model picker).
- *   - kimi/grok/pi/omp/dsh: preset cards → flat name/remark/URL/key/model,
- *     with a 拉取模型 datalist on the model field.
+ * Add/edit one provider channel: preset cards → name/remark/URL/key →
+ * 模型映射 (per-tier default models) → JSON 配置 editor. Fields and the JSON
+ * editor stay in sync both ways; the JSON is saved as the channel's
+ * settingsConfig.
  *
  * `raw` stays with the parent and is merged back on save so fields this form
  * doesn't know (source, customModels, …) survive.
@@ -35,10 +27,6 @@ export interface ProviderFormValue {
   model: string;
   /** claude: full settings.json text → stored as settingsConfig. */
   settingsJson: string;
-  /** codex: config.toml text → stored as settingsConfig.config. */
-  configToml: string;
-  /** codex: auth.json text → stored as settingsConfig.auth. */
-  authJson: string;
 }
 
 interface ProviderDialogProps {
@@ -82,10 +70,8 @@ export function ProviderDialog({ engine, title, initial, onSubmit, onCancel }: P
         }}
       >
         <ProviderPresetSections engine={engine} form={form} />
-        <ProviderBasicFields engine={engine} form={form} />
-        <ClaudeFormSections engine={engine} form={form} />
-        <FlatModelSection engine={engine} form={form} />
-        <CodexFormSections engine={engine} form={form} />
+        <ProviderBasicFields form={form} />
+        <ClaudeFormSections form={form} />
 
         <div className="flex justify-end gap-2">
           <Button variant="secondary" size="small" onClick={onCancel}>

@@ -1,4 +1,3 @@
-import type { OmpServiceTier } from "@/lib/omp-service-tier";
 import type {
   EngineInfo,
   SessionMeta,
@@ -24,9 +23,6 @@ export interface ChatStore {
   permission: ComposerPermission;
   /** Per-engine reasoning effort ("low" | … | "ultra"), persisted in app settings. */
   efforts: Record<string, EffortLevel>;
-  ompServiceTier: OmpServiceTier;
-  /** Codex Fast override; null preserves ~/.codex. */
-  codexServiceTier: OmpServiceTier;
   /** Per-engine model override ("" = CLI/provider default), persisted in app settings. */
   models: Record<string, string>;
   /** Per-engine default channel (settings `current`). New chats and sessions
@@ -104,8 +100,6 @@ export interface ChatStore {
   setActiveEngine: (engine: string) => void;
   setPermission: (permission: ComposerPermission) => void;
   setEffort: (engine: string, effort: EffortLevel) => Promise<void>;
-  setOmpServiceTier: (tier: OmpServiceTier) => Promise<void>;
-  setCodexServiceTier: (tier: OmpServiceTier) => Promise<void>;
   setModel: (engine: string, model: string) => Promise<void>;
   /** Session-scoped channel. An existing conversation keeps the pick; only a
    *  pending new-chat tab also updates the engine default for the next chat. */

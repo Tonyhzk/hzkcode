@@ -44,7 +44,6 @@ fn build_app(home: &std::path::Path) -> tauri::App<tauri::test::MockRuntime> {
         emitters: hzkcode_lib::event_sink::BroadcastEmit::new(Arc::new(app.handle().clone())),
         web: hzkcode_lib::web::WebAccessState::default(),
         relay: hzkcode_lib::relay::RelayState::default(),
-        dsh_host: Arc::new(hzkcode_lib::dsh_host::DshHostState::default()),
     });
     app.manage(ConfigStore::default());
     app

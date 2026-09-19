@@ -8,9 +8,7 @@ pub const LOCAL_PROVIDER_ID: &str = "__local_settings_json__";
 /// config" semantics, different spelling.
 pub(crate) const LEGACY_LOCAL_CONFIG_TOML_ID: &str = "__local_config_toml__";
 pub const DISABLED_PROVIDER_ID: &str = "__disabled__";
-pub const ENGINES: [&str; 11] = [
-    "claude", "kimi", "grok", "codex", "pi", "omp", "dsh", "agy", "opencode", "qoder", "qoder-cn",
-];
+pub const ENGINES: [&str; 1] = ["claude"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderSection {
@@ -25,9 +23,8 @@ pub struct ProviderSection {
 }
 
 /// Per-engine config sections: the engine id doubles as the serialized key,
-/// so the shape stays flat (`{"claude": …, "qoder-cn": …}`) while
-/// section()/section_mut() dispatch is generated, not hand-written. The
-/// field name is separate from the id because ids may contain '-'.
+/// so the shape stays flat (`{"claude": …}`) while section()/section_mut()
+/// dispatch is generated, not hand-written.
 macro_rules! engine_sections {
     ($(($field:ident, $id:literal)),* $(,)?) => {
         #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -58,16 +55,6 @@ macro_rules! engine_sections {
 
 engine_sections!(
     (claude, "claude"),
-    (kimi, "kimi"),
-    (grok, "grok"),
-    (codex, "codex"),
-    (pi, "pi"),
-    (omp, "omp"),
-    (dsh, "dsh"),
-    (agy, "agy"),
-    (opencode, "opencode"),
-    (qoder, "qoder"),
-    (qoder_cn, "qoder-cn"),
 );
 
 #[derive(Default)]
@@ -92,8 +79,8 @@ fn write_config(config: &CliConfig) -> Result<(), String> {
     crate::settings::atomic_write(&path, &content)
 }
 
-/// One-time import of the legacy ~/.ccgui/config.json claude/kimi/grok
-/// sections. Runs only when the new config does not exist yet.
+/// One-time import of the legacy ~/.ccgui/config.json claude section. Runs
+/// only when the new config does not exist yet.
 pub fn import_legacy_config_once() {
     let new_path = crate::paths::config_path();
     if new_path.exists() {
@@ -111,11 +98,6 @@ pub fn import_legacy_config_once() {
     };
     let mut config = CliConfig::default();
     for engine in ENGINES {
-        // Legacy codex providers carry configToml/authJson materialization
-        // state from the pre-channel config model; skipped on import.
-        if engine == "codex" {
-            continue;
-        }
         let Some(section) = legacy.get(engine) else {
             continue;
         };
@@ -522,8 +504,8 @@ mod tests {
     #[test]
     fn resolve_provider_env_disabled_errors() {
         let _scratch = Scratch::new();
-        seed_channel("kimi", "chan-a", Some(DISABLED_PROVIDER_ID), json!({}));
-        assert!(resolve_provider_env("kimi", Some(DISABLED_PROVIDER_ID)).is_err());
+        seed_channel("claude", "chan-a", Some(DISABLED_PROVIDER_ID), json!({}));
+        assert!(resolve_provider_env("claude", Some(DISABLED_PROVIDER_ID)).is_err());
     }
 
     #[test]

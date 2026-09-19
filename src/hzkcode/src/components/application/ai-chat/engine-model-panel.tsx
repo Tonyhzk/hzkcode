@@ -10,9 +10,7 @@ import X from "lucide-react/dist/esm/icons/x";
 import { m } from "motion/react";
 import { CLI_DISPLAY_NAMES, inferModelEngine } from "@/components/foundations/icons/engine-brands";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
-import { supportsOmpFastMode, type OmpServiceTier } from "@/lib/omp-service-tier";
 import { cx } from "@/utils/cx";
-import { OmpSpeedSection } from "./omp-speed-section";
 import { filterModels, groupModelsByProvider, type ModelGroup } from "./model-list";
 import { EFFORT_LABEL_KEYS, type EffortLevel } from "./effort-levels";
 import { EffortSlider } from "./effort-slider";
@@ -373,48 +371,20 @@ function ModelSearchField({
 }
 
 /** Panel footer: full-bleed divider (like the reference submenu) over the
- *  effort section. For OMP models supporting Fast mode and for Codex the
- *  effort header additionally carries the speed-tier picker. */
+ *  effort section. */
 function EffortFooter({
   engineId,
-  selectedModelId,
   effort,
   onEffortChange,
-  ompServiceTier,
-  onOmpServiceTierChange,
-  codexServiceTier,
-  onCodexServiceTierChange,
 }: {
   engineId: string;
-  selectedModelId: string;
   effort: EffortLevel;
   onEffortChange: (engine: string, level: EffortLevel) => void;
-  ompServiceTier: OmpServiceTier;
-  onOmpServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
-  codexServiceTier: OmpServiceTier;
-  onCodexServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
 }) {
-  const { t } = useTranslation();
-  const ompFast = engineId === "omp" && supportsOmpFastMode(selectedModelId);
-  const codexFast = engineId === "codex";
-  const showFast = ompFast || codexFast;
-  const fastTier = codexFast ? codexServiceTier : ompServiceTier;
-  const onFastChange = codexFast ? onCodexServiceTierChange : onOmpServiceTierChange;
-  const header = showFast ? (
-    <OmpSpeedSection
-      model={selectedModelId}
-      supported={codexFast || undefined}
-      value={fastTier}
-      onChange={onFastChange}
-    >
-      <span className="text-body-medium text-text-primary">{t(EFFORT_LABEL_KEYS[effort])}</span>
-    </OmpSpeedSection>
-  ) : undefined;
   return (
     <>
-      <div aria-hidden className={cx("-mx-1 mt-[7px] h-px bg-border-button-default", showFast ? "mb-1" : "mb-3")} />
+      <div aria-hidden className="-mx-1 mt-[7px] mb-3 h-px bg-border-button-default" />
       <FlyoutEffortSection
-        header={header}
         effort={effort}
         onChange={(level) => onEffortChange(engineId, level)}
       />
@@ -427,7 +397,7 @@ function EffortFooter({
  * checkmark model rows over the effort slider. Shared by the desktop flyout
  * (EngineFlyout) and the mobile second-level dialog; `onClose` adds a
  * dismiss button to the header, which only the dialog passes. Model picks
- * stay in-panel so Fast / effort can follow without reopening.
+ * stay in-panel so effort can follow without reopening.
  */
 export function EngineModelPanel({
   option,
@@ -441,10 +411,6 @@ export function EngineModelPanel({
   channels,
   selectedChannelId,
   onPickChannel,
-  ompServiceTier,
-  onOmpServiceTierChange,
-  codexServiceTier,
-  onCodexServiceTierChange,
   onRefresh,
   onClose,
   loading,
@@ -460,10 +426,6 @@ export function EngineModelPanel({
   channels?: ChannelOption[];
   selectedChannelId?: string;
   onPickChannel?: (engine: string, id: string) => void;
-  ompServiceTier: OmpServiceTier;
-  onOmpServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
-  codexServiceTier: OmpServiceTier;
-  onCodexServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
   /** Re-probe provider configs and model catalogs without an app restart. */
   onRefresh?: () => void | Promise<void>;
   onClose?: () => void;
@@ -502,13 +464,8 @@ export function EngineModelPanel({
       />
       <EffortFooter
         engineId={option.id}
-        selectedModelId={selectedModelId}
         effort={effort}
         onEffortChange={onEffortChange}
-        ompServiceTier={ompServiceTier}
-        onOmpServiceTierChange={onOmpServiceTierChange}
-        codexServiceTier={codexServiceTier}
-        onCodexServiceTierChange={onCodexServiceTierChange}
       />
     </div>
   );

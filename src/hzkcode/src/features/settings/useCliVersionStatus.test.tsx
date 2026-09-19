@@ -40,8 +40,9 @@ function Probe({ engine, capture }: { engine: EngineId; capture: (v: CliVersionS
   return null;
 }
 
-// The store is module-level session state keyed by engine: each test uses
-// its own engine so it starts cold without resetting the module.
+// The store is module-level session state: status and the in-flight probe
+// carry over between tests on the single engine, so tests settle their probe
+// before ending and the cached status is the same fixture each time.
 describe("useCliVersionStatus session store", () => {
   let container: HTMLDivElement;
   let root: Root | null;
@@ -66,35 +67,41 @@ describe("useCliVersionStatus session store", () => {
     container.remove();
   });
 
-  async function render(engine: EngineId) {
+  async function render() {
     const nextRoot = createRoot(container);
     root = nextRoot;
     await act(async () => {
-      nextRoot.render(<Probe engine={engine} capture={capture} />);
+      nextRoot.render(<Probe engine="claude" capture={capture} />);
     });
   }
 
   it("dedupes concurrent consumers into one probe", async () => {
-    // Never settles: any second probe would also be observable here.
-    mocks.cliVersionStatus.mockReturnValue(Promise.withResolvers<CliVersionStatus>().promise);
+    // Held pending through the assertions: any second probe would also be
+    // observable here. Settled at the end so the module-level store is not
+    // left with a stuck in-flight probe for the next test.
+    const pending = Promise.withResolvers<CliVersionStatus>();
+    mocks.cliVersionStatus.mockReturnValue(pending.promise);
     const twoConsumers = createRoot(container);
     root = twoConsumers;
     await act(async () => {
       twoConsumers.render(
         <>
-          <Probe engine="codex" capture={capture} />
-          <Probe engine="codex" capture={capture} />
+          <Probe engine="claude" capture={capture} />
+          <Probe engine="claude" capture={capture} />
         </>,
       );
     });
     expect(mocks.cliVersionStatus).toHaveBeenCalledTimes(1);
-    expect(mocks.cliVersionStatus).toHaveBeenCalledWith("codex");
+    expect(mocks.cliVersionStatus).toHaveBeenCalledWith("claude");
     expect(latest.loading).toBe(true);
+    await act(async () => {
+      pending.resolve(versionStatus("claude"));
+    });
   });
 
   it("repaints the cached status instantly on remount, soft-refreshing behind it", async () => {
     mocks.cliVersionStatus.mockResolvedValue(versionStatus("claude"));
-    await render("claude");
+    await render();
     expect(latest.status?.localVersion).toBe("2.1.228 (Claude Code)");
     const firstRoot = root!;
     await act(async () => firstRoot.unmount());
@@ -103,7 +110,7 @@ describe("useCliVersionStatus session store", () => {
     // Second mount: the soft refresh is held pending…
     const secondProbe = Promise.withResolvers<CliVersionStatus>();
     mocks.cliVersionStatus.mockReturnValue(secondProbe.promise);
-    await render("claude");
+    await render();
     // …but the cached status paints synchronously.
     expect(latest.status?.localVersion).toBe("2.1.228 (Claude Code)");
     expect(latest.loading).toBe(true);
@@ -118,24 +125,24 @@ describe("useCliVersionStatus session store", () => {
   });
 
   it("update runs the installer then re-probes", async () => {
-    mocks.cliVersionStatus.mockResolvedValue(versionStatus("kimi"));
+    mocks.cliVersionStatus.mockResolvedValue(versionStatus("claude"));
     mocks.cliUpdate.mockResolvedValue({ ok: true, version: "2.1.267 (Claude Code)" });
-    await render("kimi");
+    await render();
     const probesBefore = mocks.cliVersionStatus.mock.calls.length;
 
     await act(async () => {
       await latest.update("run-1");
     });
-    expect(mocks.cliUpdate).toHaveBeenCalledWith("kimi", "run-1");
+    expect(mocks.cliUpdate).toHaveBeenCalledWith("claude", "run-1");
     expect(mocks.cliVersionStatus.mock.calls.length).toBe(probesBefore + 1);
     expect(latest.updating).toBe(false);
     expect(latest.error).toBeNull();
   });
 
   it("update failure surfaces the error and rejects", async () => {
-    mocks.cliVersionStatus.mockResolvedValue(versionStatus("pi"));
+    mocks.cliVersionStatus.mockResolvedValue(versionStatus("claude"));
     mocks.cliUpdate.mockRejectedValue(new Error("npm boom"));
-    await render("pi");
+    await render();
     const probesBefore = mocks.cliVersionStatus.mock.calls.length;
 
     await act(async () => {

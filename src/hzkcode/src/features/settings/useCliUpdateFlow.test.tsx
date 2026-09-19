@@ -58,8 +58,9 @@ function Probe({ engine, capture }: { engine: EngineId; capture: (v: CliUpdateFl
   return null;
 }
 
-// The version store behind the flow is module-level session state keyed by
-// engine: each test uses its own engine so it starts cold.
+// The version store behind the flow is module-level session state: status
+// carries over between tests on the single engine, so each render is
+// followed by one extra flush that lets the mount probe settle.
 describe("useCliUpdateFlow", () => {
   let container: HTMLDivElement;
   let root: Root | null;
@@ -92,18 +93,19 @@ describe("useCliUpdateFlow", () => {
     container.remove();
   });
 
-  async function render(engine: EngineId) {
-    mocks.cliVersionStatus.mockResolvedValue(versionStatus(engine));
+  async function render() {
+    mocks.cliVersionStatus.mockResolvedValue(versionStatus("claude"));
     const nextRoot = createRoot(container);
     root = nextRoot;
     await act(async () => {
-      nextRoot.render(<Probe engine={engine} capture={capture} />);
+      nextRoot.render(<Probe engine="claude" capture={capture} />);
     });
+    await act(async () => {});
   }
 
   it("begin fetches the execution plan and waits for confirmation", async () => {
-    mocks.cliUpdatePlan.mockResolvedValue(plan("kimi"));
-    await render("kimi");
+    mocks.cliUpdatePlan.mockResolvedValue(plan("claude"));
+    await render();
     expect(latest.state.status).toBe("idle");
 
     await act(async () => {
@@ -117,10 +119,10 @@ describe("useCliUpdateFlow", () => {
   });
 
   it("confirm streams only the current run's lines, then finishes done", async () => {
-    mocks.cliUpdatePlan.mockResolvedValue(plan("pi"));
+    mocks.cliUpdatePlan.mockResolvedValue(plan("claude"));
     const run = Promise.withResolvers<{ ok: boolean; version: string | null }>();
     mocks.cliUpdate.mockReturnValue(run.promise);
-    await render("pi");
+    await render();
     await act(async () => {
       await latest.begin();
     });
@@ -135,10 +137,10 @@ describe("useCliUpdateFlow", () => {
 
     await act(async () => {
       progressListener?.([
-        { runId: "someone-else", engine: "pi", phase: "stdout", line: "foreign", exitOk: null },
-        { runId, engine: "pi", phase: "stdout", line: "downloading", exitOk: null },
-        { runId, engine: "pi", phase: "stderr", line: "warn: deprecated", exitOk: null },
-        { runId, engine: "pi", phase: "finished", line: null, exitOk: true },
+        { runId: "someone-else", engine: "claude", phase: "stdout", line: "foreign", exitOk: null },
+        { runId, engine: "claude", phase: "stdout", line: "downloading", exitOk: null },
+        { runId, engine: "claude", phase: "stderr", line: "warn: deprecated", exitOk: null },
+        { runId, engine: "claude", phase: "finished", line: null, exitOk: true },
       ]);
     });
     expect(latest.state.logs).toEqual([
@@ -158,9 +160,9 @@ describe("useCliUpdateFlow", () => {
   });
 
   it("a failed run surfaces the error and offers retry", async () => {
-    mocks.cliUpdatePlan.mockResolvedValue(plan("omp"));
+    mocks.cliUpdatePlan.mockResolvedValue(plan("claude"));
     mocks.cliUpdate.mockRejectedValue(new Error("npm boom"));
-    await render("omp");
+    await render();
     await act(async () => {
       await latest.begin();
     });
@@ -178,7 +180,7 @@ describe("useCliUpdateFlow", () => {
     mocks.cliUpdatePlan.mockResolvedValue(plan("claude"));
     const run = Promise.withResolvers<{ ok: boolean; version: string | null }>();
     mocks.cliUpdate.mockReturnValue(run.promise);
-    await render("claude");
+    await render();
     await act(async () => {
       await latest.begin();
     });

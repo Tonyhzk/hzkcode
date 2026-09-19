@@ -206,16 +206,6 @@ export interface WorkspaceGroup {
 
 export interface CliConfig {
   claude: ProviderSection;
-  kimi: ProviderSection;
-  grok: ProviderSection;
-  codex: ProviderSection;
-  pi: ProviderSection;
-  omp: ProviderSection;
-  dsh: ProviderSection;
-  agy: ProviderSection;
-  opencode: ProviderSection;
-  qoder: ProviderSection;
-  "qoder-cn": ProviderSection;
 }
 
 export interface AppSettings {
@@ -232,25 +222,10 @@ export interface AppSettings {
   archivedWorkspaces: string[];
   language: string;
   claudeBin: string | null;
-  kimiBin: string | null;
-  grokBin: string | null;
-  codexBin: string | null;
-  piBin: string | null;
-  ompBin: string | null;
-  dshBin: string | null;
-  agyBin: string | null;
-  opencodeBin: string | null;
-  qoderBin: string | null;
-  qoderCnBin: string | null;
   defaultModels: Record<string, string>;
   /** Per-engine user-added custom model ids (设置 → CLI → 自定义模型). */
   customModels: Record<string, string[]>;
   defaultEfforts: Record<string, string>;
-  ompOpenaiServiceTier?: "default" | "priority" | null;
-  /** Codex Fast override; null preserves ~/.codex/config.toml. */
-  codexServiceTier?: "default" | "priority" | null;
-  /** Codex config/session home (`CODEX_HOME`); null uses ~/.codex. */
-  codexHome?: string | null;
   /** Max sessions listed per workspace in the sidebar (default 5). */
   sidebarThreadLimit: number;
   /** Composer send gesture: "enter" (Enter sends) or "cmdEnter" (⌘/Ctrl+Enter sends). */
@@ -275,13 +250,6 @@ export interface AppSettings {
   thinkingAutoCollapse?: boolean | null;
   /** Terminal shell override; null/empty = auto-detect. */
   terminalShellPath: string | null;
-  /** DSH host address (default "127.0.0.1"). */
-  dshHost?: string | null;
-  /** DSH host port (default 3080). */
-  dshPort?: number | null;
-
-  /** Auto-adopt-or-spawn the DSH host on app start (default true). */
-  dshAutoStart?: boolean | null;
   /** Global network proxy switch; spawned children inherit the proxy env. */
   systemProxyEnabled: boolean;
   /** Proxy URL (http/https/socks5); null = unset. */
@@ -548,33 +516,7 @@ export interface UsageRow {
   /** Model responses in this bucket — the request total. */
   requests: number;
 }
-// ---- DeepSeek Harness local host ----
-
-/** Snapshot of the DSH local host + CLI probe (`dsh_host_status`,
- *  `dsh_host_start`). Never spawns on its own; `dsh_host_start` does. */
-export interface DshHostStatus {
-  installed: boolean;
-  version: string | null;
-  host: string;
-  port: number;
-  origin: string;
-  autoStart: boolean;
-  running: boolean;
-  /** "spawned" = we launched it (and will kill it); "adopted" = pre-existing
-   *  listener we attached to and never kill implicitly. */
-  ownership: "spawned" | "adopted" | null;
-  /** Normalized describe view (provider/model from the host's
-   *  agent-default-model namespace; 0.1.2 removed raw host.describe). */
-  describe: {
-    provider?: string | null;
-    model?: string | null;
-  } | null;
-  /** Web UI entry carrying the persisted launch token (BrowserAuth gates
-   *  the web UI like every RPC); fall back to origin when null. */
-  webUrl: string | null;
-  /** Probe error, set only when the host is down. */
-  error: string | null;
-}
+// ---- Managed CLI version probe ----
 
 /** Managed-CLI local version + npm registry latest (`cli_version_status`). */
 export interface CliVersionStatus {
@@ -583,7 +525,7 @@ export interface CliVersionStatus {
   localVersion: string | null;
   latestVersion: string | null;
   updateAvailable: boolean;
-  /** How install/update acts: "npm" | "native"; null = no action (grok). */
+  /** How install/update acts: "npm" | "native"; null = no action. */
   updateKind: "npm" | "native" | null;
 }
 /** Confirm-dialog execution plan for a one-click install/update. */
@@ -612,44 +554,6 @@ function fetchAppSettings(): Promise<AppSettings> {
     settingsPromise = null;
     throw e;
   }));
-}
-
-// ---- pi-family (pi/omp) provider auth & custom providers (供应商认证) ----
-
-export type PiFamilyAuthState = "configured" | "none";
-export type PiFamilyKeySource = "literal" | "command" | "envRef";
-
-export interface PiFamilyAuthProviderSnapshot {
-  id: string;
-  envVar: string | null;
-  state: PiFamilyAuthState;
-  maskedKey?: string;
-  keySource?: PiFamilyKeySource;
-}
-
-export interface PiFamilyAuthListResult {
-  store: { path: string; kind: "authJson" | "sqlite"; exists: boolean };
-  providers: PiFamilyAuthProviderSnapshot[];
-  /** Provider ids holding an active OAuth credential (raw store ids — pi
-   * lands ChatGPT subscription logins under `openai-codex`). */
-  oauthProviders: string[];
-}
-
-export interface PiFamilyCustomProviderSummary {
-  id: string;
-  name: string | null;
-  baseUrl: string | null;
-  api: string | null;
-  modelCount: number;
-  hasApiKey: boolean;
-}
-
-export interface PiFamilyModelsConfigReadResult {
-  file: { path: string; format: "json" | "yaml"; exists: boolean };
-  text: string | null;
-  template: string;
-  providers: PiFamilyCustomProviderSummary[];
-  parseError: string | null;
 }
 
 // ==================== Plugins (Phase 1 runtime, plan §4.3) ====================
@@ -733,18 +637,6 @@ export const ipc = {
     invoke<void>("reorder_providers", { engine, ids }),
   setEngineEnabled: (engine: string, enabled: boolean) =>
     invoke<void>("set_engine_enabled", { engine, enabled }),
-  // pi/omp provider auth (auth.json for pi, agent.db auth_credentials for omp)
-  piFamilyAuthList: (engine: string) =>
-    invoke<PiFamilyAuthListResult>("pi_family_auth_list", { engine }),
-  piFamilyAuthSetApiKey: (engine: string, providerId: string, key: string) =>
-    invoke<void>("pi_family_auth_set_api_key", { engine, providerId, key }),
-  piFamilyAuthDeleteCredential: (engine: string, providerId: string) =>
-    invoke<void>("pi_family_auth_delete_credential", { engine, providerId }),
-  // pi/omp custom providers (models.json for pi, models.yml for omp)
-  piFamilyModelsConfigRead: (engine: string) =>
-    invoke<PiFamilyModelsConfigReadResult>("pi_family_models_config_read", { engine }),
-  piFamilyModelsConfigWrite: (engine: string, text: string) =>
-    invoke<void>("pi_family_models_config_write", { engine, text }),
   // cc-switch interop
   checkCcSwitch: () => invoke<CcSwitchStatus>("check_cc_switch"),
   dismissCcSwitch: (hash: string) => invoke<void>("dismiss_cc_switch", { hash }),
@@ -1072,10 +964,6 @@ export const ipc = {
   usageSummary: (days: number, tzOffsetMinutes: number) =>
     invoke<UsageRow[]>("usage_summary", { days, tzOffsetMinutes }),
   usageClear: () => invoke<void>("usage_clear"),
-  // DeepSeek Harness local host (dsh web --host H --port P)
-  dshHostStatus: () => invoke<DshHostStatus>("dsh_host_status"),
-  dshHostStart: () => invoke<DshHostStatus>("dsh_host_start"),
-  dshHostStop: () => invoke<{ ok: boolean }>("dsh_host_stop"),
   // managed-CLI lifecycle (CLI 管理 header: version probe + install/update)
   cliVersionStatus: (engine: string) =>
     invoke<CliVersionStatus>("cli_version_status", { engine }),

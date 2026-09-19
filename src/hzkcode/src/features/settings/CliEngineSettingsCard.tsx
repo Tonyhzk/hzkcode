@@ -2,15 +2,8 @@
  * 引擎设置 rows under the enable switch, one SettingsCard with
  * hairline-separated rows:
  *   官方配置 — the CLI's own config files: 使用 (radio-style switch) + 编辑
- *     (claude/codex/kimi/grok/agy open the multi-file editor; pi/omp hand
- *     off to their models.json/models.yml editor;
- *     dsh has no native config file and hides the row).
- *   自定义 CLI 路径 — AppSettings.<engine>Bin override (dsh keeps its own
- *     picker inside DshHostSection and hides the row here). Codex hides
- *     this row: its one path control is the config-home row below, which
- *     also seeds `$home/bin/codex`.
- *   自定义配置目录 — AppSettings.codexHome (Codex only; other engines keep
- *     their implicit ~/.<engine> homes).
+ *     (opens the multi-file editor).
+ *   自定义 CLI 路径 — AppSettings.<engine>Bin override.
  *   自定义模型 — AppSettings.customModels[engine] list, merged into the chat
  *     model picker by use-engine-models.
  *
@@ -30,25 +23,15 @@ import { SettingsCard } from "@/components/application/settings/settings-rows";
 import { ModalShell } from "@/components/dialogs";
 import { CLI_DISPLAY_NAMES } from "@/components/foundations/icons/engine-brands";
 import { ipc, type AppSettings } from "@/lib/ipc";
-import { pickDirectory, pickFile } from "@/lib/platform";
+import { pickFile } from "@/lib/platform";
 import { cx } from "@/utils/cx";
 import { Badge, ChannelAvatar, ROW } from "./CliChannelRow";
 import { notifyCliConfigChanged, PSEUDO_LOCAL, type EngineId } from "./providers";
 import type { CliConfigState } from "./useCliConfig";
 
-/** AppSettings bin-override field per engine (dsh's picker stays in
- *  DshConnectionCard, next to the host settings it interacts with). */
+/** AppSettings bin-override field per engine. */
 const BIN_FIELDS = {
   claude: "claudeBin",
-  kimi: "kimiBin",
-  grok: "grokBin",
-  codex: "codexBin",
-  pi: "piBin",
-  omp: "ompBin",
-  agy: "agyBin",
-  opencode: "opencodeBin",
-  qoder: "qoderBin",
-  "qoder-cn": "qoderCnBin",
 } as const;
 type BinEngine = keyof typeof BIN_FIELDS;
 
@@ -127,7 +110,6 @@ function OfficialRow({
   onEdit,
 }: {
   cli: CliConfigState;
-  /** pi/omp: open the models.json/models.yml editor in the auth section. */
   onEdit: () => void;
 }) {
   const { t, engine, officialActive, busy, activate } = cli;
@@ -264,117 +246,6 @@ function BinPathDialog({
           }
         >
           {t("settings.cliCustomPathChoose")}
-        </Button>
-      </div>
-      {error && <p className="mt-2 text-body-2-regular text-text-error-primary">{error}</p>}
-      <div className="mt-5 flex justify-end gap-2">
-        {current && (
-          <Button variant="secondary" size="small" disabled={saving} onClick={() => void commit(null)}>
-            {t("settings.cliCustomPathClear")}
-          </Button>
-        )}
-        <Button variant="secondary" size="small" onClick={onClose}>
-          {t("common.cancel")}
-        </Button>
-        <Button
-          size="small"
-          disabled={saving || !draft.trim() || draft.trim() === (current ?? "")}
-          onClick={() => void commit(draft.trim())}
-        >
-          {t("common.confirm")}
-        </Button>
-      </div>
-    </ModalShell>
-  );
-}
-
-// ── 自定义 Codex 配置目录 ───────────────────────────────────────────────────
-
-function CodexHomeRow() {
-  const { t } = useTranslation();
-  const { settings, save } = useEngineAppSettings();
-  const [open, setOpen] = useState(false);
-  const current = settings?.codexHome ?? null;
-  return (
-    <>
-      <RowShell
-        title={
-          <>
-            <span className="truncate">{t("settings.cliCustomHome", { name: CLI_DISPLAY_NAMES.codex })}</span>
-            <InfoTip label={t("settings.cliCustomHomeDesc")} />
-          </>
-        }
-        desc={current ?? t("settings.cliCustomHomeUnset")}
-        onClick={() => setOpen(true)}
-      >
-        <RowChevron label={t("settings.cliCustomHome", { name: CLI_DISPLAY_NAMES.codex })} />
-      </RowShell>
-      {open && (
-        <CodexHomeDialog current={current} save={save} onClose={() => setOpen(false)} />
-      )}
-    </>
-  );
-}
-
-function CodexHomeDialog({
-  current,
-  save,
-  onClose,
-}: {
-  current: string | null;
-  save: (patch: Partial<AppSettings>) => Promise<string | null>;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const [draft, setDraft] = useState(current ?? "");
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const commit = async (value: string | null) => {
-    setSaving(true);
-    try {
-      const failed = await save({ codexHome: value });
-      if (failed) setError(failed);
-      else {
-        notifyCliConfigChanged();
-        // 后端 update_app_settings 在 codexHome 变化时已 spawn_scan，无需重复触发。
-        onClose();
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <ModalShell onClose={onClose} className="w-[480px] max-w-[calc(100vw-32px)] p-6">
-      <p className="text-title-3-medium text-text-primary">
-        {t("settings.cliCustomHome", { name: CLI_DISPLAY_NAMES.codex })}
-      </p>
-      <p className="mt-1.5 text-body-2-regular text-text-secondary">
-        {t("settings.cliCustomHomeDesc")}
-      </p>
-      <div className="mt-5 flex items-end gap-2">
-        <div className="min-w-0 flex-1">
-          <Input
-            size="small"
-            aria-label={t("settings.cliCustomHome", { name: CLI_DISPLAY_NAMES.codex })}
-            placeholder={t("settings.cliCustomHomeUnset")}
-            value={draft}
-            onChange={setDraft}
-          />
-        </div>
-        <Button
-          variant="secondary"
-          size="small"
-          onClick={() =>
-            void pickDirectory(t("settings.cliCustomHome", { name: CLI_DISPLAY_NAMES.codex })).then(
-              (path) => {
-                if (path) setDraft(path);
-              },
-            )
-          }
-        >
-          {t("settings.cliCustomHomeChoose")}
         </Button>
       </div>
       {error && <p className="mt-2 text-body-2-regular text-text-error-primary">{error}</p>}
@@ -556,16 +427,13 @@ export function CliEngineSettingsCard({
   onEditOfficial,
 }: {
   cli: CliConfigState;
-  /** pi/omp official edit: open the models config editor in the auth
-   *  section below (their files are never hzkcode-managed). */
   onEditOfficial: () => void;
 }) {
   const { engine } = cli;
   return (
     <SettingsCard>
-      {engine !== "dsh" && <OfficialRow cli={cli} onEdit={onEditOfficial} />}
-      {engine !== "dsh" && engine !== "codex" && <BinPathRow engine={engine as BinEngine} />}
-      {engine === "codex" && <CodexHomeRow />}
+      <OfficialRow cli={cli} onEdit={onEditOfficial} />
+      <BinPathRow engine={engine} />
       <CustomModelsRow engine={engine} />
     </SettingsCard>
   );

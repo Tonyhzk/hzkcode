@@ -111,15 +111,10 @@ export default function SettingsPage() {
       cliNavOrder,
     ).map((entry) => entry.key);
   }, [sections, cliNavOrder]);
-  // Legacy links land on a CLI 管理 page: ?page=cliConfig → first CLI,
-  // ?page=dsh → the DSH engine page (its host section merged there).
+  // Legacy links land on a CLI 管理 page: ?page=cliConfig → the first CLI.
   const rawPage = searchParams.get("page") ?? "general";
   const pageParam =
-    rawPage === "cliConfig"
-      ? (orderedCliKeys[0] ?? "general")
-      : rawPage === "dsh"
-        ? "cli:dsh"
-        : rawPage;
+    rawPage === "cliConfig" ? (orderedCliKeys[0] ?? "general") : rawPage;
 
   const groups = useMemo<RailGroup[]>(() => {
     const sorted = [...sections].sort((a, b) => a.order - b.order);

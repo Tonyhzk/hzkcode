@@ -1,4 +1,3 @@
-import { normalizeOmpServiceTier } from "@/lib/omp-service-tier";
 import { create } from "zustand";
 import {
   ipc,
@@ -585,8 +584,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
     activeEngine: localStorage.getItem(ENGINE_PREF_KEY) ?? "claude",
     permission: readPermissionPref(),
     efforts: {},
-    ompServiceTier: null,
-    codexServiceTier: null,
     models: {},
     providers: {},
     threadLimit: 10,
@@ -683,12 +680,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
               string,
               EffortLevel
             >,
-            ompServiceTier: normalizeOmpServiceTier(
-              settings.ompOpenaiServiceTier,
-            ),
-            codexServiceTier: normalizeOmpServiceTier(
-              settings.codexServiceTier,
-            ),
             models: settings.defaultModels ?? {},
             threadLimit: settings.sidebarThreadLimit ?? 5,
             workspaceGroups: settings.workspaceGroups ?? [],
@@ -1055,16 +1046,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setPermission: (permission) => {
       writeStored(PERMISSION_PREF_KEY, permission);
       set({ permission });
-    },
-    setOmpServiceTier: async (tier) => {
-      const settings = await ipc.getAppSettings();
-      await ipc.updateAppSettings({ ...settings, ompOpenaiServiceTier: tier });
-      set({ ompServiceTier: tier });
-    },
-    setCodexServiceTier: async (tier) => {
-      const settings = await ipc.getAppSettings();
-      await ipc.updateAppSettings({ ...settings, codexServiceTier: tier });
-      set({ codexServiceTier: tier });
     },
     setEffort: async (engine, effort) => {
       const active = get().active;

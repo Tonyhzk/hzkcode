@@ -5,7 +5,6 @@ pub mod cc_switch;
 pub mod cli_lifecycle;
 pub mod config;
 pub mod db;
-pub mod dsh_host;
 pub mod engine;
 pub mod event_sink;
 pub mod files;
@@ -40,7 +39,6 @@ pub struct AppState {
     pub processes: Arc<engine::ProcessRegistry>,
     pub web: web::WebAccessState,
     pub relay: relay::RelayState,
-    pub dsh_host: std::sync::Arc<dsh_host::DshHostState>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -59,7 +57,6 @@ pub fn run() {
         if let Err(error) = proxy::apply_app_proxy_settings(&settings) {
             eprintln!("[proxy] failed to apply persisted proxy settings: {error}");
         }
-        settings::apply_codex_home(&settings);
     }
 
     tauri::Builder::default()
@@ -107,7 +104,6 @@ pub fn run() {
                 processes: Arc::new(engine::ProcessRegistry::default()),
                 web: web::WebAccessState::default(),
                 relay: relay::RelayState::default(),
-                dsh_host: std::sync::Arc::new(dsh_host::DshHostState::default()),
             };
             // Clone what the initial scan needs before state moves into manage.
             let scan_db = Arc::clone(&state.db);
@@ -135,21 +131,6 @@ pub fn run() {
             }
             // Initial history scan, non-blocking.
             history::scanner::spawn_scan(scan_db, scan_sink);
-            // DSH host autostart: adopt-or-spawn in the background when
-            // enabled; failures are logged, never fatal to startup.
-            {
-                let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    let settings = settings::read_settings().unwrap_or_default();
-                    if settings.dsh_auto_start == Some(false) {
-                        return;
-                    }
-                    let state = handle.state::<AppState>();
-                    if let Err(error) = dsh_host::ensure_host(&state.dsh_host, &settings).await {
-                        eprintln!("[dsh] autostart failed: {error}");
-                    }
-                });
-            }
             // Relay autostart: the outbound tunnel is what keeps the machine
             // reachable with nobody at the desk, so it comes back on launch
             // when the switch was left on. Failures are logged, never fatal;
@@ -216,7 +197,6 @@ pub fn run() {
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(state) = window.try_state::<AppState>() {
                     state.processes.kill_all();
-                    state.dsh_host.kill_spawned();
                     plugin_caps::kill_all_tracked_children();
                     tauri::async_runtime::block_on(terminal::kill_all(&state.terminals));
                 }
@@ -265,11 +245,6 @@ pub fn run() {
             engine::answer_question,
             engine::list_engines,
             engine::models::list_engine_models,
-            engine::pi_family_auth::pi_family_auth_list,
-            engine::pi_family_auth::pi_family_auth_set_api_key,
-            engine::pi_family_auth::pi_family_auth_delete_credential,
-            engine::pi_family_auth::pi_family_models_config_read,
-            engine::pi_family_auth::pi_family_models_config_write,
             engine::images::save_pasted_image,
             engine::images::import_attachments,
             // history
@@ -379,10 +354,7 @@ pub fn run() {
             relay::web_relay_status,
             relay::relay_deploy_pack,
             relay::relay_deploy,
-            // dsh host + managed-CLI lifecycle
-            dsh_host::dsh_host_status,
-            dsh_host::dsh_host_start,
-            dsh_host::dsh_host_stop,
+            // managed-CLI lifecycle
             cli_lifecycle::cli_version_status,
             cli_lifecycle::cli_update_plan,
             cli_lifecycle::cli_update,
