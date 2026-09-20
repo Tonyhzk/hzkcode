@@ -21,6 +21,18 @@ fn temp_home(tag: &str) -> std::path::PathBuf {
     dir
 }
 
+/// Fake-CLI directory outside the temp roots: the settings validator refuses
+/// a bin override under /tmp or /var/folders, so the fake engine lives in the
+/// crate's own target tree instead.
+fn cli_dir(tag: &str) -> std::path::PathBuf {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("test-cli")
+        .join(format!("{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
 fn write_fake_claude(dir: &std::path::Path) {
     let script = r#"#!/bin/sh
 read -r line
@@ -36,6 +48,19 @@ echo '{"type":"result","subtype":"success","session_id":"fake-session-123","usag
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
+}
+
+/// Point the engine at the fake CLI through the app's own override setting:
+/// plain PATH discovery would lose to a CLI the developer dropped into
+/// `src-tauri/binaries/` for a dev run.
+fn write_bin_override(home: &std::path::Path, bin: &std::path::Path) {
+    let dir = home.join(".hzkcode").join("gui");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("settings.json"),
+        serde_json::json!({ "claudeBin": bin.to_string_lossy() }).to_string(),
+    )
+    .unwrap();
 }
 
 fn build_app(
@@ -77,9 +102,10 @@ fn build_app(
 async fn send_message_streams_events_end_to_end() {
     let _env_guard = ENV_LOCK.lock().unwrap();
     let home = temp_home("stream");
-    let bin_dir = home.join("bin");
+    let bin_dir = cli_dir("stream");
     std::fs::create_dir_all(&bin_dir).unwrap();
     write_fake_claude(&bin_dir);
+    write_bin_override(&home, &bin_dir.join("claude"));
     std::env::set_var("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()));
 
     let workspace = home.join("ws");
@@ -174,7 +200,7 @@ async fn send_message_streams_events_end_to_end() {
 async fn interrupt_kills_running_child() {
     let _env_guard = ENV_LOCK.lock().unwrap();
     let home = temp_home("interrupt");
-    let bin_dir = home.join("bin");
+    let bin_dir = cli_dir("interrupt");
     std::fs::create_dir_all(&bin_dir).unwrap();
     // Fake engine that emits a session id then hangs forever.
     let script = r#"#!/bin/sh
@@ -189,6 +215,7 @@ sleep 60
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
+    write_bin_override(&home, &path);
     std::env::set_var("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()));
 
     let workspace = home.join("ws");
@@ -263,9 +290,10 @@ sleep 60
 fn ipc_send_message_accepts_camel_case_args() {
     let _env_guard = ENV_LOCK.lock().unwrap();
     let home = temp_home("ipc");
-    let bin_dir = home.join("bin");
+    let bin_dir = cli_dir("ipc");
     std::fs::create_dir_all(&bin_dir).unwrap();
     write_fake_claude(&bin_dir);
+    write_bin_override(&home, &bin_dir.join("claude"));
     std::env::set_var("HOME", &home);
     std::env::set_var("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()));
     let workspace = home.join("ws");

@@ -526,8 +526,6 @@ export const en: Messages = {
     cliApiKey: "API Key",
     cliModel: "Model",
     cliModelMapping: "Model Mapping",
-    cliFableModel: "Fable default model",
-    cliFableModelPlaceholder: "e.g. claude-fable-5",
     cliSonnetModel: "Sonnet default model",
     cliSonnetModelPlaceholder: "e.g. claude-sonnet-4-5",
     cliOpusModel: "Opus default model",

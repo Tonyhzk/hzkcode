@@ -105,15 +105,13 @@ fn embedded_registry(bin: &std::path::Path) -> Option<EmbeddedRegistry> {
     registry
 }
 
-/// Selectors `claude --model` accepts out of the box — exactly the five rows
-/// the CLI's own /model menu lists, in menu order (no [1m] variants, no
-/// extra "configured" row). "fable" only exists on newer CLI builds — the
-/// catalog is advisory, an unresolvable pick fails at launch with the CLI's
-/// own error.
+/// Selectors `--model` accepts out of the box, in menu order. "default" is
+/// this app's own row (it sends no flag and lets the CLI pick); the CLI's
+/// alias set is sonnet/opus/haiku/best — the catalog is advisory, an
+/// unresolvable pick fails at launch with the CLI's own error.
 const CLI_ALIASES: &[(&str, &str)] = &[
     ("default", "Default"),
     ("opus", "Opus"),
-    ("fable", "Fable"),
     ("sonnet", "Sonnet"),
     ("haiku", "Haiku"),
 ];
@@ -125,24 +123,25 @@ fn claude_config_dir() -> PathBuf {
 }
 
 /// env keys that remap a built-in alias family to a custom model id,
-/// mirroring the CLI's own /model menu ("Custom Opus model" rows).
+/// mirroring the CLI's own /model menu ("Custom Opus model" rows). The CLI
+/// names the three capability tiers high/mid/low — opus, sonnet and haiku
+/// resolve through them.
 const FAMILY_ENV_KEYS: &[(&str, &str, &str)] = &[
     // (alias family, env key, display name)
-    ("opus", "ANTHROPIC_DEFAULT_OPUS_MODEL", "Opus"),
-    ("sonnet", "ANTHROPIC_DEFAULT_SONNET_MODEL", "Sonnet"),
-    ("haiku", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "Haiku"),
-    ("fable", "ANTHROPIC_DEFAULT_FABLE_MODEL", "Fable"),
+    ("opus", "HZKCODE_DEFAULT_HIGH_MODEL", "Opus"),
+    ("sonnet", "HZKCODE_DEFAULT_MID_MODEL", "Sonnet"),
+    ("haiku", "HZKCODE_DEFAULT_LOW_MODEL", "Haiku"),
 ];
 
 /// The CLI's model configuration from ~/.hzkcode/settings.json, merged per
 /// field with settings.local.json winning (the CLI's own precedence).
 #[derive(Default)]
 struct CliModelConfig {
-    /// env.ANTHROPIC_MODEL — the CLI's effective default model id.
+    /// env.HZKCODE_MODEL — the CLI's effective default model id.
     env_model: Option<String>,
     /// Top-level `model` key (an alias like "opus" or a raw id).
     model_key: Option<String>,
-    /// env.ANTHROPIC_DEFAULT_<FAMILY>_MODEL overrides, keyed by family.
+    /// The capability tiers' model overrides, keyed by alias family.
     overrides: std::collections::HashMap<String, String>,
 }
 
@@ -152,7 +151,7 @@ impl CliModelConfig {
         self.overrides.get(family).map(String::as_str)
     }
 
-    /// The CLI's effective default model id: env.ANTHROPIC_MODEL beats the
+    /// The CLI's effective default model id: env.HZKCODE_MODEL beats the
     /// `model` key (the CLI applies settings env as real environment
     /// variables); a bare family alias there resolves through its override.
     fn resolved_default(&self) -> Option<String> {
@@ -214,7 +213,7 @@ fn merge_settings_json(config: &mut CliModelConfig, content: &str) {
         return;
     };
     let env = v.get("env");
-    if let Some(m) = pick(env.and_then(|e| e.get("ANTHROPIC_MODEL"))) {
+    if let Some(m) = pick(env.and_then(|e| e.get("HZKCODE_MODEL"))) {
         config.env_model = Some(m);
     }
     if let Some(m) = pick(v.get("model")) {
@@ -308,7 +307,7 @@ mod tests {
     #[test]
     fn aliases_cover_the_cli_model_menu() {
         let ids: Vec<&str> = CLI_ALIASES.iter().map(|(id, _)| *id).collect();
-        assert_eq!(ids, vec!["default", "opus", "fable", "sonnet", "haiku"]);
+        assert_eq!(ids, vec!["default", "opus", "sonnet", "haiku"]);
     }
 
     #[test]
@@ -317,7 +316,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("settings.json"),
-            r#"{"model":"opus","env":{"ANTHROPIC_MODEL":"sonnet","ANTHROPIC_DEFAULT_OPUS_MODEL":"grok-4.5"}}"#,
+            r#"{"model":"opus","env":{"HZKCODE_MODEL":"sonnet","HZKCODE_DEFAULT_HIGH_MODEL":"grok-4.5"}}"#,
         )
         .unwrap();
         std::fs::write(dir.join("settings.local.json"), r#"{"model":"haiku"}"#).unwrap();
@@ -336,7 +335,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("settings.json"),
-            r#"{"model":"opus","env":{"ANTHROPIC_DEFAULT_OPUS_MODEL":"gemini-3.8-flash"}}"#,
+            r#"{"model":"opus","env":{"HZKCODE_DEFAULT_HIGH_MODEL":"gemini-3.8-flash"}}"#,
         )
         .unwrap();
         let config = read_cli_config_from(&dir);
@@ -362,12 +361,12 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("settings.json"),
-            r#"{"model":"opus","env":{"ANTHROPIC_MODEL":"k3"}}"#,
+            r#"{"model":"opus","env":{"HZKCODE_MODEL":"k3"}}"#,
         )
         .unwrap();
         let config = read_cli_config_from(&dir);
         std::fs::remove_dir_all(&dir).ok();
-        // env.ANTHROPIC_MODEL outranks the `model` key within one file.
+        // env.HZKCODE_MODEL outranks the `model` key within one file.
         assert_eq!(config.resolved_default().as_deref(), Some("k3"));
     }
 
@@ -378,11 +377,10 @@ mod tests {
         std::fs::write(
             dir.join("settings.json"),
             r#"{"model":"opus","env":{
-                "ANTHROPIC_MODEL":"grok-4.5",
-                "ANTHROPIC_DEFAULT_OPUS_MODEL":"grok-4.5",
-                "ANTHROPIC_DEFAULT_SONNET_MODEL":"grok-4.5",
-                "ANTHROPIC_DEFAULT_HAIKU_MODEL":"grok-4.5",
-                "ANTHROPIC_DEFAULT_FABLE_MODEL":"grok-4.5"
+                "HZKCODE_MODEL":"grok-4.5",
+                "HZKCODE_DEFAULT_HIGH_MODEL":"grok-4.5",
+                "HZKCODE_DEFAULT_MID_MODEL":"grok-4.5",
+                "HZKCODE_DEFAULT_LOW_MODEL":"grok-4.5"
             }}"#,
         )
         .unwrap();
@@ -395,19 +393,15 @@ mod tests {
         let opus = by_id("opus");
         assert_eq!(opus.name.as_deref(), Some("grok-4.5"));
         assert_eq!(opus.description.as_deref(), Some("Custom Opus model"));
-        assert_eq!(
-            by_id("fable").description.as_deref(),
-            Some("Custom Fable model")
-        );
         let default = by_id("default");
         assert_eq!(default.name.as_deref(), Some("Default"));
         assert_eq!(
             default.description.as_deref(),
             Some("Use the default model (currently grok-4.5)")
         );
-        // Exactly the CLI menu's five rows, "default" first — no extra
-        // "configured" row, no [1m] variants.
-        assert_eq!(models.len(), 5);
+        // The app's own "default" row plus the CLI's three family aliases —
+        // no extra "configured" row, no [1m] variants.
+        assert_eq!(models.len(), 4);
         assert_eq!(models[0].id, "default");
     }
 

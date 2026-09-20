@@ -482,21 +482,18 @@ mod tests {
         );
         let env = resolve_provider_env("claude", Some("chan-a")).unwrap();
         assert_eq!(
-            env.get("ANTHROPIC_BASE_URL").map(String::as_str),
+            env.get("HZKCODE_BASE_URL").map(String::as_str),
             Some("https://a.example")
         );
-        assert_eq!(
-            env.get("ANTHROPIC_AUTH_TOKEN").map(String::as_str),
-            Some("sk-a")
-        );
-        assert_eq!(env.get("ANTHROPIC_MODEL").map(String::as_str), Some("m-a"));
+        assert_eq!(env.get("HZKCODE_API_KEY").map(String::as_str), Some("sk-a"));
+        assert_eq!(env.get("HZKCODE_MODEL").map(String::as_str), Some("m-a"));
 
         let official = resolve_provider_env("claude", Some(LOCAL_PROVIDER_ID)).unwrap();
         assert!(official.is_empty());
         let empty = resolve_provider_env("claude", Some("")).unwrap();
         // Empty id falls back to section.current (chan-a).
         assert_eq!(
-            empty.get("ANTHROPIC_BASE_URL").map(String::as_str),
+            empty.get("HZKCODE_BASE_URL").map(String::as_str),
             Some("https://a.example")
         );
     }
@@ -523,13 +520,10 @@ mod tests {
         // Suffix match: caller passes unprefixed id from plugin
         let env = resolve_provider_env("claude", Some("custom_1789366959743")).unwrap();
         assert_eq!(
-            env.get("ANTHROPIC_BASE_URL").map(String::as_str),
+            env.get("HZKCODE_BASE_URL").map(String::as_str),
             Some("https://tobapi.example.com")
         );
-        assert_eq!(
-            env.get("ANTHROPIC_AUTH_TOKEN").map(String::as_str),
-            Some("sk-test")
-        );
+        assert_eq!(env.get("HZKCODE_API_KEY").map(String::as_str), Some("sk-test"));
 
         // A stale explicit id must fail, not silently reroute the
         // conversation to whatever channel happens to be current.

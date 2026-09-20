@@ -24,7 +24,7 @@ export interface ProviderPreset {
    *  invert them in dark mode so they remain visible. */
   iconClassName?: string;
   /** claude: extra env merged into the JSON config on preset pick —
-   *  ANTHROPIC_DEFAULT_<TIER>_MODEL slots plus per-provider tuning vars. */
+   *  the capability tiers' model slots plus per-provider tuning vars. */
   env?: Record<string, string>;
 }
 
@@ -35,12 +35,12 @@ const DARK_MONO_ICON_CLASS = "dark:invert";
  *  locks API URL to this value, mirroring the reference's 官方直连 preset. */
 export const OFFICIAL_BASE_URL = "https://api.anthropic.com";
 
-/** Model-slot env keys, in the grid's display order. */
+/** Model-slot env keys, in the grid's display order. The CLI names its three
+ *  capability tiers high/mid/low; opus, sonnet and haiku resolve through. */
 export const CLAUDE_MODEL_SLOTS = [
-  { slot: "fable", envKey: "ANTHROPIC_DEFAULT_FABLE_MODEL" },
-  { slot: "sonnet", envKey: "ANTHROPIC_DEFAULT_SONNET_MODEL" },
-  { slot: "opus", envKey: "ANTHROPIC_DEFAULT_OPUS_MODEL" },
-  { slot: "haiku", envKey: "ANTHROPIC_DEFAULT_HAIKU_MODEL" },
+  { slot: "sonnet", envKey: "HZKCODE_DEFAULT_MID_MODEL" },
+  { slot: "opus", envKey: "HZKCODE_DEFAULT_HIGH_MODEL" },
+  { slot: "haiku", envKey: "HZKCODE_DEFAULT_LOW_MODEL" },
 ] as const;
 export type ClaudeModelSlot = (typeof CLAUDE_MODEL_SLOTS)[number]["slot"];
 
@@ -54,21 +54,20 @@ export function buildDefaultClaudeSettings(): Record<string, unknown> & {
     cleanupPeriodDays: 720,
     effortLevel: "xhigh",
     env: {
-      ANTHROPIC_AUTH_TOKEN: "",
-      ANTHROPIC_BASE_URL: "",
-      ANTHROPIC_BETAS: "context-1m-2025-08-07",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-4-5-20251001",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-4-6",
-      ANTHROPIC_SMALL_FAST_MODEL: "claude-haiku-4-5-20251001",
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-      CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
-      CLAUDE_CODE_NEW_INIT: "1",
-      DISABLE_ERROR_REPORTING: "1",
-      DISABLE_TELEMETRY: "1",
-      ENABLE_TOOL_SEARCH: "1",
-      MAX_THINKING_TOKENS: "31999",
-      MCP_TIMEOUT: "60000",
+      HZKCODE_API_KEY: "",
+      HZKCODE_BASE_URL: "",
+      HZKCODE_ANTHROPIC_BETAS: "context-1m-2025-08-07",
+      HZKCODE_DEFAULT_LOW_MODEL: "claude-haiku-4-5-20251001",
+      HZKCODE_DEFAULT_HIGH_MODEL: "claude-opus-5",
+      HZKCODE_DEFAULT_MID_MODEL: "claude-sonnet-4-6",
+      HZKCODE_SMALL_FAST_MODEL: "claude-haiku-4-5-20251001",
+      HZKCODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      HZKCODE_NEW_INIT: "1",
+      HZKCODE_DISABLE_TELEMETRY: "1",
+      HZKCODE_DISABLE_ERROR_REPORTING: "1",
+      HZKCODE_ENABLE_TOOL_SEARCH: "1",
+      HZKCODE_MAX_THINKING_TOKENS: "31999",
+      HZKCODE_MCP_TIMEOUT: "60000",
     },
     hasCompletedOnboarding: true,
     language: "简体中文",
@@ -87,8 +86,8 @@ export function claudeTemplateJson(
   extraEnv: Record<string, string> = {},
 ): string {
   const config = buildDefaultClaudeSettings();
-  config.env.ANTHROPIC_BASE_URL = baseUrl;
-  config.env.ANTHROPIC_AUTH_TOKEN = apiKey;
+  config.env.HZKCODE_BASE_URL = baseUrl;
+  config.env.HZKCODE_API_KEY = apiKey;
   for (const [key, val] of Object.entries(extraEnv)) {
     config.env[key] = val;
   }
@@ -107,10 +106,9 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
       model: "glm-5.2",
       iconSrc: zhipuIcon,
       env: {
-        ANTHROPIC_DEFAULT_FABLE_MODEL: "glm-5.2",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "glm-5.2",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "glm-5.2",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "glm-5.2",
+        HZKCODE_DEFAULT_LOW_MODEL: "glm-5.2",
+        HZKCODE_DEFAULT_MID_MODEL: "glm-5.2",
+        HZKCODE_DEFAULT_HIGH_MODEL: "glm-5.2",
       },
     },
     {
@@ -120,10 +118,9 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
       iconSrc: kimiIcon,
       iconClassName: DARK_MONO_ICON_CLASS,
       env: {
-        ANTHROPIC_DEFAULT_FABLE_MODEL: "kimi-k3",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "kimi-k3",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "kimi-k3",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "kimi-k3",
+        HZKCODE_DEFAULT_LOW_MODEL: "kimi-k3",
+        HZKCODE_DEFAULT_MID_MODEL: "kimi-k3",
+        HZKCODE_DEFAULT_HIGH_MODEL: "kimi-k3",
       },
     },
     {
@@ -133,12 +130,11 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
       iconSrc: kimiIcon,
       iconClassName: DARK_MONO_ICON_CLASS,
       env: {
-        ANTHROPIC_DEFAULT_FABLE_MODEL: "kimi-k3",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "kimi-k3",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "kimi-k3",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "kimi-k3",
-        CLAUDE_CODE_MAX_CONTEXT_TOKENS: "262144",
-        CLAUDE_CODE_AUTO_COMPACT_WINDOW: "262144",
+        HZKCODE_DEFAULT_LOW_MODEL: "kimi-k3",
+        HZKCODE_DEFAULT_MID_MODEL: "kimi-k3",
+        HZKCODE_DEFAULT_HIGH_MODEL: "kimi-k3",
+        HZKCODE_MAX_CONTEXT_TOKENS: "262144",
+        HZKCODE_AUTO_COMPACT_WINDOW: "262144",
       },
     },
     {
@@ -147,11 +143,10 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
       model: "deepseek-v4-pro[1m]",
       iconSrc: deepseekIcon,
       env: {
-        ANTHROPIC_DEFAULT_FABLE_MODEL: "deepseek-v4-pro[1m]",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "deepseek-v4-flash",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek-v4-pro[1m]",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek-v4-pro[1m]",
-        CLAUDE_CODE_EFFORT_LEVEL: "max",
+        HZKCODE_DEFAULT_LOW_MODEL: "deepseek-v4-flash",
+        HZKCODE_DEFAULT_MID_MODEL: "deepseek-v4-pro[1m]",
+        HZKCODE_DEFAULT_HIGH_MODEL: "deepseek-v4-pro[1m]",
+        HZKCODE_EFFORT_LEVEL: "max",
       },
     },
     {
@@ -160,13 +155,10 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
       model: "MiniMax-M2.1",
       iconSrc: minimaxIcon,
       env: {
-        // MiniMax 模型响应较慢, 需要 50 分钟 (3,000,000ms) 超时避免长推理请求被截断
-        API_TIMEOUT_MS: "3000000",
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-        ANTHROPIC_DEFAULT_FABLE_MODEL: "MiniMax-M2.1",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMax-M2.1",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "MiniMax-M2.1",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "MiniMax-M2.1",
+        HZKCODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+        HZKCODE_DEFAULT_LOW_MODEL: "MiniMax-M2.1",
+        HZKCODE_DEFAULT_MID_MODEL: "MiniMax-M2.1",
+        HZKCODE_DEFAULT_HIGH_MODEL: "MiniMax-M2.1",
       },
     },
     {
@@ -176,10 +168,9 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
       iconSrc: xiaomimimoIcon,
       iconClassName: DARK_MONO_ICON_CLASS,
       env: {
-        ANTHROPIC_DEFAULT_FABLE_MODEL: "mimo-v2.5-pro",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "mimo-v2.5-pro",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "mimo-v2.5-pro",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "mimo-v2.5-pro",
+        HZKCODE_DEFAULT_LOW_MODEL: "mimo-v2.5-pro",
+        HZKCODE_DEFAULT_MID_MODEL: "mimo-v2.5-pro",
+        HZKCODE_DEFAULT_HIGH_MODEL: "mimo-v2.5-pro",
       },
     },
     {
@@ -189,10 +180,9 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
       iconSrc: xiaomimimoIcon,
       iconClassName: DARK_MONO_ICON_CLASS,
       env: {
-        ANTHROPIC_DEFAULT_FABLE_MODEL: "mimo-v2.5-pro",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "mimo-v2.5-pro",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "mimo-v2.5-pro",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "mimo-v2.5-pro",
+        HZKCODE_DEFAULT_LOW_MODEL: "mimo-v2.5-pro",
+        HZKCODE_DEFAULT_MID_MODEL: "mimo-v2.5-pro",
+        HZKCODE_DEFAULT_HIGH_MODEL: "mimo-v2.5-pro",
       },
     },
     { name: "Bailian", baseUrl: "https://dashscope.aliyuncs.com/apps/anthropic", model: "", iconSrc: bailianIcon },
@@ -203,12 +193,11 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
       model: "LongCat-2.0",
       iconSrc: longcatIcon,
       env: {
-        ANTHROPIC_DEFAULT_FABLE_MODEL: "LongCat-2.0",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "LongCat-2.0",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "LongCat-2.0",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "LongCat-2.0",
-        CLAUDE_CODE_MAX_OUTPUT_TOKENS: "131072",
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+        HZKCODE_DEFAULT_LOW_MODEL: "LongCat-2.0",
+        HZKCODE_DEFAULT_MID_MODEL: "LongCat-2.0",
+        HZKCODE_DEFAULT_HIGH_MODEL: "LongCat-2.0",
+        HZKCODE_MAX_OUTPUT_TOKENS: "131072",
+        HZKCODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
       },
     },
     {
@@ -218,10 +207,9 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
       iconSrc: opencodeIcon,
       iconClassName: DARK_MONO_ICON_CLASS,
       env: {
-        ANTHROPIC_DEFAULT_FABLE_MODEL: "deepseek-v4-flash",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "deepseek-v4-flash",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek-v4-flash",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek-v4-flash",
+        HZKCODE_DEFAULT_LOW_MODEL: "deepseek-v4-flash",
+        HZKCODE_DEFAULT_MID_MODEL: "deepseek-v4-flash",
+        HZKCODE_DEFAULT_HIGH_MODEL: "deepseek-v4-flash",
       },
     },
     {
@@ -230,10 +218,9 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
       model: "anthropic/claude-sonnet-4.5",
       iconSrc: openrouterIcon,
       env: {
-        ANTHROPIC_DEFAULT_FABLE_MODEL: "anthropic/claude-fable-5",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "anthropic/claude-haiku-4.5",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "anthropic/claude-sonnet-4.5",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "anthropic/claude-opus-4.5",
+        HZKCODE_DEFAULT_LOW_MODEL: "anthropic/claude-haiku-4.5",
+        HZKCODE_DEFAULT_MID_MODEL: "anthropic/claude-sonnet-4.5",
+        HZKCODE_DEFAULT_HIGH_MODEL: "anthropic/claude-opus-4.5",
       },
     },
   ],

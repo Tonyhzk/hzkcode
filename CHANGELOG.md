@@ -22,6 +22,11 @@
 - 内置状态下的 CLI 生命周期：`resolve::is_bundled_cli_path` 判定内置后跳过 npm registry 版本查询，`update_kind` 返回 null 隐藏一键安装/更新按钮，`cli_update_plan` / `cli_update` 改为说明「随应用一起更新」；`cli_version_status` 新增 `source`（bundled / system）字段
 - 设置页 CLI 版本行在使用内置二进制时显示「内置」标识（i18n `settings.cliVersionBundled`），提示该 CLI 随应用更新
 - CLI 管理页「官方文档」链接改为项目文档站（`https://doc.hzkcode.houzhenkun.com`），不再指向上游文档
+- 变量约定收敛到 hzkcode：应用写入、注入、读取的 provider 变量全部改用 CLI 自己的名字（`HZKCODE_BASE_URL` / `HZKCODE_API_KEY` / `HZKCODE_MODEL` / `HZKCODE_DEFAULT_HIGH|MID|LOW_MODEL` / `HZKCODE_MAX_THINKING_TOKENS` 等），渠道模板、模型槽位、渠道掩码表、模型目录与努力档注入都不再出现 `ANTHROPIC_*` / `CLAUDE_CODE_*` 拼写；`provider_files::env_names` 只发射 hzkcode 名字
+- 启动 CLI 时先清掉从父进程继承的 provider 变量（`provider_files::is_provider_env_key`）并在选中具体渠道时设置 `HZKCODE_PROVIDER_MANAGED_BY_HOST=1`，让界面渠道成为唯一来源、CLI 自己的 settings.json 无法把请求改到别的端点
+- cc-switch 导入归一化：导入时把外部文件里的旧变量名改写为 hzkcode 名字（端点、凭据、能力档模型、`CLAUDE_CODE_*` 前缀），导入后的渠道可直接使用
+- 模型目录对齐 CLI：别名表去掉上游独有的 `fable`，能力档默认值改从 `HZKCODE_DEFAULT_*_MODEL` 读取，模型槽位由四个减为三个（sonnet / opus / haiku）
+- 集成测试 `send_path` 改为通过设置里的自定义路径指向假 CLI：PATH 发现会被开发槽位 `src-tauri/binaries/` 里的二进制盖过
 - 引擎配置根目录从 Claude Code 的 `~/.claude` / `CLAUDE_CONFIG_DIR` 切换为 fork 的 `~/.hzkcode` / `HZKCODE_CONFIG_DIR`：会话扫描与远程回放白名单、渠道官方配置文件路径、全局 commands/skills 目录、模型目录（含 WSL 远端探针）、`config.rs` 测试用环境变量列表一并更新，GUI 与单独安装的 CLI 共用同一份数据
 
 ## [0.1.0] - 2026-09-19

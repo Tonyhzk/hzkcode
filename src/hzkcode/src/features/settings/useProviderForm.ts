@@ -21,7 +21,7 @@ const EMPTY_FORM: ProviderFormValue = {
   settingsJson: "",
 };
 
-const EMPTY_SLOTS: Record<ClaudeModelSlot, string> = { fable: "", sonnet: "", opus: "", haiku: "" };
+const EMPTY_SLOTS: Record<ClaudeModelSlot, string> = { sonnet: "", opus: "", haiku: "" };
 
 /** Initial form state: seed the JSON editor from the stored settingsConfig
  *  (edit), the flat fields (legacy channels), or the official-direct
@@ -32,7 +32,7 @@ function initialForm(initial?: ProviderFormValue): ProviderFormValue {
   if (initial) {
     // Legacy flat channel: migrate its fields into the default template.
     const extra: Record<string, string> = {};
-    if (base.model.trim()) extra.ANTHROPIC_MODEL = base.model.trim();
+    if (base.model.trim()) extra.HZKCODE_MODEL = base.model.trim();
     return {
       ...base,
       settingsJson: claudeTemplateJson(base.baseUrl.trim(), base.apiKey.trim(), extra),
@@ -57,10 +57,9 @@ function slotsFromJson(settingsJson: string): Record<ClaudeModelSlot, string> {
       return typeof v === "string" ? v : "";
     };
     return {
-      fable: read("ANTHROPIC_DEFAULT_FABLE_MODEL"),
-      sonnet: read("ANTHROPIC_DEFAULT_SONNET_MODEL"),
-      opus: read("ANTHROPIC_DEFAULT_OPUS_MODEL"),
-      haiku: read("ANTHROPIC_DEFAULT_HAIKU_MODEL"),
+      sonnet: read("HZKCODE_DEFAULT_MID_MODEL"),
+      opus: read("HZKCODE_DEFAULT_HIGH_MODEL"),
+      haiku: read("HZKCODE_DEFAULT_LOW_MODEL"),
     };
   } catch {
     return { ...EMPTY_SLOTS };
@@ -129,16 +128,15 @@ export function useProviderForm({
         return typeof v === "string" ? v : "";
       };
       setSlots({
-        fable: read("ANTHROPIC_DEFAULT_FABLE_MODEL"),
-        sonnet: read("ANTHROPIC_DEFAULT_SONNET_MODEL"),
-        opus: read("ANTHROPIC_DEFAULT_OPUS_MODEL"),
-        haiku: read("ANTHROPIC_DEFAULT_HAIKU_MODEL"),
+        sonnet: read("HZKCODE_DEFAULT_MID_MODEL"),
+        opus: read("HZKCODE_DEFAULT_HIGH_MODEL"),
+        haiku: read("HZKCODE_DEFAULT_LOW_MODEL"),
       });
       setValue((v) => ({
         ...v,
         settingsJson: text,
-        baseUrl: read("ANTHROPIC_BASE_URL"),
-        apiKey: read("ANTHROPIC_AUTH_TOKEN") || read("ANTHROPIC_API_KEY"),
+        baseUrl: read("HZKCODE_BASE_URL"),
+        apiKey: read("HZKCODE_API_KEY"),
       }));
       setJsonError("");
     } catch {
@@ -161,10 +159,9 @@ export function useProviderForm({
   const selectPreset = (preset: ProviderPreset) => {
     const slotEnv = preset.env ?? {};
     setSlots({
-      fable: slotEnv.ANTHROPIC_DEFAULT_FABLE_MODEL ?? "",
-      sonnet: slotEnv.ANTHROPIC_DEFAULT_SONNET_MODEL ?? "",
-      opus: slotEnv.ANTHROPIC_DEFAULT_OPUS_MODEL ?? "",
-      haiku: slotEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? "",
+      sonnet: slotEnv.HZKCODE_DEFAULT_MID_MODEL ?? "",
+      opus: slotEnv.HZKCODE_DEFAULT_HIGH_MODEL ?? "",
+      haiku: slotEnv.HZKCODE_DEFAULT_LOW_MODEL ?? "",
     });
     setValue((v) => ({
       ...v,

@@ -507,8 +507,6 @@ export const zh = {
     cliApiKey: "API Key",
     cliModel: "模型",
     cliModelMapping: "模型映射",
-    cliFableModel: "Fable 默认模型",
-    cliFableModelPlaceholder: "例如：claude-fable-5",
     cliSonnetModel: "Sonnet 默认模型",
     cliSonnetModelPlaceholder: "例如：claude-sonnet-4-5",
     cliOpusModel: "Opus 默认模型",

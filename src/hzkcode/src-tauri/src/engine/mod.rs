@@ -1003,6 +1003,20 @@ fn prepare_launch(
     };
     let bin = engine_bin(&settings, engine);
     let mut built = engine_impl.build_command(&req, &bin)?;
+    // Provider config belongs to the app, not to the shell that launched it:
+    // drop every inherited provider/auth variable (a terminal-launched app
+    // would otherwise hand the user's shell-exported endpoint and key to the
+    // child), then layer the selected channel on top. A concrete channel also
+    // pins host-managed routing, so the CLI's own settings.json can't redirect
+    // the request away from the endpoint the user picked.
+    for (key, _) in std::env::vars() {
+        if crate::provider_files::is_provider_env_key(&key) {
+            built.command.env_remove(&key);
+        }
+    }
+    if provider.is_some() {
+        built.command.env("HZKCODE_PROVIDER_MANAGED_BY_HOST", "1");
+    }
     for (key, value) in &channel_env {
         built.command.env(key, value);
     }

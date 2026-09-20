@@ -20,9 +20,9 @@ export const isPseudoProvider = (id: string): id is PseudoProviderId =>
 
 const asString = (v: unknown): string => (typeof v === "string" ? v : "");
 
-/** Per-engine model env var, mirroring the backend provider_files::env_mapping() table. */
+/** Per-engine model env var, mirroring the backend provider_files::env_names() table. */
 const ENV_MODEL_KEY: Partial<Record<EngineId, string>> = {
-  claude: "ANTHROPIC_MODEL",
+  claude: "HZKCODE_MODEL",
 };
 
 /**
@@ -47,12 +47,12 @@ export function providerModel(engine: EngineId, raw: unknown): string {
 
 /**
  * Per-engine env keys backing the flat baseUrl/apiKey/model fields, mirroring
- * the backend provider_files::env_mapping() table. Legacy imported channels (ccswitch shape)
- * carry these inside settingsConfig.env/env, and the backend lets raw env win
- * over flat fields — so an edit must strip them or the new values are dead.
+ * the backend provider_files::env_names() table. Imported channels carry these
+ * inside settingsConfig.env/env, and the backend lets raw env win over flat
+ * fields — so an edit must strip them or the new values are dead.
  */
 const ENV_CONVENTION_KEYS: Partial<Record<EngineId, string[]>> = {
-  claude: ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL"],
+  claude: ["HZKCODE_BASE_URL", "HZKCODE_API_KEY", "HZKCODE_MODEL"],
 };
 
 /** Copy `raw` with the convention env keys removed (empty maps/objects

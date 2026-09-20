@@ -306,15 +306,79 @@ fn env_str(env: &Value, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Provider env keys a cc-switch channel carries under the upstream Claude
+/// Code names, and the hzkcode names the CLI reads for the same setting. The
+/// endpoint, credential and model-routing vars are special cases (the tiers
+/// became high/mid/low); everything else follows the two prefix families
+/// below.
+const CCS_ENV_RENAMES: &[(&str, &str)] = &[
+    ("ANTHROPIC_BASE_URL", "HZKCODE_BASE_URL"),
+    ("ANTHROPIC_AUTH_TOKEN", "HZKCODE_API_KEY"),
+    ("ANTHROPIC_API_KEY", "HZKCODE_API_KEY"),
+    ("ANTHROPIC_MODEL", "HZKCODE_MODEL"),
+    ("ANTHROPIC_DEFAULT_OPUS_MODEL", "HZKCODE_DEFAULT_HIGH_MODEL"),
+    ("ANTHROPIC_DEFAULT_SONNET_MODEL", "HZKCODE_DEFAULT_MID_MODEL"),
+    ("ANTHROPIC_DEFAULT_HAIKU_MODEL", "HZKCODE_DEFAULT_LOW_MODEL"),
+    ("ANTHROPIC_SMALL_FAST_MODEL", "HZKCODE_SMALL_FAST_MODEL"),
+];
+
+/// The name this CLI reads `key` under, or None when the key is not a
+/// renamed provider variable (it then travels unchanged).
+fn import_env_key(key: &str) -> Option<String> {
+    if key.starts_with("HZKCODE_") {
+        return None;
+    }
+    if let Some((_, to)) = CCS_ENV_RENAMES.iter().find(|(from, _)| key == *from) {
+        return Some((*to).to_string());
+    }
+    if let Some(rest) = key.strip_prefix("CLAUDE_CODE_") {
+        return Some(format!("HZKCODE_{rest}"));
+    }
+    if let Some(rest) = key.strip_prefix("ANTHROPIC_") {
+        return Some(format!("HZKCODE_ANTHROPIC_{rest}"));
+    }
+    None
+}
+
+/// One imported provider's settingsConfig with its env renamed to the names
+/// this CLI reads. A carried-over env is what actually configures a channel,
+/// so leaving the old spellings in place would import channels that do not
+/// work.
+fn normalize_settings_config(engine: &str, sc: &Value) -> Value {
+    let mut out = sc.clone();
+    if engine != "claude" {
+        return out;
+    }
+    let Some(env) = sc.get("env").and_then(Value::as_object) else {
+        return out;
+    };
+    let mut renamed = serde_json::Map::new();
+    for (key, value) in env {
+        match import_env_key(key) {
+            Some(to) => {
+                renamed.insert(to, value.clone());
+            }
+            None => {
+                renamed.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    out["env"] = Value::Object(renamed);
+    out
+}
+
 /// Convert one cc-switch provider into our channel value. Keeps the original
 /// `settingsConfig` verbatim: provider_files merges its raw `env` /
 /// `config` first when materializing the CLI's native config, so extra keys
-/// (e.g. ANTHROPIC_SMALL_FAST_MODEL) survive the import.
+/// (e.g. HZKCODE_SMALL_FAST_MODEL) survive the import.
 fn convert_provider(engine: &str, id: &str, p: &Value) -> Value {
     let mut out = serde_json::Map::new();
     let name = p["name"].as_str().unwrap_or(id);
     out.insert("name".into(), Value::String(name.to_string()));
-    if let Some(sc) = p.get("settingsConfig") {
+    let normalized = p
+        .get("settingsConfig")
+        .map(|sc| normalize_settings_config(engine, sc));
+    if let Some(sc) = &normalized {
         out.insert("settingsConfig".into(), sc.clone());
     }
     if let Some(icon) = p.get("icon").and_then(Value::as_str) {
@@ -324,23 +388,20 @@ fn convert_provider(engine: &str, id: &str, p: &Value) -> Value {
         out.insert("iconColor".into(), Value::String(color.to_string()));
     }
 
-    let sc = &p["settingsConfig"];
     match engine {
         // Convention fields live in settingsConfig.env.
         "claude" => {
-            let env = &sc["env"];
-            let (base, key, model) = (
-                "ANTHROPIC_BASE_URL",
-                "ANTHROPIC_AUTH_TOKEN",
-                "ANTHROPIC_MODEL",
-            );
-            if let Some(v) = env_str(env, base) {
+            let env = normalized
+                .as_ref()
+                .map(|sc| &sc["env"])
+                .unwrap_or(&Value::Null);
+            if let Some(v) = env_str(env, "HZKCODE_BASE_URL") {
                 out.insert("baseUrl".into(), Value::String(v));
             }
-            if let Some(v) = env_str(env, key) {
+            if let Some(v) = env_str(env, "HZKCODE_API_KEY") {
                 out.insert("apiKey".into(), Value::String(v));
             }
-            if let Some(v) = env_str(env, model) {
+            if let Some(v) = env_str(env, "HZKCODE_MODEL") {
                 out.insert("model".into(), Value::String(v));
             }
         }
@@ -498,6 +559,46 @@ mod tests {
             std::env::temp_dir().join(format!("hzkcode-ccs-test-{}-{}", std::process::id(), name));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn imported_provider_env_is_renamed_to_hzkcode_names() {
+        let provider = serde_json::json!({
+            "name": "Relay",
+            "settingsConfig": { "env": {
+                "ANTHROPIC_BASE_URL": "https://relay.example",
+                "ANTHROPIC_AUTH_TOKEN": "sk-x",
+                "ANTHROPIC_MODEL": "m-x",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "m-opus",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "m-sonnet",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "m-haiku",
+                "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "262144",
+                "USER_KEY": "keep"
+            } }
+        });
+        let converted = convert_provider("claude", "p1", &provider);
+        let env = &converted["settingsConfig"]["env"];
+        assert_eq!(env["HZKCODE_BASE_URL"], "https://relay.example");
+        assert_eq!(env["HZKCODE_API_KEY"], "sk-x");
+        assert_eq!(env["HZKCODE_MODEL"], "m-x");
+        assert_eq!(env["HZKCODE_DEFAULT_HIGH_MODEL"], "m-opus");
+        assert_eq!(env["HZKCODE_DEFAULT_MID_MODEL"], "m-sonnet");
+        assert_eq!(env["HZKCODE_DEFAULT_LOW_MODEL"], "m-haiku");
+        assert_eq!(env["HZKCODE_MAX_CONTEXT_TOKENS"], "262144");
+        assert_eq!(env["USER_KEY"], "keep");
+        for legacy in [
+            "ANTHROPIC_BASE_URL",
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_MODEL",
+        ] {
+            assert!(
+                env.get(legacy).is_none(),
+                "{legacy} must not survive the import"
+            );
+        }
+        assert_eq!(converted["baseUrl"], "https://relay.example");
+        assert_eq!(converted["apiKey"], "sk-x");
+        assert_eq!(converted["model"], "m-x");
     }
 
     #[test]

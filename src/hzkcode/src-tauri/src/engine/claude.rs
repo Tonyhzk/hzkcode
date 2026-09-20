@@ -91,20 +91,20 @@ impl Engine for ClaudeEngine {
             // reading native settings here would remap independent channels.
             cmd.arg(model);
         }
-        // Claude Code has no effort flag; the thinking budget env var is the
+        // The CLI has no effort flag; the thinking budget env var is the
         // effort knob. "low" stays at the CLI default (no forced thinking).
         match req.effort.as_deref() {
             Some("medium") => {
-                cmd.env("MAX_THINKING_TOKENS", "16384");
+                cmd.env("HZKCODE_MAX_THINKING_TOKENS", "16384");
             }
             Some("high") => {
-                cmd.env("MAX_THINKING_TOKENS", "65536");
+                cmd.env("HZKCODE_MAX_THINKING_TOKENS", "65536");
             }
             Some("xhigh") => {
-                cmd.env("MAX_THINKING_TOKENS", "131072");
+                cmd.env("HZKCODE_MAX_THINKING_TOKENS", "131072");
             }
             Some("max") => {
-                cmd.env("MAX_THINKING_TOKENS", "262144");
+                cmd.env("HZKCODE_MAX_THINKING_TOKENS", "262144");
             }
             _ => {}
         }

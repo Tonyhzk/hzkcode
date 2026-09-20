@@ -422,18 +422,56 @@ fn is_blocked_env_key(key: &str) -> bool {
     )
 }
 
-/// Static baseUrl/apiKey/model -> env var mapping: the env keys a
-/// cc-switch-imported channel carries its convention fields under, and the
-/// keys written into settings.json.
-fn env_mapping(engine: &str) -> [(&'static str, &'static str); 3] {
+/// Static baseUrl/apiKey/model -> env var names: the hzkcode CLI's own
+/// variables. The upstream spawnings are deliberately absent — the CLI no
+/// longer reads them, so the app speaks one convention only. A channel carries
+/// its fields either as flat keys or under these names in a raw env map.
+fn env_names(engine: &str) -> [(&'static str, &'static [&'static str]); 3] {
     match engine {
         "claude" => [
-            ("baseUrl", "ANTHROPIC_BASE_URL"),
-            ("apiKey", "ANTHROPIC_AUTH_TOKEN"),
-            ("model", "ANTHROPIC_MODEL"),
+            ("baseUrl", &["HZKCODE_BASE_URL"]),
+            ("apiKey", &["HZKCODE_API_KEY"]),
+            ("model", &["HZKCODE_MODEL"]),
         ],
-        _ => [("baseUrl", ""), ("apiKey", ""), ("model", "")],
+        _ => [("baseUrl", &[]), ("apiKey", &[]), ("model", &[])],
     }
+}
+
+/// Provider/auth variables the hzkcode CLI reads. An inherited value — a shell
+/// that exported credentials before launching the app — is dropped, so a
+/// session's endpoint, credential and model come from the app's channel
+/// settings instead of whoever started the app. Feature variables
+/// (`HZKCODE_OSS_*`, `HZKCODE_FEISHU_*`, …) are not provider config and pass
+/// through untouched.
+pub(crate) fn is_provider_env_key(key: &str) -> bool {
+    let upper = key.to_ascii_uppercase();
+    if upper.starts_with("HZKCODE_ANTHROPIC_")
+        || upper.starts_with("HZKCODE_DEFAULT_")
+        || upper.starts_with("HZKCODE_BEDROCK_")
+        || upper.starts_with("HZKCODE_VERTEX_")
+        || upper.starts_with("HZKCODE_FOUNDRY_")
+        || upper.starts_with("HZKCODE_GEMINI_")
+        || upper.starts_with("HZKCODE_USE_")
+        || upper.starts_with("HZKCODE_SKIP_")
+    {
+        return true;
+    }
+    matches!(
+        upper.as_str(),
+        "HZKCODE_BASE_URL"
+            | "HZKCODE_BASE_URL_ENDPOINT"
+            | "HZKCODE_API_KEY"
+            | "HZKCODE_AUTH_TOKEN"
+            | "HZKCODE_OAUTH_TOKEN"
+            | "HZKCODE_MODEL"
+            | "HZKCODE_SMALL_FAST_MODEL"
+            | "HZKCODE_SUBAGENT_MODEL"
+            | "HZKCODE_PROVIDER"
+            | "HZKCODE_PROVIDER_MANAGED_BY_HOST"
+            | "HZKCODE_AUTH_MODE"
+            | "HZKCODE_API_MODE"
+            | "HZKCODE_DISABLE_IMAGE_INPUT"
+    )
 }
 
 fn non_empty_str(value: Option<&Value>) -> Option<String> {
@@ -458,17 +496,15 @@ fn channel_env_maps(
     .filter_map(Value::as_object)
 }
 
-/// One convention field (baseUrl/apiKey/model): the flat field wins, then
-/// the engine's env key inside the raw env maps.
+/// One convention field (baseUrl/apiKey/model): the flat field wins, then any
+/// of the field's env names inside the raw env maps.
 fn channel_field(engine: &str, provider: &Value, field: &str) -> Option<String> {
     if let Some(v) = non_empty_str(provider.get(field)) {
         return Some(v);
     }
-    let (_, var) = env_mapping(engine).into_iter().find(|(f, _)| *f == field)?;
-    if var.is_empty() {
-        return None;
-    }
-    channel_env_maps(provider).find_map(|map| non_empty_str(map.get(var)))
+    let (_, names) = env_names(engine).into_iter().find(|(f, _)| *f == field)?;
+    channel_env_maps(provider)
+        .find_map(|map| names.iter().find_map(|name| non_empty_str(map.get(*name))))
 }
 
 /// Channel env for spawn injection (and leftover file-materialize helpers):
@@ -501,13 +537,15 @@ pub(crate) fn channel_env(
             out.insert(key.clone(), scalar);
         }
     }
-    for (field, var) in env_mapping(engine) {
-        if var.is_empty() || seen.contains(var) {
+    for (field, names) in env_names(engine) {
+        let Some(value) = channel_field(engine, provider, field) else {
             continue;
-        }
-        if let Some(v) = channel_field(engine, provider, field) {
-            seen.insert(var.to_string());
-            out.insert(var.to_string(), v);
+        };
+        for name in names {
+            // A raw env map may already carry one spelling: keep its value and
+            // fill in the others, so every CLI family sees the same endpoint.
+            out.entry((*name).to_string())
+                .or_insert_with(|| value.clone());
         }
     }
     Ok(out)
@@ -536,7 +574,7 @@ fn render_claude(base: &str, provider: &Value) -> Result<String, String> {
     // returns the snapshot byte-for-byte.
     if let Some(env) = doc.get_mut("env").and_then(Value::as_object_mut) {
         for key in CLAUDE_MANAGED_ENV_KEYS {
-            env.remove(key);
+            env.remove(*key);
         }
         if env.is_empty() {
             doc.as_object_mut().unwrap().remove("env");
@@ -564,19 +602,21 @@ fn render_claude(base: &str, provider: &Value) -> Result<String, String> {
 }
 
 /// Provider-selection env keys a claude channel owns outright once hzkcode
-/// manages settings.json: endpoint, credentials, and model routing. The three
-/// convention keys mirror env_mapping("claude"); ANTHROPIC_API_KEY is the
-/// alternate credential key the dialog recognizes.
-const CLAUDE_MANAGED_ENV_KEYS: [&str; 9] = [
-    "ANTHROPIC_BASE_URL",
-    "ANTHROPIC_AUTH_TOKEN",
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_MODEL",
-    "ANTHROPIC_DEFAULT_FABLE_MODEL",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-    "ANTHROPIC_SMALL_FAST_MODEL",
+/// manages settings.json: endpoint, credentials, and model routing.
+const CLAUDE_MANAGED_ENV_KEYS: &[&str] = &[
+    "HZKCODE_BASE_URL",
+    "HZKCODE_BASE_URL_ENDPOINT",
+    "HZKCODE_API_KEY",
+    "HZKCODE_ANTHROPIC_AUTH_TOKEN",
+    "HZKCODE_AUTH_TOKEN",
+    "HZKCODE_MODEL",
+    "HZKCODE_SMALL_FAST_MODEL",
+    "HZKCODE_DEFAULT_HIGH_MODEL",
+    "HZKCODE_DEFAULT_MID_MODEL",
+    "HZKCODE_DEFAULT_LOW_MODEL",
+    "HZKCODE_PROVIDER",
+    "HZKCODE_AUTH_MODE",
+    "HZKCODE_API_MODE",
 ];
 
 #[cfg(test)]
@@ -655,20 +695,17 @@ mod tests {
             "baseUrl": "https://flat.example",
             "apiKey": "sk-flat",
             "model": "flat-model",
-            "settingsConfig": { "env": { "ANTHROPIC_BASE_URL": "https://raw.example" } },
-            "env": { "ANTHROPIC_AUTH_TOKEN": "sk-raw" },
+            "settingsConfig": { "env": { "HZKCODE_BASE_URL": "https://raw.example" } },
+            "env": { "HZKCODE_API_KEY": "sk-raw" },
         });
         let env = channel_env("claude", &p).unwrap();
         assert_eq!(
-            env.get("ANTHROPIC_BASE_URL").map(String::as_str),
+            env.get("HZKCODE_BASE_URL").map(String::as_str),
             Some("https://raw.example")
         );
+        assert_eq!(env.get("HZKCODE_API_KEY").map(String::as_str), Some("sk-raw"));
         assert_eq!(
-            env.get("ANTHROPIC_AUTH_TOKEN").map(String::as_str),
-            Some("sk-raw")
-        );
-        assert_eq!(
-            env.get("ANTHROPIC_MODEL").map(String::as_str),
+            env.get("HZKCODE_MODEL").map(String::as_str),
             Some("flat-model")
         );
 
@@ -782,9 +819,9 @@ mod tests {
         assert_eq!(out["model"], "opus");
         assert!(out["hooks"].is_object());
         assert_eq!(out["env"]["USER_KEY"], "keep");
-        assert_eq!(out["env"]["ANTHROPIC_BASE_URL"], "https://a.example");
-        assert_eq!(out["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-a");
-        assert_eq!(out["env"]["ANTHROPIC_MODEL"], "m-a");
+        assert_eq!(out["env"]["HZKCODE_BASE_URL"], "https://a.example");
+        assert_eq!(out["env"]["HZKCODE_API_KEY"], "sk-a");
+        assert_eq!(out["env"]["HZKCODE_MODEL"], "m-a");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -798,8 +835,8 @@ mod tests {
         apply_claude(&target, &b).unwrap();
         let out: Value =
             serde_json::from_str(&std::fs::read_to_string(&target.path).unwrap()).unwrap();
-        assert_eq!(out["env"]["ANTHROPIC_BASE_URL"], "https://b.example");
-        assert_eq!(out["env"]["ANTHROPIC_MODEL"], "m-b");
+        assert_eq!(out["env"]["HZKCODE_BASE_URL"], "https://b.example");
+        assert_eq!(out["env"]["HZKCODE_MODEL"], "m-b");
         assert_eq!(out["env"]["USER_KEY"], "keep");
         // A leftover from the first channel must not survive the second.
         let mut c = channel(&[("model", "m-c")]);
@@ -810,7 +847,7 @@ mod tests {
         let out: Value =
             serde_json::from_str(&std::fs::read_to_string(&target.path).unwrap()).unwrap();
         assert!(out["env"].get("EXTRA_A").is_none());
-        assert_eq!(out["env"]["ANTHROPIC_MODEL"], "m-d");
+        assert_eq!(out["env"]["HZKCODE_MODEL"], "m-d");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -819,22 +856,21 @@ mod tests {
         let (dir, target) = fixture("claude-residue", "settings.json");
         // The pre-hzkcode file was last written by another provider manager:
         // its endpoint/credential/model-routing keys sit in the snapshot.
-        let original = r#"{"model":"opus","env":{"USER_KEY":"keep","ANTHROPIC_BASE_URL":"https://old.example","ANTHROPIC_AUTH_TOKEN":"sk-old","ANTHROPIC_DEFAULT_OPUS_MODEL":"kimi-k3","ANTHROPIC_DEFAULT_SONNET_MODEL":"kimi-k3","ANTHROPIC_DEFAULT_HAIKU_MODEL":"kimi-k3","ANTHROPIC_DEFAULT_FABLE_MODEL":"kimi-k3","ANTHROPIC_SMALL_FAST_MODEL":"kimi-k3-mini"}}"#;
+        let original = r#"{"model":"opus","env":{"USER_KEY":"keep","HZKCODE_BASE_URL":"https://old.example","HZKCODE_API_KEY":"sk-old","HZKCODE_DEFAULT_HIGH_MODEL":"kimi-k3","HZKCODE_DEFAULT_MID_MODEL":"kimi-k3","HZKCODE_DEFAULT_LOW_MODEL":"kimi-k3","HZKCODE_SMALL_FAST_MODEL":"kimi-k3-mini"}}"#;
         std::fs::write(&target.path, original).unwrap();
         let p = channel(&[("baseUrl", "https://a.example"), ("apiKey", "sk-a")]);
         apply_claude(&target, &p).unwrap();
         let out: Value =
             serde_json::from_str(&std::fs::read_to_string(&target.path).unwrap()).unwrap();
         assert_eq!(out["env"]["USER_KEY"], "keep");
-        assert_eq!(out["env"]["ANTHROPIC_BASE_URL"], "https://a.example");
-        assert_eq!(out["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-a");
+        assert_eq!(out["env"]["HZKCODE_BASE_URL"], "https://a.example");
+        assert_eq!(out["env"]["HZKCODE_API_KEY"], "sk-a");
         for key in [
-            "ANTHROPIC_MODEL",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-            "ANTHROPIC_DEFAULT_FABLE_MODEL",
-            "ANTHROPIC_SMALL_FAST_MODEL",
+            "HZKCODE_MODEL",
+            "HZKCODE_DEFAULT_HIGH_MODEL",
+            "HZKCODE_DEFAULT_MID_MODEL",
+            "HZKCODE_DEFAULT_LOW_MODEL",
+            "HZKCODE_SMALL_FAST_MODEL",
         ] {
             assert!(out["env"].get(key).is_none(), "{key} must not survive");
         }
@@ -847,7 +883,7 @@ mod tests {
     #[test]
     fn claude_strip_drops_emptied_env_object() {
         let (dir, target) = fixture("claude-strip-empty", "settings.json");
-        std::fs::write(&target.path, r#"{"env":{"ANTHROPIC_MODEL":"m-old"}}"#).unwrap();
+        std::fs::write(&target.path, r#"{"env":{"HZKCODE_MODEL":"m-old"}}"#).unwrap();
         apply_claude(&target, &channel(&[])).unwrap();
         let out: Value =
             serde_json::from_str(&std::fs::read_to_string(&target.path).unwrap()).unwrap();

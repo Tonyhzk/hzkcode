@@ -8,21 +8,19 @@ use std::io::Write;
 use std::path::Path;
 
 const ROUTING_KEYS: &[&str] = &[
-    "ANTHROPIC_BASE_URL",
-    "ANTHROPIC_AUTH_TOKEN",
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_MODEL",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-    "ANTHROPIC_DEFAULT_FABLE_MODEL",
-    "ANTHROPIC_SMALL_FAST_MODEL",
-    "CLAUDE_CODE_USE_BEDROCK",
-    "CLAUDE_CODE_USE_VERTEX",
-    "CLAUDE_CODE_USE_FOUNDRY",
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR",
-    "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
+    "HZKCODE_BASE_URL",
+    "HZKCODE_BASE_URL_ENDPOINT",
+    "HZKCODE_API_KEY",
+    "HZKCODE_ANTHROPIC_AUTH_TOKEN",
+    "HZKCODE_AUTH_TOKEN",
+    "HZKCODE_MODEL",
+    "HZKCODE_SMALL_FAST_MODEL",
+    "HZKCODE_DEFAULT_HIGH_MODEL",
+    "HZKCODE_DEFAULT_MID_MODEL",
+    "HZKCODE_DEFAULT_LOW_MODEL",
+    "HZKCODE_PROVIDER",
+    "HZKCODE_AUTH_MODE",
+    "HZKCODE_API_MODE",
 ];
 
 pub(super) fn resolve_model(
@@ -34,7 +32,7 @@ pub(super) fn resolve_model(
         return selected.map(super::models::resolve_claude_launch_model);
     };
     let configured = env
-        .get("ANTHROPIC_MODEL")
+        .get("HZKCODE_MODEL")
         .map(String::as_str)
         .or_else(|| {
             provider
@@ -51,16 +49,17 @@ pub(super) fn resolve_model(
     };
     let wants_1m = selected.ends_with("[1m]");
     let raw = selected.strip_suffix("[1m]").unwrap_or(selected);
-    let resolved = match raw {
-        "opus" | "sonnet" | "haiku" | "fable" => env
-            .get(&format!(
-                "ANTHROPIC_DEFAULT_{}_MODEL",
-                raw.to_uppercase()
-            ))
-            .map(String::as_str)
-            .unwrap_or(raw),
-        _ => raw,
+    // Family alias -> the custom id its capability tier is pointed at.
+    let tier_key = match raw {
+        "opus" => Some("HZKCODE_DEFAULT_HIGH_MODEL"),
+        "sonnet" => Some("HZKCODE_DEFAULT_MID_MODEL"),
+        "haiku" => Some("HZKCODE_DEFAULT_LOW_MODEL"),
+        _ => None,
     };
+    let resolved = tier_key
+        .and_then(|key| env.get(key))
+        .map(String::as_str)
+        .unwrap_or(raw);
     Some(if wants_1m && !resolved.ends_with("[1m]") {
         format!("{resolved}[1m]")
     } else {
@@ -173,11 +172,8 @@ mod tests {
     fn channel_models_never_resolve_through_native_aliases() {
         let provider = serde_json::json!({"model": "sonnet", "settingsConfig": {"model": "haiku"}});
         let env = HashMap::from([
-            ("ANTHROPIC_MODEL".into(), "sonnet".into()),
-            (
-                "ANTHROPIC_DEFAULT_SONNET_MODEL".into(),
-                "relay-model".into(),
-            ),
+            ("HZKCODE_MODEL".into(), "sonnet".into()),
+            ("HZKCODE_DEFAULT_MID_MODEL".into(), "relay-model".into()),
         ]);
         for (selected, expected) in [
             (None, "relay-model"),
@@ -224,16 +220,12 @@ mod tests {
             let path = &command.cleanup_files[0];
             let settings: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
             assert_eq!(
-                settings["env"]["ANTHROPIC_BASE_URL"],
+                settings["env"]["HZKCODE_BASE_URL"],
                 format!("https://{name}.invalid")
             );
-            assert_eq!(
-                settings["env"]["ANTHROPIC_AUTH_TOKEN"],
-                format!("test-{name}")
-            );
-            assert_eq!(settings["env"]["ANTHROPIC_API_KEY"], "");
-            assert_eq!(settings["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"], "");
-            assert_eq!(settings["env"]["CLAUDE_CODE_USE_BEDROCK"], "");
+            assert_eq!(settings["env"]["HZKCODE_API_KEY"], format!("test-{name}"));
+            assert_eq!(settings["env"]["HZKCODE_AUTH_MODE"], "");
+            assert_eq!(settings["env"]["HZKCODE_DEFAULT_MID_MODEL"], "");
             assert_eq!(settings["env"]["CUSTOM_VALUE"], "keep");
             assert!(settings["env"].get("NODE_OPTIONS").is_none());
             // The apiKeyHelper mask is ours, never the channel's command.

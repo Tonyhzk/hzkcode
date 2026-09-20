@@ -242,7 +242,7 @@ export function ProviderBasicFields({ form }: { form: ProviderForm }) {
         value={value.baseUrl}
         onChange={(baseUrl) => {
           patch({ baseUrl });
-          form.updateClaudeEnv("ANTHROPIC_BASE_URL", baseUrl);
+          form.updateClaudeEnv("HZKCODE_BASE_URL", baseUrl);
         }}
         isDisabled={form.official}
       />
@@ -256,7 +256,7 @@ export function ProviderBasicFields({ form }: { form: ProviderForm }) {
           value={value.apiKey}
           onChange={(apiKey) => {
             patch({ apiKey });
-            form.updateClaudeEnv("ANTHROPIC_AUTH_TOKEN", apiKey);
+            form.updateClaudeEnv("HZKCODE_API_KEY", apiKey);
           }}
           fieldClassName="pr-8"
         />

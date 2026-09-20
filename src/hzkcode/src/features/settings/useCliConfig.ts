@@ -148,7 +148,7 @@ export function useCliConfig(engine: EngineId): CliConfigState {
     put("baseUrl", value.baseUrl);
     put("apiKey", value.apiKey);
     // The JSON editor is the source of truth for env; the flat `model`
-    // field is migrated into it (ANTHROPIC_MODEL) at dialog open.
+    // field is migrated into it (HZKCODE_MODEL) at dialog open.
     try {
       const parsed: unknown = JSON.parse(value.settingsJson || "{}");
       if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
