@@ -20,7 +20,7 @@ const BILIBILI_URL = "https://space.bilibili.com/6981918";
 const DOUYIN_URL = "https://v.douyin.com/76vWWAyx-N0/";
 const XIAOHONGSHU_URL = "https://www.xiaohongshu.com/user/profile/5ef99a1b000000000101cfdc";
 const ZHIHU_URL = "https://www.zhihu.com/people/tonykunshao";
-const DOCS_URL = "https://docs.mossx.ai/desktop";
+const DOCS_URL = "https://doc.hzkcode.houzhenkun.com";
 
 /* Brand icons (simple-icons / iconify paths, 24x24 viewBox) */
 const GITHUB_PATH =
