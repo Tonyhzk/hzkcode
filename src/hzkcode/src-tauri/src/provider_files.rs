@@ -380,7 +380,7 @@ fn base_content(target: &Target, default: &str) -> Result<String, String> {
 /// GIT_CONFIG_* / GIT_TEMPLATE_DIR / GIT_EXEC_PATH turn the app's own git
 /// calls into code execution; EDITOR/GIT_PAGER run when the CLI pages or
 /// opens an editor.
-fn is_blocked_env_key(key: &str) -> bool {
+pub(crate) fn is_blocked_env_key(key: &str) -> bool {
     let upper = key.to_ascii_uppercase();
     if upper.starts_with("DYLD_")
         || upper.starts_with("LD_")

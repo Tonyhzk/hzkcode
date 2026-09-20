@@ -7,21 +7,22 @@ import EyeOff from "lucide-react/dist/esm/icons/eye-off";
 import Globe from "lucide-react/dist/esm/icons/globe";
 import { Input } from "@/components/base/input/input";
 import { TextArea } from "@/components/base/input/textarea";
+import { Select, SelectItem } from "@/components/base/select/select";
+import { Switch } from "@/components/base/switch/switch";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { cx } from "@/utils/cx";
 import type { EngineId } from "./providers";
 import {
-  CLAUDE_MODEL_SLOTS,
+  CLAUDE_ENV_GROUPS,
   isOfficialAnthropicEndpoint,
-  type ClaudeModelSlot,
+  type EnvField,
   type ProviderPreset,
 } from "./providerPresets";
 import type { ProviderForm } from "./useProviderForm";
 
 const FETCH_DATALIST_ID = "cli-provider-fetched-models";
-
-const slotLabelKey = (slot: ClaudeModelSlot) =>
-  `settings.cli${slot.charAt(0).toUpperCase()}${slot.slice(1)}Model`;
+/** Sentinel for "leave the variable unset" in the select controls. */
+const UNSET_OPTION_ID = "__unset__";
 
 /** Brand mark for a preset button: explicit per-preset assets keep relay
  *  providers distinct from the model they happen to serve by default. */
@@ -277,11 +278,87 @@ export function ProviderBasicFields({ form }: { form: ProviderForm }) {
   );
 }
 
-/** Relay warning, 模型映射 slot inputs, and the collapsible JSON 配置 editor. */
+/** One control from an env-field schema: a switch for on/off variables, a
+ *  dropdown for fixed option lists, an input for text and numbers (model ids
+ *  carry the 拉取模型 datalist). Shared by the channel dialog and the global
+ *  feature card. */
+export function EnvFieldControl({
+  field,
+  value,
+  onChange,
+  grouped = true,
+}: {
+  field: EnvField;
+  value: string;
+  onChange: (next: string) => void;
+  /** true = lay the label above the control; false = inline label + switch. */
+  grouped?: boolean;
+}) {
+  const { t } = useTranslation();
+  const hint = field.hintKey ? t(field.hintKey) : undefined;
+  if (field.kind === "toggle") {
+    const on = value.trim() === "1";
+    return (
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-col">
+          <span className="text-body-medium text-text-primary">
+            {t(field.labelKey)}
+          </span>
+          {hint && (
+            <span className="text-body-2-regular text-text-tertiary">{hint}</span>
+          )}
+        </div>
+        <Switch
+          size="sm"
+          aria-label={t(field.labelKey)}
+          isSelected={on}
+          onChange={(next) => onChange(next ? "1" : "")}
+        />
+      </div>
+    );
+  }
+  if (field.kind === "select") {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-body-medium text-text-secondary">
+          {t(field.labelKey)}
+        </span>
+        <Select
+          aria-label={t(field.labelKey)}
+          selectedKey={value.trim() || UNSET_OPTION_ID}
+          onSelectionChange={(key) =>
+            onChange(key === UNSET_OPTION_ID ? "" : String(key))
+          }
+        >
+          {(field.options ?? []).map((option) => (
+            <SelectItem key={option || UNSET_OPTION_ID} id={option || UNSET_OPTION_ID}>
+              {option || t("settings.cliFieldUnset")}
+            </SelectItem>
+          ))}
+        </Select>
+        {hint && <p className="text-body-2-regular text-text-tertiary">{hint}</p>}
+      </div>
+    );
+  }
+  return (
+    <Input
+      label={t(field.labelKey)}
+      size="small"
+      inputMode={field.kind === "number" ? "numeric" : undefined}
+      list={field.kind === "text" ? FETCH_DATALIST_ID : undefined}
+      placeholder={field.placeholderKey ? t(field.placeholderKey) : undefined}
+      hint={grouped ? hint : undefined}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+/** Relay warning, channel controls, and the collapsible raw JSON editor. */
 export function ClaudeFormSections({ form }: { form: ProviderForm }) {
   const { t } = useTranslation();
-  const [jsonOpen, setJsonOpen] = useState(true);
-  const { value, slots, setSlots } = form;
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const { value } = form;
   return (
     <>
       {!isOfficialAnthropicEndpoint(value.baseUrl) && (
@@ -291,7 +368,7 @@ export function ClaudeFormSections({ form }: { form: ProviderForm }) {
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-2">
           <p className="text-body-medium text-text-primary">
             {t("settings.cliModelMapping")}
@@ -309,25 +386,23 @@ export function ClaudeFormSections({ form }: { form: ProviderForm }) {
             <option key={model} value={model} />
           ))}
         </datalist>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {CLAUDE_MODEL_SLOTS.map(({ slot, envKey }) => (
-            <Input
-              key={slot}
-              label={t(slotLabelKey(slot))}
-              size="small"
-              list={FETCH_DATALIST_ID}
-              placeholder={t(`${slotLabelKey(slot)}Placeholder`)}
-              value={slots[slot]}
-              onChange={(model) => {
-                setSlots((s) => ({ ...s, [slot]: model }));
-                form.updateClaudeEnv(envKey, model);
-              }}
-            />
-          ))}
-        </div>
-        <p className="text-body-2-regular text-text-tertiary">
-          {t("settings.cliModelMappingHint")}
-        </p>
+        {CLAUDE_ENV_GROUPS.map((group) => (
+          <div key={group.titleKey} className="flex flex-col gap-2">
+            <p className="text-body-2-medium text-text-secondary">
+              {t(group.titleKey)}
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {group.fields.map((field) => (
+                <EnvFieldControl
+                  key={field.envKey}
+                  field={field}
+                  value={form.envValues[field.envKey] ?? ""}
+                  onChange={(next) => form.setEnvValue(field.envKey, next)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="flex flex-col gap-2">

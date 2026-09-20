@@ -32,6 +32,9 @@
 - 界面精简：移除「启用 HZK CODE」开关及其卡片与停用蒙层，`set_engine_enabled` 命令（含 web 路由与前端封装）一并删除；引擎固定启用，渠道列表不再有停用入口
 - 设置打开时默认选中导航第一项（模型配置），不再固定落在通用；显式 `?page=` 与旧的 `?page=cliConfig` 链接仍然生效
 - 变量清理收窄：`is_provider_env_key` 不再按 `HZKCODE_USE_*` / `HZKCODE_SKIP_*` 前缀整族清理（那会连 `HZKCODE_USE_BUILTIN_RIPGREP`、`HZKCODE_SKIP_PROMPT_HISTORY` 这类 CLI 功能开关一起丢掉），改为按名列出 provider 选择与跳过鉴权的几个变量；补对应单测，并同步三处仍写 `ANTHROPIC_DEFAULT_<FAMILY>_MODEL` 的过时注释
+- 模型配置页重做（渠道对话框）：改为界面控件——接口格式下拉（anthropic / responses / chat_completions）、自动压缩阈值、默认模型、高阶/中阶/低阶模型、读取模型；原始 JSON 收进默认折叠的「高级 · 原始 JSON」，不再一打开就是一大段 JSON
+- 默认模板按 hzkcode 逐项校对：删除 CLI 不读或不该由渠道携带的键（`tui`、`teammateMode`、`autoDreamEnabled`、`hasCompletedOnboarding`、`skipAutoPermissionPrompt`、`language`、`cleanupPeriodDays`、`HZKCODE_NEW_INIT`、`HZKCODE_ANTHROPIC_BETAS`、`HZKCODE_SMALL_FAST_MODEL`、`HZKCODE_ENABLE_TOOL_SEARCH`）与写死的模型 id，只留 CLI 真正读取的变量
+- 新增「功能开关」区（模型配置页）：联网搜索（适配器 / Perplexity 凭据）、图片与文件上传（OSS）、飞书通知、用户记忆、第二大脑、自动模式、工作状态汇报、CLI 代理；由应用保存于 `settings.json` 的 `cliEnv`（`settings::feature_env`）并在启动 CLI 时注入所有会话，非法变量名与被拒键（`NODE_OPTIONS` 等）会被过滤
 - 引擎配置根目录从 Claude Code 的 `~/.claude` / `CLAUDE_CONFIG_DIR` 切换为 fork 的 `~/.hzkcode` / `HZKCODE_CONFIG_DIR`：会话扫描与远程回放白名单、渠道官方配置文件路径、全局 commands/skills 目录、模型目录（含 WSL 远端探针）、`config.rs` 测试用环境变量列表一并更新，GUI 与单独安装的 CLI 共用同一份数据
 
 ## [0.1.0] - 2026-09-19

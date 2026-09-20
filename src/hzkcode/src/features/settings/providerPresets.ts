@@ -35,14 +35,91 @@ const DARK_MONO_ICON_CLASS = "dark:invert";
  *  locks API URL to this value, mirroring the reference's 官方直连 preset. */
 export const OFFICIAL_BASE_URL = "https://api.anthropic.com";
 
-/** Model-slot env keys, in the grid's display order. The CLI names its three
- *  capability tiers high/mid/low; opus, sonnet and haiku resolve through. */
-export const CLAUDE_MODEL_SLOTS = [
-  { slot: "sonnet", envKey: "HZKCODE_DEFAULT_MID_MODEL" },
-  { slot: "opus", envKey: "HZKCODE_DEFAULT_HIGH_MODEL" },
-  { slot: "haiku", envKey: "HZKCODE_DEFAULT_LOW_MODEL" },
-] as const;
-export type ClaudeModelSlot = (typeof CLAUDE_MODEL_SLOTS)[number]["slot"];
+/** One channel-level control in the dialog. `envKey` is the CLI variable it
+ *  edits inside the channel's `settingsConfig.env`; the i18n keys sit next to
+ *  it so the form renders as a loop over the schema. */
+export interface EnvField {
+  envKey: string;
+  /** "text" = free text (model ids get the 拉取模型 datalist), "number" = a
+   *  numeric threshold, "select" = fixed option list ("" = CLI default),
+   *  "toggle" = on/off switch writing "1" / unset. */
+  kind: "text" | "number" | "select" | "toggle";
+  options?: readonly string[];
+  labelKey: string;
+  hintKey?: string;
+  placeholderKey?: string;
+}
+
+/** The channel fields the dialog exposes, grouped in display order. These are
+ *  the per-channel variables the CLI reads — endpoint format, the model tiers
+ *  and the compaction threshold. Global capability switches (search, OSS,
+ *  Feishu, memory, …) are not per-channel and live elsewhere. */
+export const CLAUDE_ENV_GROUPS: readonly {
+  titleKey: string;
+  fields: readonly EnvField[];
+}[] = [
+  {
+    titleKey: "settings.cliGroupConnection",
+    fields: [
+      {
+        envKey: "HZKCODE_API_MODE",
+        kind: "select",
+        options: ["", "anthropic", "responses", "chat_completions"],
+        labelKey: "settings.cliFieldApiMode",
+        hintKey: "settings.cliFieldApiModeHint",
+      },
+      {
+        envKey: "HZKCODE_AUTO_COMPACT_WINDOW",
+        kind: "number",
+        labelKey: "settings.cliFieldCompactWindow",
+        hintKey: "settings.cliFieldCompactWindowHint",
+        placeholderKey: "settings.cliFieldCompactWindowPlaceholder",
+      },
+    ],
+  },
+  {
+    titleKey: "settings.cliGroupModels",
+    fields: [
+      {
+        envKey: "HZKCODE_MODEL",
+        kind: "text",
+        labelKey: "settings.cliFieldDefaultModel",
+        hintKey: "settings.cliFieldDefaultModelHint",
+        placeholderKey: "settings.cliFieldModelPlaceholder",
+      },
+      {
+        envKey: "HZKCODE_DEFAULT_HIGH_MODEL",
+        kind: "text",
+        labelKey: "settings.cliFieldHighModel",
+        placeholderKey: "settings.cliFieldModelPlaceholder",
+      },
+      {
+        envKey: "HZKCODE_DEFAULT_MID_MODEL",
+        kind: "text",
+        labelKey: "settings.cliFieldMidModel",
+        placeholderKey: "settings.cliFieldModelPlaceholder",
+      },
+      {
+        envKey: "HZKCODE_DEFAULT_LOW_MODEL",
+        kind: "text",
+        labelKey: "settings.cliFieldLowModel",
+        placeholderKey: "settings.cliFieldModelPlaceholder",
+      },
+      {
+        envKey: "HZKCODE_READ_MODEL",
+        kind: "text",
+        labelKey: "settings.cliFieldReadModel",
+        hintKey: "settings.cliFieldReadModelHint",
+        placeholderKey: "settings.cliFieldModelPlaceholder",
+      },
+    ],
+  },
+];
+
+/** Every env key the dialog's controls own, in schema order. */
+export const CLAUDE_ENV_FIELD_KEYS: readonly string[] = CLAUDE_ENV_GROUPS.flatMap(
+  (group) => group.fields.map((field) => field.envKey),
+);
 
 /** The reference's default settings.json template for a new Claude channel. */
 export function buildDefaultClaudeSettings(): Record<string, unknown> & {
@@ -50,31 +127,20 @@ export function buildDefaultClaudeSettings(): Record<string, unknown> & {
 } {
   return {
     alwaysThinkingEnabled: true,
-    autoDreamEnabled: true,
-    cleanupPeriodDays: 720,
     effortLevel: "xhigh",
     env: {
-      HZKCODE_API_KEY: "",
       HZKCODE_BASE_URL: "",
-      HZKCODE_ANTHROPIC_BETAS: "context-1m-2025-08-07",
-      HZKCODE_DEFAULT_LOW_MODEL: "claude-haiku-4-5-20251001",
-      HZKCODE_DEFAULT_HIGH_MODEL: "claude-opus-5",
-      HZKCODE_DEFAULT_MID_MODEL: "claude-sonnet-4-6",
-      HZKCODE_SMALL_FAST_MODEL: "claude-haiku-4-5-20251001",
+      HZKCODE_API_KEY: "",
+      HZKCODE_API_MODE: "anthropic",
+      HZKCODE_DEFAULT_HIGH_MODEL: "",
+      HZKCODE_DEFAULT_MID_MODEL: "",
+      HZKCODE_DEFAULT_LOW_MODEL: "",
       HZKCODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-      HZKCODE_NEW_INIT: "1",
       HZKCODE_DISABLE_TELEMETRY: "1",
       HZKCODE_DISABLE_ERROR_REPORTING: "1",
-      HZKCODE_ENABLE_TOOL_SEARCH: "1",
       HZKCODE_MAX_THINKING_TOKENS: "31999",
       HZKCODE_MCP_TIMEOUT: "60000",
     },
-    hasCompletedOnboarding: true,
-    language: "简体中文",
-    model: "opus",
-    skipAutoPermissionPrompt: true,
-    teammateMode: "in-process",
-    tui: "fullscreen",
   };
 }
 

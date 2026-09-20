@@ -126,6 +126,11 @@ pub struct AppSettings {
     /// Proxy URL (http/https/socks5); None/empty = unset.
     #[serde(default)]
     pub system_proxy_url: Option<String>,
+    /// Global CLI feature variables (联网搜索、OSS、飞书、记忆、二脑、自动模式…):
+    /// the app owns them and injects them into every engine spawn, so a
+    /// packaged install configures the CLI without a shell profile.
+    #[serde(default)]
+    pub cli_env: HashMap<String, String>,
     /// Per-engine binary overrides. flatten keeps the legacy flat shape
     /// (`"claudeBin": …`) the frontend depends on; keys stay camelCase and
     /// unknown extra fields round-trip untouched.
@@ -232,6 +237,7 @@ impl Default for AppSettings {
             terminal_shell_path: None,
             system_proxy_enabled: false,
             system_proxy_url: None,
+            cli_env: HashMap::new(),
             bin_overrides: HashMap::new(),
         }
     }
@@ -523,6 +529,31 @@ pub fn get_app_settings() -> Result<AppSettings, String> {
     read_settings()
 }
 
+/// The app-managed CLI feature variables, ready for spawn injection: real env
+/// names only, dangerous loader/hook keys refused, blank values dropped.
+pub(crate) fn feature_env(settings: &AppSettings) -> Vec<(String, String)> {
+    settings
+        .cli_env
+        .iter()
+        .filter(|(key, value)| {
+            !value.trim().is_empty()
+                && is_env_name(key)
+                && !crate::provider_files::is_blocked_env_key(key)
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+/// POSIX-style env name: letters, digits and underscores, no leading digit.
+fn is_env_name(key: &str) -> bool {
+    let mut chars = key.chars();
+    match chars.next() {
+        Some(first) if first.is_ascii_alphabetic() || first == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 #[tauri::command]
 pub fn update_app_settings<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
@@ -700,6 +731,33 @@ fn announce_settings(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn feature_env_filters_blanks_invalid_names_and_blocked_keys() {
+        let settings = AppSettings {
+            cli_env: [
+                ("HZKCODE_ENABLE_WEB_SEARCH".to_string(), "1".to_string()),
+                ("HZKCODE_OSS_BUCKET".to_string(), "upload-hzk".to_string()),
+                ("".to_string(), "x".to_string()),
+                ("1BAD".to_string(), "x".to_string()),
+                ("HAS-DASH".to_string(), "x".to_string()),
+                ("NODE_OPTIONS".to_string(), "--require ./x.js".to_string()),
+                ("HZKCODE_API_KEY".to_string(), "   ".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+            ..AppSettings::default()
+        };
+        let mut got = feature_env(&settings);
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                ("HZKCODE_ENABLE_WEB_SEARCH".to_string(), "1".to_string()),
+                ("HZKCODE_OSS_BUCKET".to_string(), "upload-hzk".to_string()),
+            ]
+        );
+    }
 
     #[test]
     fn bin_override_key_camel_cases_hyphenated_engine_ids() {

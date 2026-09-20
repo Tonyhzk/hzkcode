@@ -241,6 +241,9 @@ export interface AppSettings {
   systemProxyEnabled: boolean;
   /** Proxy URL (http/https/socks5); null = unset. */
   systemProxyUrl: string | null;
+  /** Global CLI feature variables (联网搜索、OSS、飞书、记忆、二脑…): the app
+   *  injects them into every engine spawn. */
+  cliEnv?: Record<string, string>;
   /** Require a pairing key before the bridge serves a browser. */
   webAuthEnabled?: boolean | null;
   /** 8-character pairing key, minted when the switch is turned on. */

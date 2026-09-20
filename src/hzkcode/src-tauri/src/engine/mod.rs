@@ -1017,6 +1017,11 @@ fn prepare_launch(
     if provider.is_some() {
         built.command.env("HZKCODE_PROVIDER_MANAGED_BY_HOST", "1");
     }
+    // App-managed feature variables (联网搜索、OSS、飞书、记忆…), then the
+    // channel, whose endpoint/credential/model win over everything else.
+    for (key, value) in crate::settings::feature_env(&settings) {
+        built.command.env(key, value);
+    }
     for (key, value) in &channel_env {
         built.command.env(key, value);
     }

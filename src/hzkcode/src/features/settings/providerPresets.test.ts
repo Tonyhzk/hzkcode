@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  CLAUDE_MODEL_SLOTS,
+  CLAUDE_ENV_FIELD_KEYS,
+  CLAUDE_ENV_GROUPS,
   buildDefaultClaudeSettings,
   claudeTemplateJson,
 } from "./providerPresets";
@@ -23,11 +24,23 @@ describe("claude channel template", () => {
     expect(written.env.HZKCODE_API_KEY).toBe("sk-x");
   });
 
-  it("model slots point at the CLI's capability tiers", () => {
-    expect(CLAUDE_MODEL_SLOTS).toEqual([
-      { slot: "sonnet", envKey: "HZKCODE_DEFAULT_MID_MODEL" },
-      { slot: "opus", envKey: "HZKCODE_DEFAULT_HIGH_MODEL" },
-      { slot: "haiku", envKey: "HZKCODE_DEFAULT_LOW_MODEL" },
+  it("channel controls edit the CLI's own variables", () => {
+    expect(CLAUDE_ENV_FIELD_KEYS).toEqual([
+      "HZKCODE_API_MODE",
+      "HZKCODE_AUTO_COMPACT_WINDOW",
+      "HZKCODE_MODEL",
+      "HZKCODE_DEFAULT_HIGH_MODEL",
+      "HZKCODE_DEFAULT_MID_MODEL",
+      "HZKCODE_DEFAULT_LOW_MODEL",
+      "HZKCODE_READ_MODEL",
+    ]);
+    const apiMode = CLAUDE_ENV_GROUPS[0].fields[0];
+    expect(apiMode.kind).toBe("select");
+    expect(apiMode.options).toEqual([
+      "",
+      "anthropic",
+      "responses",
+      "chat_completions",
     ]);
   });
 });

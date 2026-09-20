@@ -1,14 +1,14 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/lib/ipc";
 import type { EngineId } from "./providers";
 import type { ProviderFormValue } from "./ProviderDialog";
 import {
+  CLAUDE_ENV_FIELD_KEYS,
   OFFICIAL_BASE_URL,
   PRESETS,
   claudeTemplateJson,
   findMatchedPreset,
-  type ClaudeModelSlot,
   type ProviderPreset,
 } from "./providerPresets";
 
@@ -21,7 +21,36 @@ const EMPTY_FORM: ProviderFormValue = {
   settingsJson: "",
 };
 
-const EMPTY_SLOTS: Record<ClaudeModelSlot, string> = { sonnet: "", opus: "", haiku: "" };
+/** The dialog's channel controls seed from (and write back into) the
+ *  settings.json env the channel stores. */
+function emptyEnvValues(): Record<string, string> {
+  return Object.fromEntries(CLAUDE_ENV_FIELD_KEYS.map((key) => [key, ""]));
+}
+
+function envValuesFrom(settingsJson: string): Record<string, string> {
+  const values = emptyEnvValues();
+  try {
+    const env = (
+      JSON.parse(settingsJson) as { env?: Record<string, unknown> } | null
+    )?.env;
+    if (!env) return values;
+    for (const key of CLAUDE_ENV_FIELD_KEYS) {
+      const value = env[key];
+      if (typeof value === "string") values[key] = value;
+    }
+  } catch {
+    // Broken JSON: the editor's own error state covers it.
+  }
+  return values;
+}
+
+function presetEnvValues(env: Record<string, string> | undefined): Record<string, string> {
+  const values = emptyEnvValues();
+  for (const key of CLAUDE_ENV_FIELD_KEYS) {
+    if (env?.[key]) values[key] = env[key];
+  }
+  return values;
+}
 
 /** Initial form state: seed the JSON editor from the stored settingsConfig
  *  (edit), the flat fields (legacy channels), or the official-direct
@@ -46,29 +75,9 @@ function initialForm(initial?: ProviderFormValue): ProviderFormValue {
   };
 }
 
-/** Claude model-slot values parsed out of a settings.json text. */
-function slotsFromJson(settingsJson: string): Record<ClaudeModelSlot, string> {
-  try {
-    const parsed: unknown = JSON.parse(settingsJson);
-    const env = (parsed as Record<string, unknown> | null)?.env;
-    if (!env || typeof env !== "object") return { ...EMPTY_SLOTS };
-    const read = (key: string) => {
-      const v = (env as Record<string, unknown>)[key];
-      return typeof v === "string" ? v : "";
-    };
-    return {
-      sonnet: read("HZKCODE_DEFAULT_MID_MODEL"),
-      opus: read("HZKCODE_DEFAULT_HIGH_MODEL"),
-      haiku: read("HZKCODE_DEFAULT_LOW_MODEL"),
-    };
-  } catch {
-    return { ...EMPTY_SLOTS };
-  }
-}
-
 /**
  * Form state + mutations for ProviderDialog: the flat ProviderFormValue, the
- * claude model slots mirrored into the JSON editor both ways, preset
+ * claude channel controls mirrored into the JSON editor both ways, preset
  * selection, 拉取模型, and validity/submit mapping. The dialog component
  * itself only wires these into the section components.
  */
@@ -83,10 +92,10 @@ export function useProviderForm({
 }): ProviderForm {
   const { t } = useTranslation();
   const [value, setValue] = useState<ProviderFormValue>(() => initialForm(initial));
-  // Model slots start empty on add (the template's env carries the defaults,
-  // same as the reference); on edit they mirror the stored settings.json.
-  const [slots, setSlots] = useState<Record<ClaudeModelSlot, string>>(() =>
-    initial?.settingsJson ? slotsFromJson(initial.settingsJson) : { ...EMPTY_SLOTS },
+  // Channel controls start empty on add (the template's env carries the
+  // defaults); on edit they mirror the stored settings.json.
+  const [envValues, setEnvValues] = useState<Record<string, string>>(() =>
+    initial?.settingsJson ? envValuesFrom(initial.settingsJson) : emptyEnvValues(),
   );
   const [jsonError, setJsonError] = useState("");
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
@@ -119,6 +128,12 @@ export function useProviderForm({
     setJsonError("");
   };
 
+  /** One channel control's edit: keep the value map and the JSON in step. */
+  const setEnvValue = (envKey: string, next: string) => {
+    setEnvValues((values) => ({ ...values, [envKey]: next }));
+    updateClaudeEnv(envKey, next);
+  };
+
   const onJsonChange = (text: string) => {
     try {
       const parsed = JSON.parse(text) as Record<string, unknown>;
@@ -127,11 +142,7 @@ export function useProviderForm({
         const v = env[key];
         return typeof v === "string" ? v : "";
       };
-      setSlots({
-        sonnet: read("HZKCODE_DEFAULT_MID_MODEL"),
-        opus: read("HZKCODE_DEFAULT_HIGH_MODEL"),
-        haiku: read("HZKCODE_DEFAULT_LOW_MODEL"),
-      });
+      setEnvValues(envValuesFrom(text));
       setValue((v) => ({
         ...v,
         settingsJson: text,
@@ -158,11 +169,7 @@ export function useProviderForm({
 
   const selectPreset = (preset: ProviderPreset) => {
     const slotEnv = preset.env ?? {};
-    setSlots({
-      sonnet: slotEnv.HZKCODE_DEFAULT_MID_MODEL ?? "",
-      opus: slotEnv.HZKCODE_DEFAULT_HIGH_MODEL ?? "",
-      haiku: slotEnv.HZKCODE_DEFAULT_LOW_MODEL ?? "",
-    });
+    setEnvValues(presetEnvValues(preset.env));
     setValue((v) => ({
       ...v,
       name: preset.name,
@@ -174,7 +181,7 @@ export function useProviderForm({
   };
 
   const selectOfficial = () => {
-    setSlots({ ...EMPTY_SLOTS });
+    setEnvValues(emptyEnvValues());
     setValue((v) => ({
       ...v,
       baseUrl: OFFICIAL_BASE_URL,
@@ -185,7 +192,7 @@ export function useProviderForm({
   };
 
   const selectCustom = () => {
-    setSlots({ ...EMPTY_SLOTS });
+    setEnvValues(emptyEnvValues());
     setValue((v) => ({
       ...v,
       baseUrl: "",
@@ -246,8 +253,8 @@ export function useProviderForm({
   return {
     value,
     patch,
-    slots,
-    setSlots,
+    envValues,
+    setEnvValue,
     jsonError,
     fetchedModels,
     fetching,
@@ -273,8 +280,8 @@ export function useProviderForm({
 export interface ProviderForm {
   value: ProviderFormValue;
   patch: (p: Partial<ProviderFormValue>) => void;
-  slots: Record<ClaudeModelSlot, string>;
-  setSlots: Dispatch<SetStateAction<Record<ClaudeModelSlot, string>>>;
+  envValues: Record<string, string>;
+  setEnvValue: (envKey: string, value: string) => void;
   jsonError: string;
   fetchedModels: string[];
   fetching: boolean;

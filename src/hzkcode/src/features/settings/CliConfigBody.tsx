@@ -9,6 +9,7 @@ import { ipc } from "@/lib/ipc";
 import { PSEUDO_LOCAL } from "./providers";
 import { ChannelRow } from "./CliChannelRow";
 import { CliEngineSettingsCard } from "./CliEngineSettingsCard";
+import { CliFeaturesCard } from "./CliFeaturesCard";
 import type { CliConfigState } from "./useCliConfig";
 
 /**
@@ -85,6 +86,8 @@ export function CliConfigBody({ cli }: { cli: CliConfigState }) {
           </div>
         )}
       </div>
+
+      <CliFeaturesCard />
     </div>
   );
 }
