@@ -6,9 +6,8 @@ import { useTranslation } from "react-i18next";
 import Check from "lucide-react/dist/esm/icons/check";
 import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
 import Search from "lucide-react/dist/esm/icons/search";
-import X from "lucide-react/dist/esm/icons/x";
 import { m } from "motion/react";
-import { CLI_DISPLAY_NAMES, inferModelEngine } from "@/components/foundations/icons/engine-brands";
+import { inferModelEngine } from "@/components/foundations/icons/engine-brands";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { cx } from "@/utils/cx";
 import { filterModels, groupModelsByProvider, type ModelGroup } from "./model-list";
@@ -21,15 +20,7 @@ export interface ChannelOption {
   label: string;
 }
 
-/** Per-engine model flyout: pops to the right of the CLI popover, bottom-
- *  aligned with the engine list so the taller panel never clips below the
- *  composer-anchored popover. */
-const FLYOUT_CLASSES = cx(
-  "absolute left-full bottom-0 z-10 ml-2 w-80 max-w-[calc(100vw-32px)]",
-  "rounded-lg border border-border-button-default bg-background-primary-default p-1 shadow-dropdown",
-);
-
-/* ------------------------------------------------------------------ flyout */
+/* ---------------------------------------------------------------- channels */
 
 /** One checkmark channel row. Shown only when the engine has in-app channels. */
 function ChannelRow({
@@ -221,34 +212,6 @@ function RefreshButton({ onRefresh }: { onRefresh: () => void | Promise<void> })
   );
 }
 
-/** Optional header actions: catalog refresh (flyout + dialog) and/or the
- * dialog's dismiss button. Renders nothing when neither applies. */
-function PanelActions({
-  onRefresh,
-  onClose,
-}: {
-  onRefresh?: () => void | Promise<void>;
-  onClose?: () => void;
-}) {
-  const { t } = useTranslation();
-  if (!onRefresh && !onClose) return null;
-  return (
-    <span className="mr-1 flex shrink-0 items-center">
-      {onRefresh && <RefreshButton onRefresh={onRefresh} />}
-      {onClose && (
-        <button
-          type="button"
-          aria-label={t("common.close")}
-          onClick={onClose}
-          className="flex size-7 items-center justify-center rounded-lg text-foreground-icon-secondary hover:bg-background-secondary-hover hover:text-foreground-icon-primary"
-        >
-          <X className="size-4" aria-hidden />
-        </button>
-      )}
-    </span>
-  );
-}
-
 /** The scrollable radio-group model list: provider-sectioned (search
  * included) when the catalog mixes sources, flat otherwise; an exhausted
  * search shows the no-match hint. */
@@ -393,11 +356,10 @@ function EffortFooter({
 }
 
 /**
- * Engine model panel content: "{name} 引擎" header over a search field over
- * checkmark model rows over the effort slider. Shared by the desktop flyout
- * (EngineFlyout) and the mobile second-level dialog; `onClose` adds a
- * dismiss button to the header, which only the dialog passes. Model picks
- * stay in-panel so effort can follow without reopening.
+ * Model panel content: an optional catalog-refresh button over the search
+ * field over checkmark model rows (and in-app channels, when the engine has
+ * any) over the effort slider. Model picks stay in-panel so effort can
+ * follow without reopening.
  */
 export function EngineModelPanel({
   option,
@@ -412,7 +374,6 @@ export function EngineModelPanel({
   selectedChannelId,
   onPickChannel,
   onRefresh,
-  onClose,
   loading,
 }: {
   option: MenuOption;
@@ -428,23 +389,18 @@ export function EngineModelPanel({
   onPickChannel?: (engine: string, id: string) => void;
   /** Re-probe provider configs and model catalogs without an app restart. */
   onRefresh?: () => void | Promise<void>;
-  onClose?: () => void;
   /** This engine's catalog probe is still running. */
   loading?: boolean;
 }) {
-  const { t } = useTranslation();
   const { groups, empty } = useOrderedModelGroups(models, query, selectedModelId);
 
   return (
     <div className="flex w-full flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-1">
-        <span className="truncate px-2 py-1.5 text-body-medium text-text-secondary">
-          {t("chat.engineHeader", {
-            name: CLI_DISPLAY_NAMES[option.id] ?? option.label,
-          })}
-        </span>
-        <PanelActions onRefresh={onRefresh} onClose={onClose} />
-      </div>
+      {onRefresh && (
+        <div className="mr-1 flex items-center justify-end">
+          <RefreshButton onRefresh={onRefresh} />
+        </div>
+      )}
       {channels && onPickChannel && (
         <ChannelList
           channels={channels}
@@ -467,17 +423,6 @@ export function EngineModelPanel({
         effort={effort}
         onEffortChange={onEffortChange}
       />
-    </div>
-  );
-}
-
-/** Desktop-only wrapper: the model panel as a flyout popping to the right of
- *  the CLI popover. On mobile CliMenu renders the same panel in a modal
- *  dialog instead (hover flyouts don't work on touch). */
-export function EngineFlyout(props: Parameters<typeof EngineModelPanel>[0]) {
-  return (
-    <div className={FLYOUT_CLASSES}>
-      <EngineModelPanel {...props} />
     </div>
   );
 }

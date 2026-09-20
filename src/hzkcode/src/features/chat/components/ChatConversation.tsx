@@ -77,7 +77,6 @@ function useConversationMenus({
   channelsByEngine,
   displayProviders,
   permission,
-  setActiveEngine,
   setPermission,
   setModel,
   setEffort,
@@ -98,7 +97,6 @@ function useConversationMenus({
   channelsByEngine: Record<string, { id: string; label: string }[]>;
   displayProviders: Record<string, string>;
   permission: ComposerPermission;
-  setActiveEngine: (engine: string) => void;
   setPermission: (permission: ComposerPermission) => void;
   setModel: (engine: string, model: string) => Promise<void>;
   setEffort: (engine: string, effort: EffortLevel) => Promise<void>;
@@ -156,7 +154,6 @@ function useConversationMenus({
         <CliMenu
           options={cliOptions}
           value={activeEngine}
-          onChange={setActiveEngine}
           modelsByEngine={modelsByEngine}
           models={displayModels}
           onModelChange={handleModelChange}
@@ -175,7 +172,6 @@ function useConversationMenus({
       t,
       cliOptions,
       activeEngine,
-      setActiveEngine,
       modelsByEngine,
       displayModels,
       handleModelChange,
@@ -253,7 +249,6 @@ export const ChatConversation = memo(function ChatConversation({
     })),
   );
   const {
-    setActiveEngine,
     setEffort,
     setModel,
     setProvider,
@@ -264,7 +259,6 @@ export const ChatConversation = memo(function ChatConversation({
     clearQueue,
   } = useChatStore(
     useShallow((s) => ({
-      setActiveEngine: s.setActiveEngine,
       setEffort: s.setEffort,
       setModel: s.setModel,
       setProvider: s.setProvider,
@@ -387,7 +381,6 @@ export const ChatConversation = memo(function ChatConversation({
       channelsByEngine,
       displayProviders,
       permission,
-      setActiveEngine,
       setPermission,
       setModel,
       setEffort,

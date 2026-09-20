@@ -295,7 +295,10 @@ fn claude_models_from(
                 id: id.to_string(),
                 name,
                 description,
-                provider: "claude".to_string(),
+                // No source label: every alias comes from the app's single
+                // engine, so a provider tag would only render as a one-item
+                // section header in the picker.
+                provider: String::new(),
                 context_window: None,
             }
         })
