@@ -1,14 +1,13 @@
 {
   "name": "hzkcode",
   "private": true,
-  "version": "1.0.5",
+  "version": "0.1.0",
   "type": "module",
   "packageManager": "pnpm@10.29.3",
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
-    "build:mac": "./scripts/build-signed-macos.sh",
-    "build:mac:skip-notarize": "SKIP_NOTARIZE=1 ./scripts/build-signed-macos.sh",
+    "build:mac": "./scripts/build-macos.sh",
     "preview": "vite preview",
     "dev": "tauri dev"
   },

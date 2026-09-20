@@ -9,6 +9,10 @@
 - 应用标识与目录变更：bundle identifier 改为 `com.hzkcode.app`，应用数据目录改为 `~/.hzkcode/gui/`，工作区提示词目录改为 `<项目>/.hzkcode/prompts`
 - 插件市场入口暂时关闭（代码完整保留，恢复时打开 `MARKETPLACE_ENABLED`）
 - 更新检查与发布地址改为本项目 GitHub Releases（github.com/Tonyhzk/hzkcode）
+- 版本号四处统一为 0.1.0（外层 `VERSION`、`package.json`、`Cargo.toml`、`tauri.conf.json`），版本线从上游 1.0.5 重新起算
+- 移除 `.github/workflows/`（release.yml、build-windows-artifact.yml）：GitHub Actions 只识别仓库根目录的 workflows，内层副本不会触发；发布改为手动维护
+- macOS 打包：删除 `scripts/build-signed-macos.sh`，改为 `scripts/build-macos.sh`（`pnpm build:mac`）；移除 `tauri.conf.json` 中上游的 `bundle.macOS.signingIdentity` 证书配置，产物不签名，首次打开需右键 → 打开
+- 应用更新签名密钥更换为本项目自己的 minisign 密钥对（私钥 `~/.tauri/hzkcode.key`，公钥写入 `tauri.conf.json` 的 `plugins.updater.pubkey`）
 
 ## [0.1.0] - 2026-09-19
 

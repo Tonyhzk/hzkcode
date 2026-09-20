@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "HZK CODE",
-  "version": "1.0.5",
+  "version": "0.1.0",
   "identifier": "com.hzkcode.app",
   "build": {
     "beforeDevCommand": "npx vite",
@@ -35,9 +35,6 @@
     },
     "createUpdaterArtifacts": true,
     "targets": "all",
-    "macOS": {
-      "signingIdentity": "Developer ID Application: kunpeng zhu (RLHBM56QRH)"
-    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -49,7 +46,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENCOUY2RkIzOUFFNTBBQjgKUldTNEN1V2FzMitmeXpxVWkxMXUrM05UVHRJQTNaTHNZcVo4SktSQUJNSVM2VDEzSzVtaUhHWGcK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM5ODY2Q0U0NTg4OTc3OTAKUldTUWQ0bFk1R3lHeVhiWXdDb29QcXZtRitCMFhEblA4czFXcWFRdkZ5ZGhaZWFuZjZsVm5PSE8K",
       "endpoints": [
         "https://github.com/Tonyhzk/hzkcode/releases/latest/download/latest.json"
       ]
