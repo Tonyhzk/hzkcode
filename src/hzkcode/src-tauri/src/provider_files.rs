@@ -440,9 +440,10 @@ fn env_names(engine: &str) -> [(&'static str, &'static [&'static str]); 3] {
 /// Provider/auth variables the hzkcode CLI reads. An inherited value — a shell
 /// that exported credentials before launching the app — is dropped, so a
 /// session's endpoint, credential and model come from the app's channel
-/// settings instead of whoever started the app. Feature variables
-/// (`HZKCODE_OSS_*`, `HZKCODE_FEISHU_*`, …) are not provider config and pass
-/// through untouched.
+/// settings instead of whoever started the app. Anything else passes through:
+/// feature variables (`HZKCODE_OSS_*`, `HZKCODE_FEISHU_*`) and behaviour flags
+/// (`HZKCODE_USE_BUILTIN_RIPGREP`, `HZKCODE_SKIP_PROMPT_HISTORY`, …) keep
+/// working, so their families are listed by name rather than by prefix.
 pub(crate) fn is_provider_env_key(key: &str) -> bool {
     let upper = key.to_ascii_uppercase();
     if upper.starts_with("HZKCODE_ANTHROPIC_")
@@ -451,8 +452,6 @@ pub(crate) fn is_provider_env_key(key: &str) -> bool {
         || upper.starts_with("HZKCODE_VERTEX_")
         || upper.starts_with("HZKCODE_FOUNDRY_")
         || upper.starts_with("HZKCODE_GEMINI_")
-        || upper.starts_with("HZKCODE_USE_")
-        || upper.starts_with("HZKCODE_SKIP_")
     {
         return true;
     }
@@ -471,6 +470,16 @@ pub(crate) fn is_provider_env_key(key: &str) -> bool {
             | "HZKCODE_AUTH_MODE"
             | "HZKCODE_API_MODE"
             | "HZKCODE_DISABLE_IMAGE_INPUT"
+            // Provider selection and the skip-auth switches are provider
+            // config; the rest of the USE_/SKIP_ families are behaviour flags.
+            | "HZKCODE_USE_BEDROCK"
+            | "HZKCODE_USE_VERTEX"
+            | "HZKCODE_USE_FOUNDRY"
+            | "HZKCODE_USE_GEMINI"
+            | "HZKCODE_USE_GROK"
+            | "HZKCODE_SKIP_BEDROCK_AUTH"
+            | "HZKCODE_SKIP_VERTEX_AUTH"
+            | "HZKCODE_SKIP_FOUNDRY_AUTH"
     )
 }
 
@@ -687,6 +696,33 @@ mod tests {
         migrate_targets("claude", &section, std::slice::from_ref(&other)).unwrap();
         assert_eq!(std::fs::read_to_string(&other.path).unwrap(), managed);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn provider_env_scrub_covers_credentials_but_keeps_behaviour_flags() {
+        for key in [
+            "HZKCODE_BASE_URL",
+            "HZKCODE_API_KEY",
+            "HZKCODE_MODEL",
+            "HZKCODE_DEFAULT_HIGH_MODEL",
+            "HZKCODE_ANTHROPIC_BETAS",
+            "HZKCODE_VERTEX_REGION_CLAUDE_4_5",
+            "HZKCODE_USE_BEDROCK",
+            "HZKCODE_SKIP_VERTEX_AUTH",
+            "hzkcode_base_url",
+        ] {
+            assert!(is_provider_env_key(key), "{key} must be scrubbed");
+        }
+        for key in [
+            "HZKCODE_OSS_BUCKET",
+            "HZKCODE_FEISHU_APP_ID",
+            "HZKCODE_USE_BUILTIN_RIPGREP",
+            "HZKCODE_SKIP_PROMPT_HISTORY",
+            "HZKCODE_MAX_THINKING_TOKENS",
+            "PATH",
+        ] {
+            assert!(!is_provider_env_key(key), "{key} must pass through");
+        }
     }
 
     #[test]

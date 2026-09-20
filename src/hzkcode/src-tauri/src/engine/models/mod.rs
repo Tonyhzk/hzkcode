@@ -12,7 +12,7 @@ mod claude;
 mod wsl;
 
 /// Claude launch-time model resolution: picker alias → the custom id its
-/// ANTHROPIC_DEFAULT_<FAMILY>_MODEL override maps to (pass-through when
+/// capability tier's override maps to (pass-through when
 /// unmapped), so the request carries the model the picker displayed even
 /// when the CLI build skips its own env remap.
 pub(crate) fn resolve_claude_launch_model(selector: &str) -> String {

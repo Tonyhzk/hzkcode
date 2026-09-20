@@ -166,7 +166,8 @@ fn read_cli_config() -> CliModelConfig {
 }
 
 /// The model id a picker selector actually runs, for launch: a family alias
-/// resolves through its ANTHROPIC_DEFAULT_<FAMILY>_MODEL override, "default"
+/// resolves through its capability tier's override
+/// (`HZKCODE_DEFAULT_HIGH/MID/LOW_MODEL`), "default"
 /// through the CLI's configured default; anything unmapped passes through
 /// for the CLI to resolve itself. Relay setups depend on the env remap,
 /// which some CLI builds/shims skip — launching with the id the picker
@@ -238,7 +239,7 @@ pub(super) fn claude_models_remote(user_json: &str, local_json: &str) -> Vec<Eng
 }
 
 /// Claude's picker catalog: the CLI's built-in aliases, default row first.
-/// Aliases remapped via ANTHROPIC_DEFAULT_<FAMILY>_MODEL display the custom
+/// Aliases remapped via their capability tier display the custom
 /// id as the name with the CLI menu's "Custom <Family> model" subtitle;
 /// unremapped aliases name the concrete model the CLI's embedded registry
 /// resolves them to, so the picker shows what a request actually runs.
