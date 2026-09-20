@@ -28,6 +28,7 @@ function versionStatus(engine: EngineId, over: Partial<CliVersionStatus> = {}): 
     latestVersion: "2.1.267",
     updateAvailable: true,
     updateKind: "native",
+    source: "system",
     ...over,
   };
 }
@@ -108,6 +109,23 @@ describe("CliHeaderActions", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("未安装");
     expect(text).toContain("安装");
+  });
+
+  it("bundled CLI: the 内置 tag rides the version, no install/update CTA", async () => {
+    mocks.cliVersionStatus.mockResolvedValue(
+      versionStatus("claude", {
+        latestVersion: null,
+        updateAvailable: false,
+        updateKind: null,
+        source: "bundled",
+      }),
+    );
+    await render();
+    const text = container.textContent ?? "";
+    expect(text).toContain("v2.1.228");
+    expect(text).toContain("内置");
+    expect(text).not.toContain("更新至");
+    expect(text).not.toContain("安装");
   });
 
   it("refresh button spins while a probe is in flight", async () => {

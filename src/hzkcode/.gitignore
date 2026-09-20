@@ -6,6 +6,11 @@ dist
 src-tauri/target
 src-tauri/gen
 
+# Bundled CLI binaries (bundle.resources copies them into the app package);
+# 100MB+ each, never committed — the slot README stays tracked.
+src-tauri/binaries/*
+!src-tauri/binaries/README.md
+
 # Secrets — never commit
 .env
 .env.*

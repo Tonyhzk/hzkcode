@@ -33,6 +33,7 @@ function versionStatus(engine: EngineId): CliVersionStatus {
     latestVersion: "1.1.0",
     updateAvailable: true,
     updateKind: "npm",
+    source: "system",
   };
 }
 

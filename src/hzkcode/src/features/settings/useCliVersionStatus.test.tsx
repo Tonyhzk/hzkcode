@@ -27,6 +27,7 @@ function versionStatus(engine: EngineId, over: Partial<CliVersionStatus> = {}): 
     latestVersion: "2.1.267",
     updateAvailable: true,
     updateKind: "native",
+    source: "system",
     ...over,
   };
 }

@@ -1,5 +1,9 @@
 //! CLI binary resolution and spawnable-command construction.
 //!
+//! Resolution order: an explicit `bin` override from settings, then the CLI
+//! the app itself carries (see [`bundled_cli_binary`]), then PATH plus the
+//! well-known install dirs.
+//!
 //! Ported from the reference desktop-cc-gui's `backend/app_server_cli.rs`,
 //! trimmed to the engine-spawn use case. Three Windows realities drive the
 //! design:
@@ -510,6 +514,97 @@ pub(crate) fn command_for_binary(bin: &str) -> Command {
     Command::new(bin)
 }
 
+// ── bundled CLI discovery ───────────────────────────────────────────────────
+
+/// Directory (next to the app's own binary, or in the macOS bundle's
+/// Resources) the packaged CLI lands in: `bundle.resources` copies
+/// `src-tauri/binaries` there on every platform.
+const BUNDLED_BIN_DIR: &str = "binaries";
+
+/// Names the bundled slot may hold for `name`. The app ships our own CLI as
+/// `hzkcode`; a slot holding an upstream-style build keeps the engine id as
+/// its name. Ours wins when both exist.
+fn bundled_slot_names(name: &str) -> Vec<&str> {
+    if name == "claude" {
+        vec!["hzkcode", "claude"]
+    } else {
+        vec![name]
+    }
+}
+
+/// Candidate directories for a CLI the app carries, in lookup order.
+///
+/// - macOS: `<exe dir>/../Resources/binaries` — where the bundler puts
+///   `bundle.resources` inside a `.app` (`Contents/MacOS/hzkcode` is the exe,
+///   the resources sit one level over in `Contents/Resources`).
+/// - `<exe dir>/binaries` — the install dir on Windows/Linux, and
+///   `target/debug` for a dev run.
+/// - `<crate>/binaries` — a dev run sits outside any bundle, so the source
+///   tree's own slot is the one that answers; the same slot the bundler
+///   packages, so `pnpm dev` exercises what ships.
+fn bundled_bin_dirs(exe_dir: &Path) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(contents) = exe_dir
+        .parent()
+        .filter(|parent| parent.file_name().is_some_and(|name| name == "Contents"))
+    {
+        push_unique_path(&mut dirs, contents.join("Resources").join(BUNDLED_BIN_DIR));
+    }
+    push_unique_path(&mut dirs, exe_dir.join(BUNDLED_BIN_DIR));
+    push_unique_path(
+        &mut dirs,
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(BUNDLED_BIN_DIR),
+    );
+    dirs
+}
+
+/// A bundled binary's file names in `dir`. Windows tries executable variants
+/// first, since a slot holding an npm shim carries `.cmd` next to the
+/// extensionless POSIX script.
+fn bundled_binary_variants(dir: &Path, name: &str) -> Vec<PathBuf> {
+    let mut variants = Vec::new();
+    #[cfg(windows)]
+    for ext in ["exe", "cmd", "bat", "ps1"] {
+        variants.push(dir.join(format!("{name}.{ext}")));
+    }
+    variants.push(dir.join(name));
+    variants
+}
+
+fn bundled_cli_binary_in(exe_dir: &Path, name: &str) -> Option<PathBuf> {
+    for dir in bundled_bin_dirs(exe_dir) {
+        for candidate in bundled_binary_variants(&dir, name) {
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// The CLI the app itself carries, if any. Checked ahead of PATH so a
+/// downloaded DMG runs without the user installing anything, and so the
+/// version on screen is the one that shipped with the bundle.
+fn bundled_cli_binary(name: &str) -> Option<PathBuf> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    bundled_slot_names(name)
+        .into_iter()
+        .find_map(|candidate_name| bundled_cli_binary_in(&exe_dir, candidate_name))
+}
+
+/// Whether `path` is a CLI the app carries (packaged slot or the dev tree's
+/// copy). Such a binary follows the app's release cycle, not the npm/official
+/// installer channels the settings page otherwise offers.
+pub(crate) fn is_bundled_cli_path(path: &Path) -> bool {
+    let Some(exe_dir) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+    else {
+        return false;
+    };
+    bundled_bin_dirs(&exe_dir).iter().any(|dir| path.starts_with(dir))
+}
+
 // ── public resolution entry points ──────────────────────────────────────────
 
 /// Strip the `\\?\` verbatim prefix Windows `canonicalize` produces (the
@@ -527,7 +622,9 @@ fn strip_verbatim(path: PathBuf) -> PathBuf {
 }
 
 /// Find a CLI binary using the `which` crate over PATH + the well-known
-/// install dirs. On Windows the known dirs are checked for `<name>.<ext>`
+/// install dirs. Bundled copies (see [`bundled_cli_binary`]) win over both, so
+/// the shipped CLI is what runs; an explicit `custom_bin` still wins over
+/// everything. On Windows the known dirs are checked for `<name>.<ext>`
 /// directly first (more reliable than PATH/PATHEXT), and any extensionless
 /// shim result is upgraded to its executable variant.
 pub(crate) fn find_cli_binary(name: &str, custom_bin: Option<&str>) -> Option<PathBuf> {
@@ -536,6 +633,10 @@ pub(crate) fn find_cli_binary(name: &str, custom_bin: Option<&str>) -> Option<Pa
         if bin_path.exists() {
             return Some(strip_verbatim(upgrade_executable_variant(bin_path.to_path_buf())));
         }
+    }
+
+    if let Some(bundled) = bundled_cli_binary(name) {
+        return Some(bundled);
     }
 
     #[cfg(windows)]
@@ -752,5 +853,74 @@ mod tests {
             "/definitely/missing/claude"
         };
         assert_eq!(resolve_launchable_cli_binary(missing), missing);
+    }
+
+    #[test]
+    fn bundled_slot_names_accept_both_our_cli_and_the_engine_id() {
+        assert_eq!(bundled_slot_names("claude"), vec!["hzkcode", "claude"]);
+        // Any other binary keeps its own name: plugin exec grants resolve
+        // unrelated tools through the same lookup.
+        assert_eq!(bundled_slot_names("ffmpeg"), vec!["ffmpeg"]);
+    }
+
+    #[test]
+    fn bundled_bin_dirs_lead_with_the_macos_resources_slot() {
+        let exe_dir = Path::new("/Applications/HZK CODE.app/Contents/MacOS");
+        let dirs = bundled_bin_dirs(exe_dir);
+        assert_eq!(
+            dirs[0],
+            PathBuf::from("/Applications/HZK CODE.app/Contents/Resources/binaries")
+        );
+        assert!(dirs.contains(&exe_dir.join("binaries")));
+    }
+
+    #[test]
+    fn bundled_cli_binary_in_reads_the_bundle_slot() {
+        let root =
+            std::env::temp_dir().join(format!("hzkcode-bundled-resolve-{}", std::process::id()));
+        let exe_dir = root.join("Demo.app").join("Contents").join("MacOS");
+        let bin_dir = root
+            .join("Demo.app")
+            .join("Contents")
+            .join("Resources")
+            .join("binaries");
+        std::fs::create_dir_all(&bin_dir).expect("create bundle slot");
+        std::fs::write(bin_dir.join("claude"), b"#!/bin/sh\n").expect("write claude");
+
+        assert_eq!(
+            bundled_cli_binary_in(&exe_dir, "claude"),
+            Some(bin_dir.join("claude"))
+        );
+        std::fs::write(bin_dir.join("hzkcode"), b"#!/bin/sh\n").expect("write hzkcode");
+        assert_eq!(
+            bundled_cli_binary_in(&exe_dir, "hzkcode"),
+            Some(bin_dir.join("hzkcode"))
+        );
+        // A name the bundle does not carry resolves to nothing, not to a
+        // neighbouring dir's file.
+        assert!(bundled_cli_binary_in(&exe_dir, "definitely-missing").is_none());
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn find_cli_binary_prefers_the_apps_own_copy() {
+        let exe_dir = std::env::current_exe()
+            .expect("current exe")
+            .parent()
+            .expect("exe dir")
+            .to_path_buf();
+        // Unique name: the production lookup shares its candidate dirs with
+        // whatever else the test run has on disk.
+        let name = format!("hzkcode-resolve-probe-{}", std::process::id());
+        let slot = exe_dir.join(BUNDLED_BIN_DIR).join(&name);
+        std::fs::create_dir_all(slot.parent().expect("slot dir")).expect("create slot");
+        std::fs::write(&slot, b"#!/bin/sh\n").expect("write probe");
+
+        assert_eq!(find_cli_binary(&name, None), Some(slot.clone()));
+        assert!(is_bundled_cli_path(&slot));
+        assert!(!is_bundled_cli_path(Path::new("/usr/local/bin/claude")));
+
+        let _ = std::fs::remove_file(&slot);
     }
 }

@@ -424,6 +424,7 @@ export const zh = {
     cliVersionCheckFailed: "检查失败",
     cliVersionNotInstalled: "未安装",
     cliVersionLabel: "v{{version}}",
+    cliVersionBundled: "内置",
     cliVersionUpToDate: "已是最新",
     cliUpdateTo: "更新至 {{version}}",
     cliUpdateTitle: "CLI 一键安装",

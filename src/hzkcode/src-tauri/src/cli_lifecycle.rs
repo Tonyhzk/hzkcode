@@ -6,6 +6,7 @@
 //! — never on a timer: `npm view` is a network call and every probe spawns
 //! processes, so polling would keep the machine awake for nothing.
 
+use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
@@ -54,6 +55,9 @@ pub struct CliVersionStatus {
     /// How the install/update button acts: "npm" | "native"; null when the
     /// engine has no lifecycle action.
     pub update_kind: Option<&'static str>,
+    /// Where the resolved CLI comes from: "bundled" (the app carries it and
+    /// it updates with the app) or "system".
+    pub source: &'static str,
 }
 
 #[derive(Serialize)]
@@ -108,10 +112,34 @@ fn claude_update_kind(bin: &str) -> &'static str {
 }
 
 fn update_kind(engine: &str, bin: &str) -> Option<&'static str> {
+    // A CLI the app ships updates with the app; pushing an npm/official
+    // install onto it would shadow the bundled binary.
+    if resolve::is_bundled_cli_path(Path::new(bin)) {
+        return None;
+    }
     if engine == "claude" {
         return Some(claude_update_kind(bin));
     }
     npm_package(engine).map(|_| "npm")
+}
+
+/// Why no one-click channel exists: the app carries the CLI itself, or the
+/// engine never had one.
+fn unsupported_update_message(engine: &str, bin: &str) -> String {
+    if resolve::is_bundled_cli_path(Path::new(bin)) {
+        format!("{engine} 使用的是应用内置 CLI，随应用一起更新。")
+    } else {
+        format!("{engine} 不支持一键安装/更新。")
+    }
+}
+
+/// Where the resolved CLI comes from, for the settings header.
+fn binary_source(bin: &str) -> &'static str {
+    if resolve::is_bundled_cli_path(Path::new(bin)) {
+        "bundled"
+    } else {
+        "system"
+    }
 }
 
 pub(crate) struct CliProbe {
@@ -175,10 +203,16 @@ pub async fn cli_version_status(engine: String) -> Result<CliVersionStatus, Stri
     let engine = checked_engine(&engine)?;
     let settings = crate::settings::read_settings().unwrap_or_default();
     let bin = crate::engine::engine_bin(&settings, &engine);
+    let source = binary_source(&bin);
     let package = npm_package(&engine);
     // Local probe and registry probe are independent — run them concurrently
-    // so the header waits on the slower of the two, not the sum.
+    // so the header waits on the slower of the two, not the sum. A bundled CLI
+    // has no registry counterpart (it ships with the app), so the registry
+    // probe is skipped and nothing is ever reported as updatable.
     let (local, latest) = tokio::join!(probe_local_version(&bin), async move {
+        if source == "bundled" {
+            return None;
+        }
         match package {
             Some(package) => probe_latest_version(package).await,
             None => None,
@@ -198,6 +232,7 @@ pub async fn cli_version_status(engine: String) -> Result<CliVersionStatus, Stri
         local_version: local.version,
         latest_version: latest,
         update_available,
+        source,
     })
 }
 
@@ -225,7 +260,7 @@ pub async fn cli_update_plan(engine: String) -> Result<CliUpdatePlan, String> {
                 Vec::new(),
             )
         }
-        _ => (Vec::new(), vec![format!("{engine} 不支持一键安装/更新。")]),
+        _ => (Vec::new(), vec![unsupported_update_message(&engine, &bin)]),
     };
     Ok(CliUpdatePlan {
         action: if installed { "update" } else { "install" },
@@ -255,7 +290,7 @@ pub async fn cli_update(
             run_npm_install(package, &reporter).await?;
         }
         Some("native") => run_native_install(&reporter).await?,
-        _ => return Err(format!("{engine} 不支持一键安装/更新。")),
+        _ => return Err(unsupported_update_message(&engine, &bin)),
     }
     // Fresh local version after the install.
     let probe = probe_local_version(&bin).await;

@@ -31,7 +31,8 @@
   "bundle": {
     "active": true,
     "resources": {
-      "resources/agent-catalogs": "agent-catalogs"
+      "resources/agent-catalogs": "agent-catalogs",
+      "binaries": "binaries"
     },
     "createUpdaterArtifacts": true,
     "targets": "all",

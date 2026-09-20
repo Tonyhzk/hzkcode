@@ -439,6 +439,7 @@ export const en: Messages = {
     cliVersionCheckFailed: "Check failed",
     cliVersionNotInstalled: "Not installed",
     cliVersionLabel: "v{{version}}",
+    cliVersionBundled: "Bundled",
     cliVersionUpToDate: "Up to date",
     cliUpdateTo: "Update to {{version}}",
     cliUpdateTitle: "One-Click CLI Install",

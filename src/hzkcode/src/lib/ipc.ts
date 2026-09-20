@@ -527,6 +527,8 @@ export interface CliVersionStatus {
   updateAvailable: boolean;
   /** How install/update acts: "npm" | "native"; null = no action. */
   updateKind: "npm" | "native" | null;
+  /** "bundled" = the app carries this CLI and updates it with the app. */
+  source: "bundled" | "system";
 }
 /** Confirm-dialog execution plan for a one-click install/update. */
 export interface CliUpdatePlan {

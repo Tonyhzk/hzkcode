@@ -9,6 +9,7 @@ import type { CliVersionStatus } from "@/lib/ipc";
 import { openExternal } from "@/lib/platform";
 import { cx } from "@/utils/cx";
 import { ENGINE_DOCS_URLS, type EngineId } from "./providers";
+import { Badge } from "./CliChannelRow";
 import { CliUpdateDialog } from "./CliUpdateDialog";
 import { useCliUpdateFlow } from "./useCliUpdateFlow";
 import { useCliVersionStatus } from "./useCliVersionStatus";
@@ -103,6 +104,10 @@ function VersionStatusLabel({
     <>
       <VersionStatusIcon status={status} />
       {t("settings.cliVersionLabel", { version: status.localVersion })}
+      {/* 内置 CLI 随应用更新，版本行里标出来源，避免被当成可单独升级的安装。 */}
+      {status.source === "bundled" && (
+        <Badge>{t("settings.cliVersionBundled")}</Badge>
+      )}
     </>
   );
 }
