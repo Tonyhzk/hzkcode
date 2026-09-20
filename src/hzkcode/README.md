@@ -12,7 +12,7 @@
 
 </div>
 
-**HZK CODE** is an open-source **multi-engine AI coding desktop client**. In plain words: it brings command-line AI coding runtimes — **Claude Code**, **Codex CLI**, **Kimi CLI**, **Grok CLI**, **Pi CLI**, **OMP CLI**, and **DeepSeek Harness (DSH)** — into one graphical interface.
+**HZK CODE** is an open-source AI coding desktop client. In plain words: it brings the **Claude Code** command-line AI coding runtime into one graphical interface.
 
 No more staring at a black terminal. Open HZK CODE, pick a project, and chat with AI to write code, fix bugs, and commit to Git. Streaming output, thinking traces, and tool calls are visible as they happen; token usage appears when the engine reports it.
 
@@ -22,13 +22,12 @@ The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on mac
 
 ## What can HZK CODE do?
 
-### One client, seven AI engines
+### One client, Claude Code inside
 
-- Registers runtime adapters for **Claude Code**, **Codex CLI**, **Kimi CLI**, **Grok CLI**, **Pi CLI**, **OMP CLI**, and **DeepSeek Harness** — pick the engine per session from the composer.
-- **Provider channels** are written to each CLI's own native config files (no parallel credential store), with curated presets for GLM, Kimi, DeepSeek, MiniMax, MiMo, Bailian, LongCat, OpenCode Go, OpenRouter, and more. Claude / Codex / Grok channels can be imported from [CC Switch](https://github.com/farion1231/cc-switch).
-- Pi-family engines (Pi / OMP) support API-key and OAuth sign-in flows from inside Settings.
+- Registers the **Claude Code** runtime adapter — pick it from the composer's engine picker.
+- **Provider channels** are written to the CLI's own native config files (no parallel credential store), with curated presets for GLM, Kimi, DeepSeek, MiniMax, MiMo, LongCat, OpenCode Go, OpenRouter, and more. Claude channels can be imported from [CC Switch](https://github.com/farion1231/cc-switch).
 - Per-tab **model and effort overrides**: different tabs in the same window can run different models or thinking levels.
-- Session history survives restarts; the history scanner reads each CLI's native session files and keeps titles in sync.
+- Session history survives restarts; the history scanner reads the CLI's native session files and keeps titles in sync.
 
 ### A chat box designed for coding
 
@@ -37,7 +36,7 @@ The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on mac
 - Tool calls show as live rows with expandable parameters and results, including beautified **Git Diff** and **Bash** viewers and per-run completion metadata.
 - A **Run Status Strip** mirrors the engine's live progress (including todo snapshots), and a message **anchor rail** lets you jump between user messages.
 - Pasted images become attachments; file mentions are backed by a `.gitignore`-aware project file index; file links in replies handle URL-encoded paths and have a right-click menu.
-- Permission denials can be resolved inline by granting the engine extra directories; prompt history and an optional **Codex Fast** toggle live in the composer.
+- Permission denials can be resolved inline by granting the engine extra directories; prompt history lives in the composer.
 
 ### Not just chat — a full set of dev panels
 
@@ -57,28 +56,22 @@ The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on mac
 - **Proxy settings** for the app and engine traffic.
 - **LAN web access**: serve the UI to other devices on your network over a token-authenticated WebSocket bridge, with a QR-code entry in Settings.
 - **Workspace management**: group projects and switch between them.
-- In-app **auto-update** (Tauri updater against GitHub Releases), a changelog dialog, and signed macOS builds.
+- In-app **auto-update** (Tauri updater against GitHub Releases), a changelog dialog, and macOS builds.
 - Bilingual UI: **Chinese and English**.
 
 ---
 
 ## Download
 
-Grab the installer for your platform from the [Releases page](https://github.com/Tonyhzk/hzkcode/releases):
+Grab the installer from the [Releases page](https://github.com/Tonyhzk/hzkcode/releases):
 
 | Platform | Installer |
 | --- | --- |
-| macOS (Apple Silicon, signed) | `aarch64.dmg` |
-| Windows | `.exe` (NSIS) |
-| Linux | `.AppImage` |
+| macOS (Apple Silicon) | `aarch64.dmg` |
 
-After installing, open Settings, configure a provider channel for the CLI you want (or sign in), add a project folder, and start chatting.
+The macOS bundle is unsigned (the project has no Apple Developer certificate yet) — on first launch, right-click → Open.
 
-### Using DeepSeek Harness (DSH)
-
-1. Install the DSH CLI on your machine and configure its models and API keys in DSH itself — not as a separate vendor preset inside HZK CODE.
-2. In Settings → DeepSeek Harness, HZK CODE can adopt a running local `dsh web` host or auto-start one.
-3. Select **DeepSeek Harness** in the composer engine picker. Chat runs through DSH's headless profile; models and credentials stay in DSH.
+After installing, open Settings, configure a provider channel for Claude Code (or sign in), add a project folder, and start chatting.
 
 ---
 
@@ -124,11 +117,10 @@ A few tips:
 ### Building installers
 
 ```bash
-pnpm build:mac                 # macOS signed build (scripts/build-signed-macos.sh)
-pnpm build:mac:skip-notarize   # same, skipping notarization
+pnpm build:mac   # macOS build (scripts/build-macos.sh)
 ```
 
-Windows and Linux installers are produced by the CI workflows under `.github/workflows/` (`release.yml`, `build-windows-artifact.yml`).
+Releases are built locally and manually — there is no CI pipeline.
 
 ---
 
@@ -155,12 +147,12 @@ hzkcode/
 │   ├── styles/             # Global styles
 │   └── lib/ utils/         # Utility functions
 ├── src-tauri/              # Rust backend
-│   └── src/                # engine/ (one module per CLI), history/, plugins/,
+│   └── src/                # engine/ (CLI engine adapters), history/, plugins/,
 │                           # git.rs, terminal.rs, web.rs (LAN bridge), ...
 ├── packages/plugin-sdk/    # @hzkcode/plugin-sdk — plugin authoring kit
 ├── tests/                  # Frontend integration-style tests (Vitest)
 ├── scripts/                # Build and packaging scripts
-└── docs/                   # Plugin development guide, engine mode notes
+└── docs/                   # Plugin development guide
 ```
 
 ### The typical workflow for changing a feature
@@ -215,7 +207,7 @@ Real examples from this repo:
 
 ```text
 feat(chat): 支持工具调用参数与结果展开、Git Diff/Bash美化及完成元数据展示
-fix(codex): Windows .cmd shim 下多行提示词只送达第一行
+fix(chat): message file links failed to resolve in nested projects
 perf(chat): reveal streamed text per frame without reparsing markdown
 ```
 
@@ -235,7 +227,6 @@ Not sure where to start? Browse the [Issues](https://github.com/Tonyhzk/hzkcode/
 ### Want to dig deeper?
 
 - [Plugin development guide (中文)](docs/plugin-development-guide.zh-CN.md) — SDK, manifest, permissions, and the trust boundary.
-- [docs/omp-fast-mode.md](docs/omp-fast-mode.md) — notes on the Codex Fast / OMP fast mode.
 
 ---
 
