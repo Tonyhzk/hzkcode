@@ -23,9 +23,9 @@ const NOISE_TITLE_WHERE: &str = "title LIKE '<file %' ESCAPE '\\'
      OR title LIKE '<INSTRUCTIONS>%'";
 
 fn discover_claude(workspace: &Path) -> Vec<SessionFile> {
-    // The CLI's config root honors CLAUDE_CONFIG_DIR; pinning ~/.claude here
-    // would lose the history of users who relocate it.
-    let base = crate::engine::engine_home(Some("CLAUDE_CONFIG_DIR"), ".claude").join("projects");
+    // The CLI's config root honors HZKCODE_CONFIG_DIR; pinning ~/.hzkcode
+    // here would lose the history of users who relocate it.
+    let base = crate::engine::engine_home(Some("HZKCODE_CONFIG_DIR"), ".hzkcode").join("projects");
     let mut out = Vec::new();
     let mut seen_sessions = std::collections::HashSet::new();
     for dir in claude_project_dirs(&base, workspace) {
@@ -480,25 +480,25 @@ mod tests {
         dir
     }
 
-    /// Env-mutating guard for CLAUDE_CONFIG_DIR; shares HOME_LOCK so every
+    /// Env-mutating guard for HZKCODE_CONFIG_DIR; shares HOME_LOCK so every
     /// env-dependent scanner test stays serialized.
-    struct ClaudeConfigDirGuard {
+    struct HzkcodeConfigDirGuard {
         _lock: std::sync::MutexGuard<'static, ()>,
         prev: Option<std::ffi::OsString>,
     }
-    impl ClaudeConfigDirGuard {
+    impl HzkcodeConfigDirGuard {
         fn set(dir: &Path) -> Self {
             let lock = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            let prev = std::env::var_os("CLAUDE_CONFIG_DIR");
-            std::env::set_var("CLAUDE_CONFIG_DIR", dir);
+            let prev = std::env::var_os("HZKCODE_CONFIG_DIR");
+            std::env::set_var("HZKCODE_CONFIG_DIR", dir);
             Self { _lock: lock, prev }
         }
     }
-    impl Drop for ClaudeConfigDirGuard {
+    impl Drop for HzkcodeConfigDirGuard {
         fn drop(&mut self) {
             match &self.prev {
-                Some(value) => std::env::set_var("CLAUDE_CONFIG_DIR", value),
-                None => std::env::remove_var("CLAUDE_CONFIG_DIR"),
+                Some(value) => std::env::set_var("HZKCODE_CONFIG_DIR", value),
+                None => std::env::remove_var("HZKCODE_CONFIG_DIR"),
             }
         }
     }
@@ -512,7 +512,7 @@ mod tests {
 
     /// A workspace recorded with a trailing separator must still find the
     /// history the CLI wrote under the trimmed spelling, and the config root
-    /// must honor CLAUDE_CONFIG_DIR.
+    /// must honor HZKCODE_CONFIG_DIR.
     #[test]
     fn discover_claude_matches_trailing_slash_spelling_under_config_dir() {
         let home = scratch_dir("discover-claude");
@@ -524,7 +524,7 @@ mod tests {
         std::fs::create_dir_all(&project_dir).unwrap();
         std::fs::write(project_dir.join("s1.jsonl"), "{}\n").unwrap();
 
-        let _guard = ClaudeConfigDirGuard::set(&config_dir);
+        let _guard = HzkcodeConfigDirGuard::set(&config_dir);
         let spelled = PathBuf::from(format!("{}/", workspace.to_string_lossy()));
         let found = discover_claude(&spelled);
         assert_eq!(found.len(), 1);

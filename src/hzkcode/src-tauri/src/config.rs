@@ -409,7 +409,7 @@ mod tests {
             std::env::set_var("HOME", &dir);
             std::env::set_var("USERPROFILE", &dir);
             let engine_homes = [
-                "CLAUDE_CONFIG_DIR",
+                "HZKCODE_CONFIG_DIR",
                 "CODEX_HOME",
                 "KIMI_CODE_HOME",
                 "GROK_HOME",

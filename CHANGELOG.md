@@ -18,6 +18,7 @@
 - 新增 HZK CODE 品牌图标（蓝色方块 H）：设计源 `assets/hzkcode-icon.svg`；应用图标源图（深灰圆角底板 + H）经 `pnpm tauri icon` 重新生成全套（icns / ico / 各尺寸 png 与 Windows Store logos），侧边栏 logo 与 favicon 同步替换
 - 界面中的 Claude Code 品牌全面替换：引擎显示名（`CLI_DISPLAY_NAMES` 与 i18n `engines`）改为 HZK CODE；引擎与模型图标统一为 H 标（新增 `src/assets/brand/hzkcode-mark.svg`，移除 `model-icons/claude.svg`）；CLI 版本状态只显示版本号，探测结果由 Rust 侧 `display_version` 剥离引擎品牌后缀
 - 对话模型选择器扁平化：单引擎下打开选择器直接显示模型面板（搜索、渠道、推理强度），不再渲染引擎行与「{{name}} 引擎」标题；trigger 直接显示「模型 · 推理强度」；claude 模型目录不再输出 provider 来源标签，消除模型列表上方的来源分组标题（多来源时分组能力保留）
+- 引擎配置根目录从 Claude Code 的 `~/.claude` / `CLAUDE_CONFIG_DIR` 切换为 fork 的 `~/.hzkcode` / `HZKCODE_CONFIG_DIR`：会话扫描与远程回放白名单、渠道官方配置文件路径、全局 commands/skills 目录、模型目录（含 WSL 远端探针）、`config.rs` 测试用环境变量列表一并更新，GUI 与单独安装的 CLI 共用同一份数据
 
 ## [0.1.0] - 2026-09-19
 

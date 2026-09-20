@@ -445,7 +445,7 @@ fn is_plausible_remote_session_path(engine: &str, path: &str) -> bool {
         return false;
     }
     let markers: &[&str] = match engine {
-        // ~/.claude/projects/<encoded>/<sid>.jsonl
+        // ~/.hzkcode/projects/<encoded>/<sid>.jsonl
         "claude" => &["/projects/"],
         // 未知引擎硬拒绝:白名单只对已适配的会话树形态成立。
         _ => &[],
@@ -837,14 +837,14 @@ mod tests {
         // 合法形态:绝对 .jsonl 且落在 claude 会话目录下
         assert!(is_plausible_remote_session_path(
             "claude",
-            "/home/dev/.claude/projects/-home-dev-proj/s-1.jsonl"
+            "/home/dev/.hzkcode/projects/-home-dev-proj/s-1.jsonl"
         ));
         // 形状不符:相对路径、非 jsonl、`..` 段、目录形态不匹配
         assert!(!is_plausible_remote_session_path("claude", "home/dev/x.jsonl"));
-        assert!(!is_plausible_remote_session_path("claude", "/home/dev/.claude/projects/p/s.txt"));
+        assert!(!is_plausible_remote_session_path("claude", "/home/dev/.hzkcode/projects/p/s.txt"));
         assert!(!is_plausible_remote_session_path(
             "claude",
-            "/home/dev/.claude/projects/../settings.jsonl"
+            "/home/dev/.hzkcode/projects/../settings.jsonl"
         ));
         // 任意 .jsonl(不在会话目录形态下)一律拒绝 —— 防借 IPC 读发行版文件
         assert!(!is_plausible_remote_session_path("claude", "/etc/cron.d/job.jsonl"));
@@ -855,7 +855,7 @@ mod tests {
         ));
         assert!(!is_plausible_remote_session_path(
             "codex",
-            "/home/dev/.claude/projects/p/s.jsonl"
+            "/home/dev/.hzkcode/projects/p/s.jsonl"
         ));
     }
 

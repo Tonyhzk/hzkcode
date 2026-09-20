@@ -213,7 +213,7 @@ fn merge_entries_by_priority(sources: Vec<Vec<SlashCommandEntry>>) -> Vec<SlashC
 }
 
 /// Command directories in priority order: the workspace's `.claude/commands`
-/// first, then the CLI config home's `commands` (honors CLAUDE_CONFIG_DIR —
+/// first, then the CLI config home's `commands` (honors HZKCODE_CONFIG_DIR —
 /// the same root the history scanner reads).
 fn commands_dirs(workspace_root: &Path) -> Vec<(PathBuf, &'static str)> {
     let mut dirs: Vec<(PathBuf, &'static str)> = Vec::new();
@@ -221,7 +221,8 @@ fn commands_dirs(workspace_root: &Path) -> Vec<(PathBuf, &'static str)> {
     if workspace_dir.is_dir() {
         dirs.push((workspace_dir, "workspace"));
     }
-    let global_dir = crate::engine::engine_home(Some("CLAUDE_CONFIG_DIR"), ".claude").join("commands");
+    let global_dir =
+        crate::engine::engine_home(Some("HZKCODE_CONFIG_DIR"), ".hzkcode").join("commands");
     if global_dir.is_dir() {
         dirs.push((global_dir, "global"));
     }
@@ -229,8 +230,8 @@ fn commands_dirs(workspace_root: &Path) -> Vec<(PathBuf, &'static str)> {
 }
 
 /// Skill directories in priority order: the workspace's `.claude/skills`
-/// first, then the global homes — Claude (`$CLAUDE_CONFIG_DIR/skills`) and
-/// the cross-agent `~/.agents/skills`. `is_dir` follows symlinks, so
+/// first, then the global homes — the CLI's (`$HZKCODE_CONFIG_DIR/skills`)
+/// and the cross-agent `~/.agents/skills`. `is_dir` follows symlinks, so
 /// cc-switch-managed links inside these roots resolve.
 fn skills_dirs(workspace_root: &Path) -> Vec<(PathBuf, &'static str)> {
     let mut dirs: Vec<(PathBuf, &'static str)> = Vec::new();
@@ -238,10 +239,10 @@ fn skills_dirs(workspace_root: &Path) -> Vec<(PathBuf, &'static str)> {
     if workspace_dir.is_dir() {
         dirs.push((workspace_dir, "workspace"));
     }
-    let claude_global =
-        crate::engine::engine_home(Some("CLAUDE_CONFIG_DIR"), ".claude").join("skills");
-    if claude_global.is_dir() {
-        dirs.push((claude_global, "global"));
+    let cli_global =
+        crate::engine::engine_home(Some("HZKCODE_CONFIG_DIR"), ".hzkcode").join("skills");
+    if cli_global.is_dir() {
+        dirs.push((cli_global, "global"));
     }
     let agents_dir = crate::engine::engine_home(None, ".agents").join("skills");
     if agents_dir.is_dir() {

@@ -1,7 +1,7 @@
 //! Claude's catalog comes from the CLI's own configuration, not the app's
 //! provider channels: `claude --model` resolves the built-in aliases the
 //! /model menu lists, and the CLI's configured default lives in
-//! ~/.claude/settings.json (settings.local.json overrides it). The concrete
+//! ~/.hzkcode/settings.json (settings.local.json overrides it). The concrete
 //! model id each alias resolves to is read from the registry the CLI embeds
 //! in its own binary, so the picker names the real model instead of the
 //! bare family name. No relay probe: the /model menu is built into the CLI
@@ -118,14 +118,10 @@ const CLI_ALIASES: &[(&str, &str)] = &[
     ("haiku", "Haiku"),
 ];
 
-/// The CLI's config root: $CLAUDE_CONFIG_DIR when set, else ~/.claude.
+/// The CLI's config root: `$HZKCODE_CONFIG_DIR` when set, else `~/.hzkcode`
+/// — the same root the history scanner and the channel file editor use.
 fn claude_config_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR") {
-        if !dir.is_empty() {
-            return PathBuf::from(dir);
-        }
-    }
-    dirs::home_dir().expect("no home directory").join(".claude")
+    crate::engine::engine_home(Some("HZKCODE_CONFIG_DIR"), ".hzkcode")
 }
 
 /// env keys that remap a built-in alias family to a custom model id,
@@ -138,7 +134,7 @@ const FAMILY_ENV_KEYS: &[(&str, &str, &str)] = &[
     ("fable", "ANTHROPIC_DEFAULT_FABLE_MODEL", "Fable"),
 ];
 
-/// The CLI's model configuration from ~/.claude/settings.json, merged per
+/// The CLI's model configuration from ~/.hzkcode/settings.json, merged per
 /// field with settings.local.json winning (the CLI's own precedence).
 #[derive(Default)]
 struct CliModelConfig {
@@ -231,7 +227,7 @@ fn merge_settings_json(config: &mut CliModelConfig, content: &str) {
     }
 }
 
-/// Remote (WSL distro) catalog from the distro's `$CLAUDE_CONFIG_DIR`
+/// Remote (WSL distro) catalog from the distro's `$HZKCODE_CONFIG_DIR`
 /// settings contents (fetched via ssh by the caller). Aliases are CLI
 /// built-ins; only the per-field overrides come from config, so the distro
 /// settings reproduce its own /model menu.

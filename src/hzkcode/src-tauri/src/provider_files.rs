@@ -3,7 +3,7 @@
 //!
 //! Switching a channel stores the id in our config (`section.current`) and
 //! applies process-scoped channel env/config to that send. The CLI's native
-//! file (`~/.claude/settings.json`) stays the official configuration:
+//! file (`~/.hzkcode/settings.json`) stays the official configuration:
 //! concurrent sessions can run different channels without clobbering each
 //! other, and `--resume` still finds history in the CLI's real home.
 //!
@@ -59,7 +59,7 @@ fn targets(engine: &str) -> Vec<Target> {
     };
     match engine {
         "claude" => vec![target(
-            home(Some("CLAUDE_CONFIG_DIR"), ".claude").join("settings.json"),
+            home(Some("HZKCODE_CONFIG_DIR"), ".hzkcode").join("settings.json"),
             "settings.json",
         )],
         _ => Vec::new(),

@@ -2,7 +2,7 @@
 //!
 //! Claude runs entirely on the CLI's own configuration: the catalog is
 //! the built-in aliases `claude --model` resolves (the /model menu's
-//! entries) in menu order; the configured default from ~/.claude/settings.json is named
+//! entries) in menu order; the configured default from ~/.hzkcode/settings.json is named
 //! in the "default" row's subtitle, and each alias names the concrete model
 //! id the CLI binary's embedded registry resolves it to. No
 //! relay probe: the /model menu is built into the CLI binary. The app's
