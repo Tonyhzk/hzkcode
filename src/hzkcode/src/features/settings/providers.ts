@@ -4,9 +4,9 @@ import type { ProviderSection } from "@/lib/ipc";
 
 export const ENGINE_IDS = ["claude"] as const;
 export type EngineId = (typeof ENGINE_IDS)[number];
-/** Official docs per engine — the CLI 管理 header "官方文档" link. */
+/** Docs per engine — the CLI 管理 header "官方文档" link. */
 export const ENGINE_DOCS_URLS: Record<EngineId, string> = {
-  claude: "https://code.claude.com/docs/en/cli-reference",
+  claude: "https://doc.hzkcode.houzhenkun.com",
 };
 
 export const PSEUDO_LOCAL = "__local_settings_json__";

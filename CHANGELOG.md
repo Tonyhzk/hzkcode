@@ -21,6 +21,7 @@
 - 内置 CLI：新增应用内二进制槽位 `src/hzkcode/src-tauri/binaries/`，经 `bundle.resources` 打包到 `Contents/Resources/binaries/`（Windows 为安装目录 `binaries\`）；Rust 侧 `resolve::bundled_cli_binary` 按「设置页自定义路径 → 内置二进制 → 系统 PATH」解析，`.app` 内优先 `Contents/Resources/binaries`，开发态回落到源码槽位；`.gitignore` 忽略该目录下的二进制，只保留槽位说明
 - 内置状态下的 CLI 生命周期：`resolve::is_bundled_cli_path` 判定内置后跳过 npm registry 版本查询，`update_kind` 返回 null 隐藏一键安装/更新按钮，`cli_update_plan` / `cli_update` 改为说明「随应用一起更新」；`cli_version_status` 新增 `source`（bundled / system）字段
 - 设置页 CLI 版本行在使用内置二进制时显示「内置」标识（i18n `settings.cliVersionBundled`），提示该 CLI 随应用更新
+- CLI 管理页「官方文档」链接改为项目文档站（`https://doc.hzkcode.houzhenkun.com`），不再指向上游文档
 - 引擎配置根目录从 Claude Code 的 `~/.claude` / `CLAUDE_CONFIG_DIR` 切换为 fork 的 `~/.hzkcode` / `HZKCODE_CONFIG_DIR`：会话扫描与远程回放白名单、渠道官方配置文件路径、全局 commands/skills 目录、模型目录（含 WSL 远端探针）、`config.rs` 测试用环境变量列表一并更新，GUI 与单独安装的 CLI 共用同一份数据
 
 ## [0.1.0] - 2026-09-19
