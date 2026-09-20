@@ -30,6 +30,7 @@
 - 设置导航改版：去掉「CLI 管理」分组，CLI 配置成为独立板块「模型配置」，排在设置列表第一位（通用之前），里面就是官方配置与供应商渠道（API URL / API Key / 模型映射）；随之下线该分组专用的拖拽排序、未启用折叠桶与导航顺序持久化逻辑（单引擎不再需要）
 - 界面精简：移除 cc-switch 同步与导入（同步横幅、导入菜单、渠道来源徽标与图标资源，后端 `cc_switch` 模块及其 4 个命令、web 路由、`CcSwitchStatus`/`CcSwitchImportResult` 类型）
 - 界面精简：移除「启用 HZK CODE」开关及其卡片与停用蒙层，`set_engine_enabled` 命令（含 web 路由与前端封装）一并删除；引擎固定启用，渠道列表不再有停用入口
+- 设置打开时默认选中导航第一项（模型配置），不再固定落在通用；显式 `?page=` 与旧的 `?page=cliConfig` 链接仍然生效
 - 引擎配置根目录从 Claude Code 的 `~/.claude` / `CLAUDE_CONFIG_DIR` 切换为 fork 的 `~/.hzkcode` / `HZKCODE_CONFIG_DIR`：会话扫描与远程回放白名单、渠道官方配置文件路径、全局 commands/skills 目录、模型目录（含 WSL 远端探针）、`config.rs` 测试用环境变量列表一并更新，GUI 与单独安装的 CLI 共用同一份数据
 
 ## [0.1.0] - 2026-09-19

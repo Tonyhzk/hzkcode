@@ -69,9 +69,6 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sections = useRegistry(settingsRegistry);
-  // Legacy links land on the CLI page: ?page=cliConfig → the CLI section.
-  const rawPage = searchParams.get("page") ?? "general";
-  const pageParam = rawPage === "cliConfig" ? `cli:${ENGINE_IDS[0]}` : rawPage;
 
   const groups = useMemo<RailGroup[]>(() => {
     const sorted = [...sections].sort((a, b) => a.order - b.order);
@@ -103,6 +100,15 @@ export default function SettingsPage() {
       .sort((a, b) => a.order - b.order);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sections, t, i18n.language]);
+
+  // Opening settings without a page lands on the rail's first entry (the CLI
+  // config), not on General; ?page=… wins, and the legacy cliConfig link
+  // still resolves to the CLI section.
+  const rawPage = searchParams.get("page");
+  const pageParam =
+    rawPage === "cliConfig"
+      ? `cli:${ENGINE_IDS[0]}`
+      : (rawPage ?? groups[0]?.items[0]?.key ?? "general");
 
   const titles = useMemo(() => {
     const map: Record<string, string> = {};
