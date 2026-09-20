@@ -15,6 +15,8 @@
 - 应用更新签名密钥更换为本项目自己的 minisign 密钥对（私钥 `~/.tauri/hzkcode.key`，公钥写入 `tauri.conf.json` 的 `plugins.updater.pubkey`）
 - README（中英）同步当前状态：移除已裁剪引擎（Codex / Kimi / Grok / Pi / OMP / DSH）的描述，下载与打包说明改为未签名产物与本地手动发布；删除已失效的 `docs/omp-fast-mode.md` 及其引用
 - 设置页「社区与反馈」更新为项目自有信息：官方交流群二维码替换为项目公众号码，关注我们改为 GitHub / 官网 / 哔哩哔哩 / 抖音 / 小红书 / 知乎
+- 新增 HZK CODE 品牌图标（蓝色方块 H）：设计源 `assets/hzkcode-icon.svg`；应用图标源图（深灰圆角底板 + H）经 `pnpm tauri icon` 重新生成全套（icns / ico / 各尺寸 png 与 Windows Store logos），侧边栏 logo 与 favicon 同步替换
+- 界面中的 Claude Code 品牌全面替换：引擎显示名（`CLI_DISPLAY_NAMES` 与 i18n `engines`）改为 HZK CODE；引擎与模型图标统一为 H 标（新增 `src/assets/brand/hzkcode-mark.svg`，移除 `model-icons/claude.svg`）；CLI 版本状态只显示版本号，探测结果由 Rust 侧 `display_version` 剥离引擎品牌后缀
 
 ## [0.1.0] - 2026-09-19
 

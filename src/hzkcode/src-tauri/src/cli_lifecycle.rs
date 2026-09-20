@@ -121,7 +121,8 @@ pub(crate) struct CliProbe {
 
 /// `<bin> --version`: first non-empty stdout line, 10s cap. A spawn failure
 /// means not installed; a successful run with no version line still counts
-/// as installed (we just have nothing to display).
+/// as installed (we just have nothing to display). The line is reduced to
+/// its leading version token for display — see [`display_version`].
 pub(crate) async fn probe_local_version(bin: &str) -> CliProbe {
     let mut command = command_for_binary(bin);
     command.arg("--version");
@@ -139,7 +140,7 @@ pub(crate) async fn probe_local_version(bin: &str) -> CliProbe {
         .lines()
         .map(str::trim)
         .find(|line| !line.is_empty())
-        .map(str::to_string);
+        .map(display_version);
     CliProbe {
         installed: true,
         version,
@@ -603,6 +604,23 @@ fn leading_number(text: &str) -> Option<u64> {
     digits.parse().ok()
 }
 
+/// Display form of a probed version line: only the leading version token
+/// survives, so a CLI's own brand suffix never reaches the header —
+/// "2.1.228 (Claude Code)" shows as "2.1.228". Text with no digits passes
+/// through as-is.
+fn display_version(raw: &str) -> String {
+    match raw.find(|c: char| c.is_ascii_digit()) {
+        Some(start) => {
+            let rest = &raw[start..];
+            let end = rest
+                .find(|c: char| !c.is_ascii_digit() && c != '.')
+                .unwrap_or(rest.len());
+            rest[..end].to_string()
+        }
+        None => raw.trim().to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -613,6 +631,14 @@ mod tests {
         assert_eq!(parse_version("v1.2.3"), Some((1, 2, 3)));
         assert_eq!(parse_version("1.2"), Some((1, 2, 0)));
         assert_eq!(parse_version("no digits"), None);
+    }
+
+    #[test]
+    fn display_version_keeps_only_the_leading_version_token() {
+        assert_eq!(display_version("2.1.228 (Claude Code)"), "2.1.228");
+        assert_eq!(display_version("v1.2.3"), "1.2.3");
+        assert_eq!(display_version("1.2.0-beta.1"), "1.2.0");
+        assert_eq!(display_version("no digits"), "no digits");
     }
 
     #[test]

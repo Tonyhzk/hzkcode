@@ -415,7 +415,7 @@ export const zh = {
     webAccessWarning:
       "任何持有该链接的人都可以控制本机的会话、文件和终端，请谨慎分享。",
     engines: {
-      claude: "Claude",
+      claude: "HZK CODE",
     },
     cliManage: "CLI 管理",
     cliDocs: "官方文档",
@@ -517,7 +517,7 @@ export const zh = {
     cliHaikuModel: "Haiku 默认模型",
     cliHaikuModelPlaceholder: "例如：claude-haiku-4-5",
     cliModelMappingHint:
-      "可选：指定默认使用的 Claude 模型，留空则使用系统默认。",
+      "可选：指定默认使用的模型，留空则使用系统默认。",
     cliFetchModels: "拉取模型",
     cliFetchModelsLoading: "拉取中…",
     cliFetchModelsCount: "已加载 {{count}} 个模型",

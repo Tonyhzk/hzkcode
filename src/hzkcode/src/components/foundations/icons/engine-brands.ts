@@ -1,8 +1,8 @@
 import type { EngineIconId } from "./engine-icon";
 
-/** Brand names stay literal in every locale (Claude Code, …). */
+/** Brand names stay literal in every locale (HZK CODE, …). */
 export const CLI_DISPLAY_NAMES: Record<string, string> = {
-  claude: "Claude Code",
+  claude: "HZK CODE",
 };
 
 /**

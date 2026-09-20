@@ -1,6 +1,6 @@
 import { useId, type CSSProperties } from "react";
 import SquareTerminal from "lucide-react/dist/esm/icons/square-terminal";
-import claudeIcon from "@/assets/model-icons/claude.svg";
+import hzkcodeMark from "@/assets/brand/hzkcode-mark.svg";
 import deepseekIcon from "@/assets/model-icons/deepseek.svg";
 import chatglmIcon from "@/assets/model-icons/chatglm.svg";
 import qwenIcon from "@/assets/model-icons/qwen.svg";
@@ -163,7 +163,7 @@ function MonochromeGlyph({
 
 /** Static brand marks rendered as <img> (engine → asset + accessible label). */
 const RASTER_ICONS: Partial<Record<EngineIconId, { src: string; alt: string }>> = {
-  claude: { src: claudeIcon, alt: "Claude" },
+  claude: { src: hzkcodeMark, alt: "HZK CODE" },
   chatglm: { src: chatglmIcon, alt: "GLM" },
   qwen: { src: qwenIcon, alt: "Qwen" },
   doubao: { src: doubaoIcon, alt: "Doubao" },

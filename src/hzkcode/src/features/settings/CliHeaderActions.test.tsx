@@ -24,7 +24,7 @@ function versionStatus(engine: EngineId, over: Partial<CliVersionStatus> = {}): 
   return {
     engine,
     installed: true,
-    localVersion: "2.1.228 (Claude Code)",
+    localVersion: "2.1.228",
     latestVersion: "2.1.267",
     updateAvailable: true,
     updateKind: "native",
@@ -68,7 +68,7 @@ describe("CliHeaderActions", () => {
     mocks.cliVersionStatus.mockResolvedValue(versionStatus("claude"));
     await render();
     const text = container.textContent ?? "";
-    expect(text).toContain("v2.1.228 (Claude Code)");
+    expect(text).toContain("v2.1.228");
     expect(text).toContain("更新至 2.1.267");
     // The old "→ version" warning badge is gone — the CTA carries the target.
     expect(text).not.toContain("→ 2.1.267");
@@ -80,7 +80,7 @@ describe("CliHeaderActions", () => {
     const cta = [...container.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("更新至"),
     );
-    expect(cta?.parentElement?.textContent).toContain("v2.1.228 (Claude Code)");
+    expect(cta?.parentElement?.textContent).toContain("v2.1.228");
   });
 
   it("up to date: the check rides inside the pill's status segment, no CTA segment", async () => {
@@ -89,7 +89,7 @@ describe("CliHeaderActions", () => {
     );
     await render();
     const text = container.textContent ?? "";
-    expect(text).toContain("v2.1.228 (Claude Code)");
+    expect(text).toContain("v2.1.228");
     expect(text).not.toContain("已是最新");
     expect(container.querySelector('[aria-label="已是最新"]')).not.toBeNull();
     expect(text).not.toContain("更新至");

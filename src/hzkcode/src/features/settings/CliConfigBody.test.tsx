@@ -93,7 +93,7 @@ describe("CliConfigBody disabled overlay", () => {
     expect(wrapper.textContent).toContain(i18n.t("settings.cliChannels"));
 
     // The enable switch sits above the mask, still reachable.
-    const enableTitle = i18n.t("settings.cliEnableTitle", { name: "Claude Code" });
+    const enableTitle = i18n.t("settings.cliEnableTitle", { name: "HZK CODE" });
     expect(wrapper.textContent).not.toContain(enableTitle);
     expect(container.textContent).toContain(enableTitle);
   });

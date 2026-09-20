@@ -430,7 +430,7 @@ export const en: Messages = {
     webAccessWarning:
       "Anyone with this link can control sessions, files, and terminals on this computer. Share carefully.",
     engines: {
-      claude: "Claude",
+      claude: "HZK CODE",
     },
     cliManage: "CLI Management",
     cliDocs: "Official docs",
@@ -536,7 +536,7 @@ export const en: Messages = {
     cliHaikuModel: "Haiku default model",
     cliHaikuModelPlaceholder: "e.g. claude-haiku-4-5",
     cliModelMappingHint:
-      "Optional: specify Claude defaults for this provider. Leave blank to use system defaults.",
+      "Optional: specify model defaults for this provider. Leave blank to use system defaults.",
     cliFetchModels: "Fetch models",
     cliFetchModelsLoading: "Fetching…",
     cliFetchModelsCount: "{{count}} models loaded",

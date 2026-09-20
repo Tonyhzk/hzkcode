@@ -410,7 +410,7 @@ export function CliMenu({
   const current = options.find((o) => o.id === value);
 
   // Trigger carries the whole selection at a glance:
-  // "Claude Code / 默认 · 高" (CLI name / model / effort). The model part
+  // "HZK CODE / 默认 · 高" (CLI name / model / effort). The model part
   // only drops out when the engine has no model list at all.
   const selectedModelId = models[value] ?? "";
   const selectedModel = (modelsByEngine[value] ?? []).find((m) => m.id === selectedModelId);

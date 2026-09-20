@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>HZK CODE</title>
+  <g fill="#478CF0">
+    <rect x="48" y="84" width="104" height="104"/>
+    <rect x="360" y="84" width="104" height="104"/>
+    <rect x="48" y="204" width="416" height="104"/>
+    <rect x="48" y="324" width="104" height="104"/>
+    <rect x="360" y="324" width="104" height="104"/>
+  </g>
+</svg>

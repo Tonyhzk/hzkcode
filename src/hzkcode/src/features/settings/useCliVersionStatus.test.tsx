@@ -23,7 +23,7 @@ function versionStatus(engine: EngineId, over: Partial<CliVersionStatus> = {}): 
   return {
     engine,
     installed: true,
-    localVersion: "2.1.228 (Claude Code)",
+    localVersion: "2.1.228",
     latestVersion: "2.1.267",
     updateAvailable: true,
     updateKind: "native",
@@ -102,7 +102,7 @@ describe("useCliVersionStatus session store", () => {
   it("repaints the cached status instantly on remount, soft-refreshing behind it", async () => {
     mocks.cliVersionStatus.mockResolvedValue(versionStatus("claude"));
     await render();
-    expect(latest.status?.localVersion).toBe("2.1.228 (Claude Code)");
+    expect(latest.status?.localVersion).toBe("2.1.228");
     const firstRoot = root!;
     await act(async () => firstRoot.unmount());
     root = null;
@@ -112,21 +112,21 @@ describe("useCliVersionStatus session store", () => {
     mocks.cliVersionStatus.mockReturnValue(secondProbe.promise);
     await render();
     // …but the cached status paints synchronously.
-    expect(latest.status?.localVersion).toBe("2.1.228 (Claude Code)");
+    expect(latest.status?.localVersion).toBe("2.1.228");
     expect(latest.loading).toBe(true);
 
     await act(async () => {
       secondProbe.resolve(
-        versionStatus("claude", { localVersion: "2.1.229 (Claude Code)", updateAvailable: false }),
+        versionStatus("claude", { localVersion: "2.1.229", updateAvailable: false }),
       );
     });
-    expect(latest.status?.localVersion).toBe("2.1.229 (Claude Code)");
+    expect(latest.status?.localVersion).toBe("2.1.229");
     expect(latest.loading).toBe(false);
   });
 
   it("update runs the installer then re-probes", async () => {
     mocks.cliVersionStatus.mockResolvedValue(versionStatus("claude"));
-    mocks.cliUpdate.mockResolvedValue({ ok: true, version: "2.1.267 (Claude Code)" });
+    mocks.cliUpdate.mockResolvedValue({ ok: true, version: "2.1.267" });
     await render();
     const probesBefore = mocks.cliVersionStatus.mock.calls.length;
 
