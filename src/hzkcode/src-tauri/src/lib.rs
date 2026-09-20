@@ -1,7 +1,6 @@
 pub mod agents;
 pub mod agent_catalog;
 pub mod baidu_tongji;
-pub mod cc_switch;
 pub mod cli_lifecycle;
 pub mod config;
 pub mod db;
@@ -214,12 +213,6 @@ pub fn run() {
             provider_files::official_config_read,
             provider_files::official_config_write,
             config::reorder_providers,
-            config::set_engine_enabled,
-            // cc-switch interop
-            cc_switch::check_cc_switch,
-            cc_switch::dismiss_cc_switch,
-            cc_switch::import_cc_switch,
-            cc_switch::import_cc_switch_from_path,
             provider_models::fetch_provider_models,
             // settings
             settings::get_app_settings,

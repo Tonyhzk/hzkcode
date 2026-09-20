@@ -8,30 +8,15 @@ import type { RepoDragChrome } from "@/components/application/ai-chat/workspace-
 import { inferModelEngine } from "@/components/foundations/icons/engine-brands";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { cx } from "@/utils/cx";
-import ccSwitchIcon from "@/assets/model-icons/cc-switch.png";
 import type { EngineId, ProviderEntry } from "./providers";
 
 /** Same chrome as SettingsRow's container, but free-form content. */
 export const ROW =
   "flex min-h-[52px] w-full items-center gap-3 py-2.5 pr-2.5 border-b border-separator-border last:border-b-0";
 
-export function Badge({
-  children,
-  tone = "default",
-}: {
-  children: ReactNode;
-  /** "warning" = orange, used for the cc-switch origin pill. */
-  tone?: "default" | "warning";
-}) {
+export function Badge({ children }: { children: ReactNode }) {
   return (
-    <span
-      className={cx(
-        "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium leading-none",
-        tone === "warning"
-          ? "bg-background-tertiary-warning text-text-warning-primary"
-          : "bg-background-tertiary-default text-text-secondary",
-      )}
-    >
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-background-tertiary-default px-1.5 py-0.5 text-[11px] font-medium leading-none text-text-secondary">
       {children}
     </span>
   );
@@ -58,17 +43,12 @@ export function ChannelAvatar({
   /** Drag-handle wiring (label + pointer handler) from the sortable list. */
   dragHandle?: { label: string; props: RepoDragChrome["dragHandleProps"] };
 }) {
-  const fromCcSwitch =
-    entry != null &&
-    (entry.raw as Record<string, unknown>).source === "cc-switch";
   const brand = entry
     ? (inferModelEngine(entry.model) ?? inferModelEngine(entry.baseUrl))
     : fallbackEngine;
   const avatar = (
     <span className="flex size-9 items-center justify-center rounded-2lg bg-background-tertiary-default text-foreground-icon-primary">
-      {fromCcSwitch ? (
-        <img src={ccSwitchIcon} alt="" className="size-5" aria-hidden />
-      ) : brand ? (
+      {brand ? (
         <EngineIcon engine={brand} size={16} />
       ) : (
         <Globe className="size-4" aria-hidden />
@@ -113,7 +93,6 @@ export function ChannelRow({
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
-  const fromCcSwitch = (entry.raw as Record<string, unknown>).source === "cc-switch";
   const subtitle = useMemo(() => {
     const parts = [
       entry.remark,
@@ -158,7 +137,6 @@ export function ChannelRow({
       <div className="flex min-w-0 flex-1 flex-col">
         <p className="flex items-center gap-1.5 text-body-regular text-text-primary">
           <span className="truncate">{entry.name}</span>
-          {fromCcSwitch && <Badge tone="warning">cc-switch</Badge>}
         </p>
         {subtitle && (
           <p className="truncate text-body-2-regular text-text-secondary">{subtitle}</p>

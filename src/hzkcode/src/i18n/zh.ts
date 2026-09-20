@@ -465,23 +465,10 @@ export const zh = {
     cliCustomModelsPlaceholder: "模型 ID，例如 claude-sonnet-4-5",
     cliCustomModelsAdd: "添加",
     cliCustomModelsDup: "该模型已存在",
-    cliEngineSection: "引擎设置",
-    cliEnableTitle: "启用 {{name}}",
-    cliEnableDesc:
-      "停用后该 CLI 不会出现在 CLI 选择页面，该 CLI 的历史记录也不会渲染。",
     cliChannelsHint: "点击行即切换 · 对新会话生效",
     cliBuiltin: "内置",
     cliEmptyTitle: "还没有自定义渠道",
     cliEmptyDesc: "点击右上角「添加渠道」创建",
-    cliDisabledOverlay: "该 CLI 已停用 · 打开上方开关后可管理配置",
-    cliSyncTitle: "cc-switch 的配置有更新",
-    cliSyncDetail: "{{count}} 个渠道可同步",
-    cliSyncNow: "同步",
-    cliSyncLater: "稍后",
-    cliSynced: "已同步：{{added}} 新增 · {{updated}} 更新 · {{removed}} 移除",
-    cliImportEntry: "导入ccswitch",
-    cliImportAuto: "从cc-switch导入/更新",
-    cliImportFile: "选择 cc-switch.db 文件导入",
     cliDeleteConfirm: "删除渠道「{{name}}」？此操作不可撤销。",
     cliSwitchConfirm: "切换到「{{name}}」将覆盖以下本地配置文件：",
     cliSwitchConfirmHint:
@@ -523,7 +510,7 @@ export const zh = {
     cliFetchModelsError: "拉取模型失败",
     cliJsonConfig: "JSON 配置",
     cliJsonConfigDesc:
-      "此处可配置完整的 settings.json 内容，支持所有字段（如 model、alwaysThinkingEnabled、ccSwitchProviderId 等）",
+      "此处可配置完整的 settings.json 内容，支持所有字段（如 model、alwaysThinkingEnabled 等）",
     cliFormatJson: "格式化",
     cliJsonError: "JSON 格式无效",
     cliProxyWarning:

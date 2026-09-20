@@ -40,8 +40,8 @@ pub async fn plugin_install_from_path(
     state: tauri::State<'_, crate::AppState>,
     path: String,
 ) -> Result<PluginInfo, String> {
-    // spawn_blocking: sync commands execute on Tauri's main thread (see
-    // cc_switch.rs), and the recursive copy below must not stall IPC there.
+    // spawn_blocking: sync commands execute on Tauri's main thread, and the
+    // recursive copy below must not stall IPC there.
     let sink = Arc::clone(&state.sink);
     tauri::async_runtime::spawn_blocking(move || {
         fs::install_from(

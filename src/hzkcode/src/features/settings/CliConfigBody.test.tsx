@@ -25,15 +25,12 @@ function makeCli(over: Partial<CliConfigState> = {}): CliConfigState {
     config: null,
     engine: "claude",
     error: null,
-    notice: null,
     busy: false,
     dialog: null,
     setDialog: () => {},
     pendingDelete: null,
     setPendingDelete: () => {},
-    ccStatus: null,
     currentId: "",
-    enabled: true,
     entries: [],
     officialActive: true,
     officialEditing: false,
@@ -43,66 +40,9 @@ function makeCli(over: Partial<CliConfigState> = {}): CliConfigState {
     activate: () => {},
     saveProvider: () => {},
     confirmDelete: () => {},
-    syncCcSwitch: vi.fn(),
-    importCcSwitchFile: vi.fn(),
-    dismissCcSwitch: () => {},
     ...over,
   } as CliConfigState;
 }
-
-describe("CliConfigBody disabled overlay", () => {
-  let container: HTMLDivElement;
-  let root: Root | null;
-
-  beforeEach(() => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = null;
-  });
-
-  afterEach(async () => {
-    if (root) await act(async () => root?.unmount());
-    container.remove();
-  });
-
-  async function render(cli: CliConfigState) {
-    root = createRoot(container);
-    await act(async () => root?.render(<CliConfigBody cli={cli} />));
-  }
-
-  function overlay(): HTMLElement | null {
-    const text = i18n.t("settings.cliDisabledOverlay");
-    const node = Array.from(container.querySelectorAll("p")).find(
-      (p) => p.textContent === text,
-    );
-    return (node?.parentElement as HTMLElement) ?? null;
-  }
-
-  it("disabled: overlay wrapper contains official config and channels — but not the enable switch", async () => {
-    await render(makeCli({ enabled: false }));
-
-    const mask = overlay();
-    expect(mask).not.toBeNull();
-    const wrapper = mask!.parentElement!;
-    // The mask is absolutely positioned over the wrapper, not inside a card.
-    expect(mask!.className).toContain("absolute");
-    expect(mask!.className).toContain("inset-0");
-
-    // Everything below the enable switch is under the mask.
-    expect(wrapper.textContent).toContain(i18n.t("settings.cliOfficial"));
-    expect(wrapper.textContent).toContain(i18n.t("settings.cliChannels"));
-
-    // The enable switch sits above the mask, still reachable.
-    const enableTitle = i18n.t("settings.cliEnableTitle", { name: "HZK CODE" });
-    expect(wrapper.textContent).not.toContain(enableTitle);
-    expect(container.textContent).toContain(enableTitle);
-  });
-
-  it("enabled: no overlay is rendered", async () => {
-    await render(makeCli({ enabled: true }));
-    expect(overlay()).toBeNull();
-  });
-});
 
 describe("CliEngineSettingsCard official edit entry", () => {
   let container: HTMLDivElement;

@@ -222,7 +222,7 @@ pub fn get_cli_config() -> Result<CliConfig, String> {
 }
 
 /// Lock-free core of mutate_section: callers that already hold the
-/// ConfigStore lock (cc_switch's multi-engine import) use this directly.
+/// ConfigStore lock (the legacy provider import) use this directly.
 pub(crate) fn mutate_section_unlocked(
     engine: &str,
     mutate: impl FnOnce(&mut ProviderSection) -> Result<(), String>,
@@ -285,42 +285,6 @@ fn delete_provider_inner(store: &ConfigStore, engine: String, id: String) -> Res
         if section.current.as_deref() == Some(id.as_str()) {
             // Fall back to 官方配置: spawn injects nothing for official.
             section.current = None;
-        }
-        Ok(())
-    })
-}
-
-/// Enable-switch semantics: disabling remembers the current provider in
-/// `disabled_from` and parks `current` on `__disabled__`; enabling restores
-/// it (falling back to 官方配置 when nothing was remembered or the remembered
-/// provider was deleted in between).
-#[tauri::command]
-pub fn set_engine_enabled(
-    store: tauri::State<'_, ConfigStore>,
-    engine: String,
-    enabled: bool,
-) -> Result<(), String> {
-    set_engine_enabled_inner(&store, engine, enabled)
-}
-
-fn set_engine_enabled_inner(
-    store: &ConfigStore,
-    engine: String,
-    enabled: bool,
-) -> Result<(), String> {
-    mutate_section(&store, &engine, |section| {
-        if enabled {
-            if section.current.as_deref() == Some(DISABLED_PROVIDER_ID) {
-                let restore = section
-                    .disabled_from
-                    .take()
-                    .filter(|id| id != DISABLED_PROVIDER_ID && section.providers.contains_key(id));
-                let id = restore.unwrap_or_else(|| LOCAL_PROVIDER_ID.to_string());
-                section.current = Some(id);
-            }
-        } else if section.current.as_deref() != Some(DISABLED_PROVIDER_ID) {
-            section.disabled_from = section.current.clone();
-            section.current = Some(DISABLED_PROVIDER_ID.to_string());
         }
         Ok(())
     })
@@ -591,8 +555,6 @@ mod tests {
                 json!({"apiKey":"updated"}),
             )
             .unwrap();
-            set_engine_enabled_inner(&store, engine.into(), false).unwrap();
-            set_engine_enabled_inner(&store, engine.into(), true).unwrap();
             delete_provider_inner(&store, engine.into(), "chan-a".into()).unwrap();
             for path in &paths {
                 assert_eq!(

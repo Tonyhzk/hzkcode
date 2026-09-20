@@ -481,25 +481,10 @@ export const en: Messages = {
     cliCustomModelsPlaceholder: "Model id, e.g. claude-sonnet-4-5",
     cliCustomModelsAdd: "Add",
     cliCustomModelsDup: "Model already exists",
-    cliEngineSection: "Engine Settings",
-    cliEnableTitle: "Enable {{name}}",
-    cliEnableDesc:
-      "While disabled, this CLI is hidden from the CLI picker and its history is not rendered.",
     cliChannelsHint: "Click a row to switch · applies to new sessions",
     cliBuiltin: "Built-in",
     cliEmptyTitle: "No custom channels yet",
     cliEmptyDesc: "Use “Add Channel” above to create one",
-    cliDisabledOverlay:
-      "This CLI is disabled — enable it above to manage its settings",
-    cliSyncTitle: "cc-switch config updated",
-    cliSyncDetail: "{{count}} channels available to sync",
-    cliSyncNow: "Sync",
-    cliSyncLater: "Later",
-    cliSynced:
-      "Synced: {{added}} added · {{updated}} updated · {{removed}} removed",
-    cliImportEntry: "Import ccswitch",
-    cliImportAuto: "Import/Update from cc-switch",
-    cliImportFile: "Select cc-switch.db File to Import",
     cliDeleteConfirm: 'Delete channel "{{name}}"? This cannot be undone.',
     cliSwitchConfirm:
       'Switching to "{{name}}" will overwrite these local config files:',
@@ -542,7 +527,7 @@ export const en: Messages = {
     cliFetchModelsError: "Failed to fetch models",
     cliJsonConfig: "JSON Config",
     cliJsonConfigDesc:
-      "Full settings.json content; all fields supported (model, alwaysThinkingEnabled, ccSwitchProviderId, …).",
+      "Full settings.json content; all fields supported (model, alwaysThinkingEnabled, …).",
     cliFormatJson: "Format",
     cliJsonError: "Invalid JSON",
     cliProxyWarning:

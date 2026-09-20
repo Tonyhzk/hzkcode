@@ -8,11 +8,9 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { ipc, type CcSwitchStatus, type CliConfig, type OfficialConfigDraft } from "@/lib/ipc";
+import { ipc, type CliConfig, type OfficialConfigDraft } from "@/lib/ipc";
 import { newId } from "@/lib/id";
-import { pickFile } from "@/lib/platform";
 import {
-  PSEUDO_DISABLED,
   PSEUDO_LOCAL,
   notifyCliConfigChanged,
   providerEntries,
@@ -29,7 +27,6 @@ export interface CliConfigState {
   config: CliConfig | null;
   engine: EngineId;
   error: string | null;
-  notice: string | null;
   busy: boolean;
   dialog: DialogState;
   setDialog: Dispatch<SetStateAction<DialogState>>;
@@ -41,18 +38,13 @@ export interface CliConfigState {
   /** Save the edited official files; returns the error message (dialog
    *  stays open) or null on success (dialog closed). Backend re-validates. */
   saveOfficialConfig: (files: OfficialConfigDraft[]) => Promise<string | null>;
-  ccStatus: CcSwitchStatus | null;
   currentId: string;
-  enabled: boolean;
   entries: ProviderEntry[];
   officialActive: boolean;
   mutate: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
   activate: (id: string) => void;
   saveProvider: (value: ProviderFormValue) => void;
   confirmDelete: () => void;
-  syncCcSwitch: (target: string) => Promise<void>;
-  importCcSwitchFile: () => Promise<void>;
-  dismissCcSwitch: () => void;
 }
 
 /**
@@ -63,21 +55,17 @@ export interface CliConfigState {
  *     switch on makes that channel current (single-select, radio-style).
  *     Flipping the current custom channel off falls back to 官方配置; the
  *     官方配置 switch can only be turned on, never off.
- *   - 停用 is a per-CLI state (the enable switch), not a channel row.
- *   - 官方配置 is the built-in fallback (the CLI's own config file) and
- *     sits directly below the enable switch, inside the disabled-overlay
- *     wrapper.
+ *   - 官方配置 is the built-in fallback (the CLI's own config file) and sits
+ *     above the channel list.
  */
 export function useCliConfig(engine: EngineId): CliConfigState {
   const { t } = useTranslation();
   const [config, setConfig] = useState<CliConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [pendingDelete, setPendingDelete] = useState<ProviderEntry | null>(null);
   const [officialEditing, setOfficialEditing] = useState(false);
-  const [ccStatus, setCcStatus] = useState<CcSwitchStatus | null>(null);
   useEffect(() => {
     let cancelled = false;
     ipc
@@ -88,12 +76,6 @@ export function useCliConfig(engine: EngineId): CliConfigState {
       .catch((e) => {
         if (!cancelled) setError(errorText(e));
       });
-    ipc
-      .checkCcSwitch()
-      .then((s) => {
-        if (!cancelled && s.installed) setCcStatus(s);
-      })
-      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -121,7 +103,6 @@ export function useCliConfig(engine: EngineId): CliConfigState {
   const section = config?.[engine];
   // Unset current uses the CLI's own configuration without a channel overlay.
   const currentId = section?.current || PSEUDO_LOCAL;
-  const enabled = currentId !== PSEUDO_DISABLED;
   const entries = useMemo(() => providerEntries(engine, section), [engine, section]);
 
   const activate = (id: string) => {
@@ -169,44 +150,6 @@ export function useCliConfig(engine: EngineId): CliConfigState {
     void mutate(() => ipc.deleteProvider(engine, id));
   };
 
-  /** Shared import→notice funnel. `target` is an engine id or "all" (banner).
-   *  setState happens in the handler, not inside the `mutate` callback (React
-   *  treats updater-style callbacks as pure and may invoke them twice). */
-  const syncCcSwitch = async (target: string) => {
-    const r = await mutate(() => ipc.importCcSwitch(target));
-    if (!r) return;
-    setCcStatus((s) => (s ? { ...s, changed: false } : s));
-    setNotice(
-      t("settings.cliSynced", {
-        added: r.added,
-        updated: r.updated,
-        removed: r.removed,
-      }),
-    );
-  };
-
-  const importCcSwitchFile = async () => {
-    const path = await pickFile(t("settings.cliImportFile"), [
-      { name: "cc-switch", extensions: ["db", "json"] },
-    ]);
-    if (!path) return;
-    const r = await mutate(() => ipc.importCcSwitchFromPath(path, engine));
-    if (!r) return;
-    setNotice(
-      t("settings.cliSynced", {
-        added: r.added,
-        updated: r.updated,
-        removed: r.removed,
-      }),
-    );
-  };
-
-  const dismissCcSwitch = () => {
-    if (!ccStatus) return;
-    void ipc.dismissCcSwitch(ccStatus.hash).catch(() => {});
-    setCcStatus({ ...ccStatus, changed: false });
-  };
-
   const officialActive = currentId === PSEUDO_LOCAL;
 
   const saveOfficialConfig = useCallback(
@@ -230,7 +173,6 @@ export function useCliConfig(engine: EngineId): CliConfigState {
     config,
     engine,
     error,
-    notice,
     busy,
     dialog,
     setDialog,
@@ -239,17 +181,12 @@ export function useCliConfig(engine: EngineId): CliConfigState {
     officialEditing,
     setOfficialEditing,
     saveOfficialConfig,
-    ccStatus,
     currentId,
-    enabled,
     entries,
     officialActive,
     mutate,
     activate,
     saveProvider,
     confirmDelete,
-    syncCcSwitch,
-    importCcSwitchFile,
-    dismissCcSwitch,
   };
 }

@@ -963,23 +963,6 @@ struct ReorderProvidersArgs {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SetEngineEnabledArgs {
-    engine: String,
-    enabled: bool,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HashArgs {
-    hash: String,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ImportCcSwitchFromPathArgs {
-    path: String,
-    engine: String,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct FetchProviderModelsArgs {
     base_url: String,
     #[serde(default)]
@@ -1368,32 +1351,6 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
                 app.state(),
                 a.engine,
                 a.ids,
-            ))
-        }
-        "set_engine_enabled" => {
-            let a: SetEngineEnabledArgs = parse_args(&raw)?;
-            ser(crate::config::set_engine_enabled(
-                app.state(),
-                a.engine,
-                a.enabled,
-            ))
-        }
-        // cc-switch interop
-        "check_cc_switch" => ser(crate::cc_switch::check_cc_switch().await),
-        "dismiss_cc_switch" => {
-            let a: HashArgs = parse_args(&raw)?;
-            ser(crate::cc_switch::dismiss_cc_switch(a.hash))
-        }
-        "import_cc_switch" => {
-            let a: EngineArgs = parse_args(&raw)?;
-            ser(crate::cc_switch::import_cc_switch(app.state(), a.engine))
-        }
-        "import_cc_switch_from_path" => {
-            let a: ImportCcSwitchFromPathArgs = parse_args(&raw)?;
-            ser(crate::cc_switch::import_cc_switch_from_path(
-                app.state(),
-                a.path,
-                a.engine,
             ))
         }
         "fetch_provider_models" => {

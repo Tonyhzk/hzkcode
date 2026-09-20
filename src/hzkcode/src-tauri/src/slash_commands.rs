@@ -232,7 +232,7 @@ fn commands_dirs(workspace_root: &Path) -> Vec<(PathBuf, &'static str)> {
 /// Skill directories in priority order: the workspace's `.claude/skills`
 /// first, then the global homes — the CLI's (`$HZKCODE_CONFIG_DIR/skills`)
 /// and the cross-agent `~/.agents/skills`. `is_dir` follows symlinks, so
-/// cc-switch-managed links inside these roots resolve.
+/// symlinked skill roots resolve.
 fn skills_dirs(workspace_root: &Path) -> Vec<(PathBuf, &'static str)> {
     let mut dirs: Vec<(PathBuf, &'static str)> = Vec::new();
     let workspace_dir = workspace_root.join(".claude").join("skills");

@@ -172,22 +172,9 @@ export interface SendResult {
 export interface ProviderSection {
   providers: Record<string, unknown>;
   current: string | null;
-  /** Provider parked when the engine was disabled via the enable switch. */
+  /** Provider parked when the engine was disabled (persisted by earlier
+   *  builds; kept so old config files round-trip). */
   disabledFrom?: string | null;
-}
-export interface CcSwitchStatus {
-  installed: boolean;
-  changed: boolean;
-  providers: number;
-  hash: string;
-  modifiedMs: number;
-}
-
-export interface CcSwitchImportResult {
-  added: number;
-  updated: number;
-  skipped: number;
-  removed: number;
 }
 /** Result of `fetch_provider_models`: model ids plus the candidate URL that
  *  answered (a derivation of the channel's base URL). */
@@ -637,15 +624,6 @@ export const ipc = {
     invoke<void>("official_config_write", { engine, files }),
   reorderProviders: (engine: string, ids: string[]) =>
     invoke<void>("reorder_providers", { engine, ids }),
-  setEngineEnabled: (engine: string, enabled: boolean) =>
-    invoke<void>("set_engine_enabled", { engine, enabled }),
-  // cc-switch interop
-  checkCcSwitch: () => invoke<CcSwitchStatus>("check_cc_switch"),
-  dismissCcSwitch: (hash: string) => invoke<void>("dismiss_cc_switch", { hash }),
-  importCcSwitch: (engine: string) =>
-    invoke<CcSwitchImportResult>("import_cc_switch", { engine }),
-  importCcSwitchFromPath: (path: string, engine: string) =>
-    invoke<CcSwitchImportResult>("import_cc_switch_from_path", { path, engine }),
   /** 拉取模型: probe the channel's /v1/models endpoint for its model list. */
   fetchProviderModels: (baseUrl: string, apiKey: string) =>
     invoke<ProviderModelList>("fetch_provider_models", { baseUrl, apiKey }),

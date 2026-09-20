@@ -16,17 +16,12 @@ import { useCliConfig } from "./useCliConfig";
  */
 export function CliConfigSection({ engine }: { engine: EngineId }) {
   const cli = useCliConfig(engine);
-  const { t, config, error, notice } = cli;
+  const { t, config, error } = cli;
   return (
     <div className="flex w-full flex-col gap-6">
       {error && (
         <p role="alert" className="text-body-regular text-text-error-primary">
           {t("common.error")}: {error}
-        </p>
-      )}
-      {notice && (
-        <p role="status" className="text-body-regular text-text-secondary">
-          {notice}
         </p>
       )}
       {!config && !error && (

@@ -482,8 +482,8 @@ fn non_empty_str(value: Option<&Value>) -> Option<String> {
         .map(str::to_string)
 }
 
-/// A channel's raw env maps: cc-switch's `settingsConfig.env` first (the
-/// legacy claude/grok shape), then the flat `env` escape hatch.
+/// A channel's raw env maps: `settingsConfig.env` first (the legacy
+/// claude/grok shape), then the flat `env` escape hatch.
 fn channel_env_maps(
     provider: &Value,
 ) -> impl Iterator<Item = &serde_json::Map<String, Value>> + '_ {
@@ -580,8 +580,8 @@ fn render_claude(base: &str, provider: &Value) -> Result<String, String> {
             doc.as_object_mut().unwrap().remove("env");
         }
     }
-    // cc-switch channels carry a full settingsConfig: merge its top-level
-    // keys (env deep-merged below), keeping the user's unrelated settings.
+    // A channel may carry a full settingsConfig: merge its top-level keys
+    // (env deep-merged below), keeping the user's unrelated settings.
     if let Some(sc) = provider.get("settingsConfig").and_then(Value::as_object) {
         for (key, val) in sc {
             if key != "env" {
