@@ -430,7 +430,7 @@ export const en: Messages = {
     engines: {
       claude: "HZK CODE",
     },
-    cliManage: "CLI Management",
+    cliConfig: "Model Config",
     cliDocs: "Official docs",
     cliInstall: "Install",
     cliUpdating: "Updating…",
@@ -548,7 +548,6 @@ export const en: Messages = {
     cliProxyWarning:
       "Requests are routed through this endpoint instead of the official Anthropic API.",
     cliDrag: "Drag to reorder",
-    cliDisabledGroup: "Disabled",
     cliEdit: "Edit",
     cliDelete: "Delete",
 

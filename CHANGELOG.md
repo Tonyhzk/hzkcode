@@ -27,6 +27,7 @@
 - cc-switch 导入归一化：导入时把外部文件里的旧变量名改写为 hzkcode 名字（端点、凭据、能力档模型、`CLAUDE_CODE_*` 前缀），导入后的渠道可直接使用
 - 模型目录对齐 CLI：别名表去掉上游独有的 `fable`，能力档默认值改从 `HZKCODE_DEFAULT_*_MODEL` 读取，模型槽位由四个减为三个（sonnet / opus / haiku）
 - 集成测试 `send_path` 改为通过设置里的自定义路径指向假 CLI：PATH 发现会被开发槽位 `src-tauri/binaries/` 里的二进制盖过
+- 设置导航改版：去掉「CLI 管理」分组，CLI 配置成为独立板块「模型配置」，排在设置列表第一位（通用之前），里面就是启用开关、官方配置与供应商渠道（API URL / API Key / 模型映射）；随之下线该分组专用的拖拽排序、未启用折叠桶与导航顺序持久化逻辑（单引擎不再需要）
 - 引擎配置根目录从 Claude Code 的 `~/.claude` / `CLAUDE_CONFIG_DIR` 切换为 fork 的 `~/.hzkcode` / `HZKCODE_CONFIG_DIR`：会话扫描与远程回放白名单、渠道官方配置文件路径、全局 commands/skills 目录、模型目录（含 WSL 远端探针）、`config.rs` 测试用环境变量列表一并更新，GUI 与单独安装的 CLI 共用同一份数据
 
 ## [0.1.0] - 2026-09-19

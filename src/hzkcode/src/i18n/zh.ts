@@ -415,7 +415,7 @@ export const zh = {
     engines: {
       claude: "HZK CODE",
     },
-    cliManage: "CLI 管理",
+    cliConfig: "模型配置",
     cliDocs: "官方文档",
     cliInstall: "安装",
     cliUpdating: "更新中…",
@@ -529,7 +529,6 @@ export const zh = {
     cliProxyWarning:
       "请求将通过该端点转发，而不是直接发送到 Anthropic 官方 API。",
     cliDrag: "拖拽排序",
-    cliDisabledGroup: "未启用CLI",
     cliEdit: "编辑",
     cliDelete: "删除",
 

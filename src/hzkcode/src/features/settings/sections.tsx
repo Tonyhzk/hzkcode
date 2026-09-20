@@ -9,7 +9,6 @@ import ChartColumn from "lucide-react/dist/esm/icons/chart-column";
 import i18n from "@/lib/i18n";
 import type { SettingsNavItem } from "@/components/application/settings/settings-modal";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
-import { CLI_DISPLAY_NAMES } from "@/components/foundations/icons/engine-brands";
 import { settingsRegistry } from "@hzkcode/plugin-sdk";
 import { cx } from "@/utils/cx";
 import { GeneralSection } from "./GeneralSection";
@@ -113,14 +112,16 @@ settingsRegistry.register({
   order: 4,
   component: AboutSection,
 });
-ENGINE_IDS.forEach((engine, index) => {
+ENGINE_IDS.forEach((engine) => {
   settingsRegistry.register({
     id: `cli:${engine}`,
     key: `cli:${engine}`,
-    label: () => CLI_DISPLAY_NAMES[engine],
+    label: () => i18n.t("settings.cliConfig"),
     icon: engineNavIcon(engine),
-    group: "cli",
-    order: index,
+    group: "settings",
+    // Leads the rail: the CLI's own configuration (endpoint, credential,
+    // model mapping) is what every install has to touch first.
+    order: -1,
     component: () => <CliConfigSection engine={engine} />,
   });
 });
