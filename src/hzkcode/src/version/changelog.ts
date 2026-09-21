@@ -29,7 +29,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - **推理强度火焰动画**：强度滑杆的每个档位都有火箭尾焰动画——火焰从滑块处喷出，长度随档位变化（最弱档是一枚短火苗、越往上越长，最高档铺满整条轨道）；星空与背景跟随已点燃的区间，且随档位越流越快；档位切换时火焰即时跟随、无延迟，颜色从最弱档的黄色渐变到最高档的蓝色尾焰
 - **终端信息不再隐藏**：重试的具体原因、第二大脑提醒、记忆提示等直接显示在对话时间线上
 - **详细显示**（设置 → 通用）：开启后工具调用参数与结果默认展开，适合查看完整过程
-- **桌面级交互**：界面不再像网页那样随手扫选文字——拖拽标签、分隔条或空白区域不会留下蓝色选区；聊天正文、代码块、工具输出与编辑器照常划词复制`,
+- **桌面级交互**：界面不再像网页那样随手扫选文字——拖拽标签、分隔条或空白区域不会留下蓝色选区，从外壳拖过正文也不会起选；聊天正文、代码块、工具输出与编辑器照常划词复制；编辑器标签拖动时跟着鼠标走，松手后归位或移到独立窗口`,
       en: `✨ Features
 - **New four-pane layout**: sessions | conversation | files | file editor. The editor lives in its own right-most pane with tabs, drag-resize and collapse; the conversation column is just the conversation — switch sessions from the sidebar, and diffs open in the editor pane too
 - **Multi-window**: right-click a session to "Open in new window"; drag an editor tab to the window edge to pop it into a standalone editor window
@@ -38,7 +38,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - **Reasoning-effort flame**: every stop on the effort slider burns — the flame fires from the thumb and its length follows the level (a stubby lick at the gentlest stop, longer with each step, filling the whole track at max); the starfield and backdrop follow the burnt stretch and stream faster with the level; switching is instant, with the color running from yellow at the gentlest stop up to the blue rocket exhaust at max
 - **Terminal-only messages are no longer hidden**: retry reasons, second-brain notes and memory hints render in the conversation timeline
 - **Detailed display** (Settings → General): tool-call arguments and results expand by default
-- **Desktop-grade interaction**: the UI no longer sweeps a text selection like a web page — dragging tabs, dividers or empty space leaves no blue smear; chat text, code blocks, tool output and the editor stay selectable`,
+- **Desktop-grade interaction**: the UI no longer sweeps a text selection like a web page — dragging tabs, dividers or empty space leaves no blue smear, and a drag that starts on chrome never catches the text it passes over; chat text, code blocks, tool output and the editor stay selectable. Editor tabs now ride the pointer while dragged and settle back (or pop out into their own window) on release`,
     },
   },
   {

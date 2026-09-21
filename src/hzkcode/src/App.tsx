@@ -12,6 +12,7 @@ import { GrantAccessDialogHost } from "@/components/dialogs";
 import { startPluginSystem } from "@/features/plugins";
 import { CloseConfirmDialogHost } from "@/components/dialogs";
 import { installCloseConfirm } from "@/lib/close-confirm";
+import { installSelectionGuard } from "@/lib/selection-guard";
 import { windowContext } from "@/lib/window-context";
 import { startShortcutRuntime } from "@/features/shortcuts/runtime";
 import { ShortcutsGuideModal } from "@/features/shortcuts/ShortcutsGuideModal";
@@ -50,6 +51,10 @@ export default function App() {
   useEffect(() => {
     return installCloseConfirm();
   }, []);
+  // Desktop-grade selection: a press on chrome (tabs, dividers, empty space)
+  // turns the window non-selectable until release, so dragging never smears
+  // a selection across the pane the way a web page does.
+  useEffect(() => installSelectionGuard(), []);
   // Global keyboard-shortcut runtime: one dispatcher handler binding the
   // configured keys to registered action handlers / palette commands.
   useEffect(() => startShortcutRuntime(), []);

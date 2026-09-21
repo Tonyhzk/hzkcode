@@ -60,6 +60,7 @@
 - 模型档位改名并固定顺序：三个档位显示为 **High / Mid / Low**（与环境变量 `HZKCODE_DEFAULT_HIGH/MID/LOW_MODEL` 的命名一致，界面不再出现 Opus / Sonnet / Haiku 字样），模型列表固定按 High → Mid → Low 排列、不再把当前选中项提到最上；渠道表单的档位字段文案与 Rust 侧「Custom `<档位>` model」描述同步（`--model` 的别名仍是 opus / sonnet / haiku，仅显示层改名）
 - 截图工具 `1_Script/mac-window-shot` 支持 `--all`：列出与截取其他桌面或已最小化的窗口（默认只列当前屏幕可见窗口）
 - 界面桌面化：全局默认禁止文本选择（`html` / `body` 上 `user-select: none`），拖拽标签条、分区空白与分隔条不再像网页一样扫出选区；内容区显式恢复可复制（输入框、聊天输入 contentEditable、CodeMirror 编辑器、聊天 Markdown 与代码块、用户气泡、通知行、思考正文、重试原因、工具输出、diff 与 Markdown 预览），DiffView、ToolPayloadViewer 文件 diff、MessageTimeline、ProcessDisclosure、agent-thinking、MarkdownPreview 相应容器加 `data-selectable`；链接与图片关闭 WebView 原生拖拽（`-webkit-user-drag: none`），防止拖出网页式拖拽幽灵
+- 拖拽选择修复续：WebKit 会在"从外壳按下、拖过内容区"时照样起选，新增 `lib/selection-guard` —— 按下落点不在可读区（输入框 / 编辑器 / 聊天正文 / 代码 / `[data-selectable]`）时给 `html` 打 `data-window-dragging`，拖拽全程全局禁选（`html[data-window-dragging] *`，与 React Aria 组件级 `data-dragging` 区分命名）；pointerup / pointercancel / 窗口失焦清除，下次落在可读区的按下自动清掉残留；编辑器标签拖拽新增跟随指针的浮层（portal 到 body、保持按下时的抓取偏移、按原标签宽度渲染，原标签半透明），拖动不再只有插入指示线
 
 ## [0.1.0] - 2026-09-19
 

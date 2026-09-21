@@ -14,6 +14,31 @@ export interface EditorTabItem {
   dirty?: boolean;
 }
 
+/** Tab face — icon, dirty dot, label — shared by the strip's tab and the
+ *  drag ghost the dock floats under the pointer. */
+export function EditorTabFace({ tab }: { tab: EditorTabItem }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {tab.icon && (
+        <tab.icon
+          className="size-3 shrink-0 text-foreground-icon-secondary"
+          aria-hidden
+        />
+      )}
+      {tab.dirty && (
+        <span
+          role="status"
+          aria-label={t("files.unsavedChanges")}
+          title={t("files.unsavedChanges")}
+          className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground-icon-primary"
+        />
+      )}
+      <span className="truncate">{tab.label}</span>
+    </>
+  );
+}
+
 /** One tab of the file-editor dock: icon, dirty dot, label, drop indicator,
  *  close button. Selection lives on the tab; the close button sits beside it
  *  so no focusable control nests inside the tab. */
@@ -43,7 +68,6 @@ export function EditorTab({
   onPointerDown?: (e: ReactPointerEvent<HTMLDivElement>) => void;
   suppressClickRef: React.MutableRefObject<boolean>;
 }) {
-  const { t } = useTranslation();
   return (
     <div
       data-tab-key={tab.key}
@@ -86,21 +110,7 @@ export function EditorTab({
         onPointerDown={onPointerDown}
         className="flex min-w-0 flex-1 cursor-default items-center gap-1.5"
       >
-        {tab.icon && (
-          <tab.icon
-            className="size-3 shrink-0 text-foreground-icon-secondary"
-            aria-hidden
-          />
-        )}
-        {tab.dirty && (
-          <span
-            role="status"
-            aria-label={t("files.unsavedChanges")}
-            title={t("files.unsavedChanges")}
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground-icon-primary"
-          />
-        )}
-        <span className="truncate">{tab.label}</span>
+        <EditorTabFace tab={tab} />
       </div>
       {dropBefore !== null && (
         <span

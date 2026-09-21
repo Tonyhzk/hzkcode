@@ -65,6 +65,7 @@ function handleTabListKeyDown(
 export function EditorTabStrip({
   tabs,
   activeKey,
+  draggedKey,
   dropTarget,
   suppressClickRef,
   onSelect,
@@ -75,6 +76,8 @@ export function EditorTabStrip({
 }: {
   tabs: EditorTabItem[];
   activeKey: string | null;
+  /** Key of the tab currently in flight (ghost up), null when idle. */
+  draggedKey: string | null;
   dropTarget: { draggedKey: string; key: string; before: boolean } | null;
   suppressClickRef: React.MutableRefObject<boolean>;
   onSelect: (key: string) => void;
@@ -104,7 +107,7 @@ export function EditorTabStrip({
               key={tab.key}
               tab={tab}
               isActive={tab.key === activeKey}
-              dragged={dropTarget?.draggedKey === tab.key}
+              dragged={tab.key === draggedKey}
               dropBefore={dropTarget?.key === tab.key ? dropTarget.before : null}
               closeLabel={t("common.close")}
               onShowMenu={onCloseAll || onCloseInactive ? setMenu : undefined}

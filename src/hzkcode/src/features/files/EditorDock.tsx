@@ -1,8 +1,10 @@
 import { lazy, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { CenteredSpinner, EmptyState } from "@/components/base/empty-state";
 import { DiffView } from "@/features/git/DiffView";
 import { cx } from "@/utils/cx";
+import { EditorTabFace } from "./EditorTab";
 import { EditorTabStrip } from "./EditorTabStrip";
 import { useEditorTabDrag } from "./editor-tab-drag";
 import { useEditorTabs } from "./use-editor-tabs";
@@ -51,11 +53,14 @@ export function EditorDock({
     diffStatus,
     closeDiff,
   } = useEditorTabs({ onDirtyClose, onDragOut });
-  const { dropTarget, dragOutActive, suppressClickRef, handleTabPointerDown } =
+  const { dropTarget, dragOutActive, dragGhost, suppressClickRef, handleTabPointerDown } =
     useEditorTabDrag({
       onReorder: handleReorder,
       onDragOut: handleDragOut,
     });
+  const dragGhostTab = dragGhost
+    ? tabItems.find((tab) => tab.key === dragGhost.key)
+    : undefined;
   const empty = openFiles.length === 0 && !diffView;
 
   return (
@@ -100,6 +105,7 @@ export function EditorDock({
         <EditorTabStrip
           tabs={tabItems}
           activeKey={activeKey}
+          draggedKey={dragGhost?.key ?? null}
           dropTarget={dropTarget}
           suppressClickRef={suppressClickRef}
           onSelect={handleSelect}
@@ -156,6 +162,24 @@ export function EditorDock({
           )}
         </div>
       </div>
+      {/* Ghost card riding under the pointer during a tab drag; portalled to
+          the body so the dock's overflow-hidden can never clip it. */}
+      {dragGhost && dragGhostTab
+        ? createPortal(
+            <div
+              aria-hidden
+              className="pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-lg bg-background-secondary-default px-2.5 text-body-medium text-text-primary shadow-lg"
+              style={{
+                left: dragGhost.x,
+                top: dragGhost.y,
+                width: dragGhost.width || undefined,
+              }}
+            >
+              <EditorTabFace tab={dragGhostTab} />
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

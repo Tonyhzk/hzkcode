@@ -23,7 +23,8 @@ export function isDragOutPosition(x: number, y: number): boolean {
  *  drag out of the window to move the tab into a standalone editor window.
  *  Pointer events, not HTML5 DnD: WKWebView never delivers dragover/drop, so
  *  native DnD only reordered in Chromium. A 5px threshold keeps plain clicks
- *  intact. */
+ *  intact. Once past the threshold a ghost card follows the pointer (the
+ *  dock renders it) while the strip dims the real tab. */
 export function useEditorTabDrag({
   onReorder,
   onDragOut,
@@ -31,9 +32,24 @@ export function useEditorTabDrag({
   onReorder?: (draggedKey: string, targetKey: string, before: boolean) => void;
   onDragOut?: (draggedKey: string) => void;
 }) {
-  const dragStateRef = useRef<{ key: string; startX: number; dragging: boolean } | null>(null);
+  const dragStateRef = useRef<{
+    key: string;
+    startX: number;
+    width: number;
+    dragging: boolean;
+  } | null>(null);
+  /** Pointer offset inside the tab when the press landed: the ghost keeps
+   *  that grip instead of snapping its corner to the cursor. */
+  const grabOffsetRef = useRef({ x: 0, y: 0 });
   const dragOutRef = useRef(false);
   const [dragOutActive, setDragOutActive] = useState(false);
+  /** Ghost card following the pointer while a tab is dragged. */
+  const [dragGhost, setDragGhost] = useState<{
+    key: string;
+    x: number;
+    y: number;
+    width: number;
+  } | null>(null);
   const [dropTarget, setDropTarget] = useState<{
     draggedKey: string;
     key: string;
@@ -54,7 +70,19 @@ export function useEditorTabDrag({
       } catch {
         // Capture is best-effort; the edge fallback below still applies.
       }
-      dragStateRef.current = { key, startX: e.clientX, dragging: false };
+      // The whole tab (close button included), not just the label area the
+      // press lands on.
+      const tabEl = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-tab-key]");
+      const rect = tabEl?.getBoundingClientRect();
+      grabOffsetRef.current = rect
+        ? { x: e.clientX - rect.left, y: e.clientY - rect.top }
+        : { x: 0, y: 0 };
+      dragStateRef.current = {
+        key,
+        startX: e.clientX,
+        width: rect?.width ?? 0,
+        dragging: false,
+      };
     };
   }
 
@@ -75,6 +103,12 @@ export function useEditorTabDrag({
         if (Math.abs(e.clientX - st.startX) < DRAG_THRESHOLD) return;
         st.dragging = true;
       }
+      setDragGhost({
+        key: st.key,
+        x: e.clientX - grabOffsetRef.current.x,
+        y: e.clientY - grabOffsetRef.current.y,
+        width: st.width,
+      });
       const out = isDragOutPosition(e.clientX, e.clientY);
       dragOutRef.current = out;
       setDragOutActive(out);
@@ -98,6 +132,7 @@ export function useEditorTabDrag({
       const wasOut = dragOutRef.current;
       dragOutRef.current = false;
       setDragOutActive(false);
+      setDragGhost(null);
       setDropTarget(null);
       if (!st?.dragging) return;
       suppressClickRef.current = true;
@@ -125,5 +160,5 @@ export function useEditorTabDrag({
     };
   }, [onReorder, onDragOut]);
 
-  return { dropTarget, dragOutActive, suppressClickRef, handleTabPointerDown };
+  return { dropTarget, dragOutActive, dragGhost, suppressClickRef, handleTabPointerDown };
 }

@@ -201,6 +201,17 @@ img {
   -webkit-user-drag: none;
 }
 
+/* A held press that began on chrome (tab strips, dividers, empty space):
+ * every surface turns non-selectable until release, so the drag can never
+ * sweep a selection across the pane — WebKit otherwise starts one the
+ * moment the pointer crosses selectable text. Set from lib/selection-guard;
+ * outranks the whitelist above. (Named apart from the per-control
+ * `data-dragging` React Aria toggles so the two never read as one state.) */
+html[data-window-dragging] * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* Theme-aware monochrome BoardUI mark. Both images keep their intrinsic
  * dimensions while the root theme class decides which one participates in
  * layout, avoiding a light-logo flash during hydration. */
