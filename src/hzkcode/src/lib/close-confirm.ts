@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isWeb } from "./transport";
+import { windowContext } from "./window-context";
 
 /**
  * App-close confirmation ("二次确认"). The window close button used to kill
@@ -50,9 +51,12 @@ export function confirmAppClose(): void {
 let installed = false;
 
 /** Intercept the main window's close button. Idempotent; no-op in the
- *  web-access browser bridge, where closing a tab needs no confirmation. */
+ *  web-access browser bridge (closing a browser tab needs no confirmation)
+ *  and in extra conversation / editor windows, which close like plain
+ *  windows. */
 export function installCloseConfirm(): void {
   if (installed || isWeb) return;
+  if (windowContext.kind !== "main") return;
   installed = true;
   void getCurrentWindow().onCloseRequested((event) => {
     event.preventDefault();

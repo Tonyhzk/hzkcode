@@ -1,8 +1,10 @@
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import Eye from "lucide-react/dist/esm/icons/eye";
 import PencilLine from "lucide-react/dist/esm/icons/pencil-line";
 import Save from "lucide-react/dist/esm/icons/save";
 import { Button } from "@/components/base/buttons/button";
+import { useWindowDragRegion } from "@/hooks/use-window-drag";
 import { cx } from "@/utils/cx";
 
 export function FileEditorHeader({
@@ -27,9 +29,16 @@ export function FileEditorHeader({
   onSave: () => void;
 }) {
   const { t } = useTranslation();
+  // The header doubles as the drag surface of a standalone editor window
+  // (and of the editor dock's top row); buttons keep their own behavior.
+  const headerRef = useRef<HTMLDivElement>(null);
+  useWindowDragRegion(headerRef);
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border-button-default px-3">
+    <div
+      ref={headerRef}
+      className="flex h-10 shrink-0 items-center gap-2 border-b border-border-button-default px-3"
+    >
       <span className="truncate text-body-medium text-text-primary" title={path}>
         {name}
       </span>

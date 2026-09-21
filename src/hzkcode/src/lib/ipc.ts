@@ -658,6 +658,13 @@ export const ipc = {
     invoke<void>("set_window_theme", { dark }),
   /** 立即重启应用（标题栏样式等需重启生效的设置项用）。 */
   restartApp: () => invoke<void>("restart_app"),
+  // windows
+  /** Open a conversation in its own app window (multi-window). */
+  openChatWindow: (engine: string, sessionId: string, workspacePath: string) =>
+    invoke<void>("open_chat_window", { engine, sessionId, workspacePath }),
+  /** Open a file in a standalone editor window. */
+  openEditorWindow: (filePath: string) =>
+    invoke<void>("open_editor_window", { filePath }),
   // engine
   sendMessage: (args: {
     /** Route events before the send invocation resolves (older callers may omit). */

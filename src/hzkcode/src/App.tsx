@@ -7,10 +7,12 @@ import PluginPageHost from "@/features/plugins/manager/PluginPageHost";
 import { bindSystemThemeSync, bindThemeChangePersistence } from "@/features/settings/theme";
 import { UpdateToast } from "@/features/update/UpdateToast";
 import { useUpdateStore } from "@/features/update/store";
+import { EditorWindow } from "@/features/files/EditorWindow";
 import { GrantAccessDialogHost } from "@/components/dialogs";
 import { startPluginSystem } from "@/features/plugins";
 import { CloseConfirmDialogHost } from "@/components/dialogs";
 import { installCloseConfirm } from "@/lib/close-confirm";
+import { windowContext } from "@/lib/window-context";
 import { startShortcutRuntime } from "@/features/shortcuts/runtime";
 import { ShortcutsGuideModal } from "@/features/shortcuts/ShortcutsGuideModal";
 
@@ -27,26 +29,48 @@ export default function App() {
   // flips app-wide — this used to live in the settings page, where it only
   // worked while Settings was open.
   useEffect(() => bindSystemThemeSync(), []);
+  // Standalone editor windows (?ctx=editor) render one file and nothing else:
+  // no settings chunk, plugin host, command palette, or update toast.
+  const editorFilePath =
+    windowContext.kind === "editor" ? windowContext.filePath : null;
   // Prefetch the settings chunk once startup work has settled.
   useEffect(() => {
+    if (editorFilePath) return;
     const id = setTimeout(() => void loadSettingsPage(), 2000);
     return () => clearTimeout(id);
-  }, []);
+  }, [editorFilePath]);
   // Plugin system bootstrap: hardening + event bridge + builtin/installed
   // plugin activation. Failures are logged, never fatal to the host UI.
-  useEffect(() => startPluginSystem(), []);
-  // Intercept the window close button so quitting needs a confirmation.
-  useEffect(() => installCloseConfirm(), []);
+  useEffect(() => {
+    if (editorFilePath) return;
+    return startPluginSystem();
+  }, [editorFilePath]);
+  // Intercept the window close button so quitting the main window needs a
+  // confirmation (no-op in extra windows and in web-access mode).
+  useEffect(() => {
+    return installCloseConfirm();
+  }, []);
   // Global keyboard-shortcut runtime: one dispatcher handler binding the
   // configured keys to registered action handlers / palette commands.
   useEffect(() => startShortcutRuntime(), []);
   // Background update check after startup settles; dev builds skip it so
   // `tauri dev` doesn't nag about the published release being newer.
   useEffect(() => {
-    if (import.meta.env.DEV) return;
+    if (editorFilePath || import.meta.env.DEV) return;
     const id = setTimeout(() => void useUpdateStore.getState().checkForUpdates(), 3000);
     return () => clearTimeout(id);
-  }, []);
+  }, [editorFilePath]);
+
+  if (editorFilePath) {
+    return (
+      <LazyMotion features={domAnimation}>
+        <EditorWindow filePath={editorFilePath} />
+        {/* Opening files outside the registered workspaces still routes
+            through the one-click grant dialog. */}
+        <GrantAccessDialogHost />
+      </LazyMotion>
+    );
+  }
 
   return (
     <LazyMotion features={domAnimation}>

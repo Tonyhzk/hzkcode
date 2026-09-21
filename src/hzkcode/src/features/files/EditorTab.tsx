@@ -3,85 +3,21 @@ import { useTranslation } from "react-i18next";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cx } from "@/utils/cx";
-import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 
-export interface SessionTabItem {
+export interface EditorTabItem {
   key: string;
   label: string;
-  streaming: boolean;
-  /** Engine (CLI) id, shown as a brand mark before the label. */
-  engine?: string;
-  /** Icon for non-session tabs (e.g. files); takes precedence over engine. */
-  icon?: LucideIcon;
-  /** Finished activity the user has not opened yet — solid green dot. */
-  unseen?: boolean;
-  /** Unsaved-changes dot before the label. */
-  dirty?: boolean;
   /** Tooltip; defaults to the label. */
   title?: string;
-}
-
-/** Custom tab icon when provided, else the engine brand mark. */
-function TabLeadingIcon({
-  icon: Icon,
-  engine,
-}: {
   icon?: LucideIcon;
-  engine?: string;
-}) {
-  if (Icon) {
-    return (
-      <Icon
-        className="size-3 shrink-0 text-foreground-icon-secondary"
-        aria-hidden
-      />
-    );
-  }
-  return (
-    <EngineIcon
-      engine={engine ?? ""}
-      size={12}
-      className="size-3 shrink-0 text-foreground-icon-secondary"
-    />
-  );
+  /** Unsaved-changes dot before the label. */
+  dirty?: boolean;
 }
 
-/** Same status dots as the sidebar: breathing blue while the turn streams,
- * solid green for unseen finished activity. */
-function TabStatusDot({
-  streaming,
-  unseen,
-}: {
-  streaming: boolean;
-  unseen?: boolean;
-}) {
-  const { t } = useTranslation();
-  if (streaming) {
-    return (
-      <span
-        className="sidebar-thread-status sidebar-thread-status-processing"
-        role="status"
-        aria-label={t("chat.sessionRunning")}
-        title={t("chat.sessionRunning")}
-      />
-    );
-  }
-  if (unseen) {
-    return (
-      <span
-        className="sidebar-thread-status sidebar-thread-status-unseen"
-        aria-label={t("chat.sessionUnseen")}
-        title={t("chat.sessionUnseen")}
-      />
-    );
-  }
-  return null;
-}
-
-/** One tab in the strip: icon, status dots, label, drop indicator, close
- * button. Selection lives on the tab; the close button sits beside it so no
- * focusable control nests inside the tab. */
-export function SessionTab({
+/** One tab of the file-editor dock: icon, dirty dot, label, drop indicator,
+ *  close button. Selection lives on the tab; the close button sits beside it
+ *  so no focusable control nests inside the tab. */
+export function EditorTab({
   tab,
   isActive,
   dragged,
@@ -93,7 +29,7 @@ export function SessionTab({
   onPointerDown,
   suppressClickRef,
 }: {
-  tab: SessionTabItem;
+  tab: EditorTabItem;
   isActive: boolean;
   /** This tab is the one being drag-reordered. */
   dragged: boolean;
@@ -107,6 +43,7 @@ export function SessionTab({
   onPointerDown?: (e: ReactPointerEvent<HTMLDivElement>) => void;
   suppressClickRef: React.MutableRefObject<boolean>;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       data-tab-key={tab.key}
@@ -128,7 +65,7 @@ export function SessionTab({
       <div
         role="tab"
         aria-selected={isActive}
-        aria-controls="center-tabpanel"
+        aria-controls="editor-tabpanel"
         tabIndex={isActive ? 0 : -1}
         onClick={() => {
           if (suppressClickRef.current) {
@@ -149,10 +86,19 @@ export function SessionTab({
         onPointerDown={onPointerDown}
         className="flex min-w-0 flex-1 cursor-default items-center gap-1.5"
       >
-        <TabLeadingIcon icon={tab.icon} engine={tab.engine} />
-        <TabStatusDot streaming={tab.streaming} unseen={tab.unseen} />
+        {tab.icon && (
+          <tab.icon
+            className="size-3 shrink-0 text-foreground-icon-secondary"
+            aria-hidden
+          />
+        )}
         {tab.dirty && (
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground-icon-primary" />
+          <span
+            role="status"
+            aria-label={t("files.unsavedChanges")}
+            title={t("files.unsavedChanges")}
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground-icon-primary"
+          />
         )}
         <span className="truncate">{tab.label}</span>
       </div>

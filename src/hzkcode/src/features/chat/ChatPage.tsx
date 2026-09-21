@@ -1,32 +1,34 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useChatStore } from "./store";
-import { SessionTabStrip } from "./components/SessionTabStrip";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { sessionKey, useChatStore } from "./store";
 import { ErrorBanner } from "./components/ErrorBanner";
+import { ChatConversation } from "./components/ChatConversation";
 import type { ComposerInputHandle } from "@/components/application/ai-chat/ai-chat-composer";
 import { AppStatusBar } from "@/components/application/app-status-bar/app-status-bar";
 import { isWeb } from "@/lib/platform";
 import { useTitlebarStyle } from "@/features/settings/titlebar";
-import PanelLeftOpen from "lucide-react/dist/esm/icons/panel-left-open";
 import { TerminalDock } from "@/features/terminal/TerminalDock";
 import { useTerminalStore } from "@/features/terminal/store";
 import { useGitStore } from "@/features/git/store";
+import { useFilesStore } from "@/features/files/store";
+import { EditorDock } from "@/features/files/EditorDock";
+import { moveFileToNewWindow } from "@/features/files/open-in-window";
+import type { SessionMeta } from "@/lib/ipc";
+import { windowContext } from "@/lib/window-context";
 import { cx } from "@/utils/cx";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { useLayoutPanels } from "./use-layout-panels";
+import { EDITOR_MIN_WIDTH, useLayoutPanels } from "./use-layout-panels";
 import {
   useChatPageLifecycle,
   useChatShortcutHandlers,
   useLayoutCommands,
 } from "./use-chat-page-effects";
-import { useChatTabs } from "./use-chat-tabs";
 import { useChatSidebar } from "./use-chat-sidebar";
 import { ChatPageDialogs, type ChatPageDialog } from "./ChatPageDialogs";
-import { ChatPanelHeader } from "./ChatPanelHeader";
-import { PANEL_TOGGLE_CLASSES } from "./panel-toggle-classes";
+import { ChatTopBar } from "./ChatTopBar";
 import { ChatSidebarFrame } from "./ChatSidebarFrame";
 import { ChatSidePanel } from "./ChatSidePanel";
-import { ChatCenterPane } from "./ChatCenterPane";
 // Side-effect import: registers the builtin files/changes tabs into
 // panelTabRegistry (plan §4.2 #4).
 import "./panel-tabs";
@@ -39,13 +41,17 @@ const NEEDS_TITLEBAR_HAIRLINE =
   typeof navigator !== "undefined" &&
   /windows/i.test(navigator.userAgent);
 
-// Below Tailwind's xl breakpoint the side panel and the chat column cannot
-// both be comfortable, so the panel defaults to collapsed there. It stays
-// expandable: the titlebar toggle renders at every width.
+// Below Tailwind's xl breakpoint the side panel and the conversation column
+// cannot both be comfortable, so the panel defaults to collapsed there. It
+// stays expandable: the titlebar toggle renders at every width.
 const PANEL_MEDIA = "(max-width: 1279px)";
-// Floor reserved for the chat column when clamping the panel width.
+// Floor reserved for the conversation column when clamping panel widths.
 const CHAT_MIN_WIDTH = 320;
 
+/** Four-column workspace, left to right: session list, conversation, file
+ *  list (files/changes), and the multi-tab file editor dock. The
+ *  conversation column is always just the conversation — editors and diffs
+ *  live in the right-most dock, never on top of it. */
 export default function ChatPage() {
   const { t } = useTranslation();
   const titlebarStyle = useTitlebarStyle();
@@ -54,27 +60,37 @@ export default function ChatPage() {
   // (components/ChatConversation.tsx).
   const init = useChatStore((s) => s.init);
   const engines = useChatStore((s) => s.engines);
+  const workspaces = useChatStore((s) => s.workspaces);
+  const sessions = useChatStore((s) => s.sessions);
+  const streamingByKey = useChatStore((s) => s.streamingByKey);
+  const active = useChatStore((s) => s.active);
   const actionError = useChatStore((s) => s.actionError);
   const dismissActionError = useChatStore((s) => s.dismissActionError);
   const gitRefresh = useGitStore((s) => s.refresh);
   // Terminal dock: toggled from the header open-actions cluster (and ⌘J).
   const toggleTerminal = useTerminalStore((s) => s.toggle);
+  const activeFilePath = useFilesStore((s) => s.activeFilePath);
   const [dialog, setDialog] = useState<ChatPageDialog | null>(null);
   const composerInputRef = useRef<ComposerInputHandle>(null);
   const {
     panelWidth,
     panelCollapsed,
     togglePanelCollapsed,
+    setPanelCollapsedValue,
     panelTab,
     setPanelTab,
     sidebarCollapsed,
     toggleSidebarCollapsed,
     collapseSidebarOnMobile,
     sidebarWidth,
+    editorWidth,
+    editorCollapsed,
+    toggleEditorCollapsed,
+    setEditorCollapsedValue,
     dragging,
     handleResizeStart,
     panelRef,
-    panelHeaderRef,
+    editorRef,
     sidebarRef,
     sidebarResizerRef,
   } = useLayoutPanels();
@@ -117,29 +133,83 @@ export default function ChatPage() {
     centerRowWidth > 0
       ? Math.min(panelWidth, Math.max(0, centerRowWidth - CHAT_MIN_WIDTH))
       : panelWidth;
+  // Same clamp for the editor dock, sharing what remains after the panel.
+  const editorAvail = Math.max(
+    0,
+    centerRowWidth -
+      CHAT_MIN_WIDTH -
+      (panelCollapsedEffective ? 0 : panelWidthEffective),
+  );
+  const editorWidthEffective = editorCollapsed
+    ? 0
+    : centerRowWidth > 0
+      ? Math.min(editorWidth, editorAvail)
+      : editorWidth;
+  const editorVisible = !editorCollapsed && editorWidthEffective > 0;
+
+  // Opening a file must never land in a hidden dock: expand it, and reclaim
+  // space from the file panel when the row cannot fit both side by side.
+  const lastActiveFilePath = useRef<string | null>(null);
+  useEffect(() => {
+    const opened =
+      activeFilePath !== null && activeFilePath !== lastActiveFilePath.current;
+    lastActiveFilePath.current = activeFilePath;
+    if (!opened) return;
+    setEditorCollapsedValue(false);
+    if (centerRowWidth <= 0) return;
+    const avail =
+      centerRowWidth -
+      CHAT_MIN_WIDTH -
+      (panelCollapsedEffective ? 0 : panelWidthEffective);
+    if (avail < EDITOR_MIN_WIDTH && !panelCollapsedEffective) {
+      setPanelCollapsedValue(true);
+      if (narrowPanel) setNarrowPanelExpanded(false);
+    }
+  }, [
+    activeFilePath,
+    centerRowWidth,
+    panelCollapsedEffective,
+    panelWidthEffective,
+    narrowPanel,
+    setEditorCollapsedValue,
+    setPanelCollapsedValue,
+  ]);
 
   useLayoutCommands(handleTogglePanel, toggleSidebarCollapsed);
-  const {
-    tabItems,
-    activeTabKey,
-    handleTabSelect,
-    handleTabClose,
-    handleTabCloseAll,
-    handleTabCloseInactive,
-    handleTabReorder,
-    sessionById,
-    threadStreaming,
-    openFiles,
-    activeFilePath,
-    diffView,
-    closeDiff,
-  } = useChatTabs({ setDialog });
-  const diffStatus = useGitStore((s) =>
-    s.diffView ? s.statusByWorkspace[s.diffView.workspacePath] : undefined,
+  // Sidebar data: sessions indexed by tab key, plus per-thread streaming
+  // flags for the status dots.
+  const sessionById = useMemo(() => {
+    const map = new Map<string, SessionMeta>();
+    for (const s of sessions) map.set(`${s.engine}/${s.sessionId}`, s);
+    return map;
+  }, [sessions]);
+  const threadStreaming = useMemo(
+    () =>
+      sessions.map(
+        (sess) =>
+          streamingByKey[sessionKey(sess.engine, sess.sessionId, sess.workspacePath)] === true,
+      ),
+    [sessions, streamingByKey],
   );
+  const title = useMemo(() => {
+    if (!active) return "";
+    const meta = active.sessionId
+      ? sessionById.get(`${active.engine}/${active.sessionId}`)
+      : undefined;
+    return meta?.customTitle || meta?.title || t("chat.newChat");
+  }, [active, sessionById, t]);
+  // Extra conversation windows show the session name in the native title bar.
+  useEffect(() => {
+    if (windowContext.kind !== "chat" || !title) return;
+    if (isWeb) {
+      document.title = title;
+      return;
+    }
+    void getCurrentWindow()
+      .setTitle(title)
+      .catch(() => {});
+  }, [title]);
   const {
-    active,
-    workspaces,
     startNewChat,
     repos,
     sections,
@@ -170,15 +240,26 @@ export default function ChatPage() {
     handleNewSession,
   );
 
+  // Editor dock interactions: unsaved tabs route through the save dialog;
+  // dragging a tab out of the window moves it into a standalone editor.
+  const handleDirtyClose = useCallback((path: string) => {
+    setDialog({ kind: "closeFile", path });
+  }, []);
+  const handleDragOut = useCallback((path: string) => {
+    if (useFilesStore.getState().dirtyPaths[path]) {
+      setDialog({ kind: "dragOutFile", path });
+    } else {
+      void moveFileToNewWindow(path);
+    }
+  }, []);
+
   return (
     <div
       className={cx(
         "relative flex h-dvh w-full overflow-hidden bg-background-secondary-default",
         // Phones with `viewport-fit=cover` (index.html) lay the app under the
-        // status bar/notch: without the inset the tab strip — and with it the
-        // only way to switch sessions — sits behind the iOS chrome, which is
-        // where it kept disappearing (Chrome for iOS especially). Zero on
-        // desktop, so this only moves pixels on a notched device.
+        // status bar/notch: without the inset the top bar — and with it the
+        // only way to switch sessions — sits behind the iOS chrome.
         "pt-[env(safe-area-inset-top)]",
         // Same for the home indicator: it overlays AppStatusBar otherwise.
         "pb-[env(safe-area-inset-bottom)]",
@@ -211,44 +292,15 @@ export default function ChatPage() {
         onDropWorkspaceToSection={handleDropWorkspaceToSection}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background-primary-default md:rounded-l-[14px] md:border-l md:border-separator-border">
-        <SessionTabStrip
-          tabs={tabItems}
-          activeKey={activeTabKey}
-          onSelect={handleTabSelect}
-          onClose={handleTabClose}
-          onCloseAll={handleTabCloseAll}
-          onCloseInactive={handleTabCloseInactive}
-          closeLabel={t("common.close")}
-          onReorder={handleTabReorder}
-          onNew={handleNewSession}
-          trafficLightInset={sidebarCollapsed && !isWeb}
-          leading={
-            sidebarCollapsed ? (
-              <button
-                type="button"
-                title={t("chat.expandSidebar")}
-                aria-label={t("chat.expandSidebar")}
-                onClick={toggleSidebarCollapsed}
-                className={PANEL_TOGGLE_CLASSES}
-              >
-                <PanelLeftOpen className="size-4" aria-hidden />
-              </button>
-            ) : undefined
-          }
-          actions={
-            active ? (
-              <ChatPanelHeader
-                workspacePath={active.workspacePath}
-                panelTab={panelTab}
-                onPanelTabChange={setPanelTab}
-                panelCollapsed={panelCollapsedEffective}
-                onTogglePanelCollapsed={handleTogglePanel}
-                panelWidth={panelWidthEffective}
-                panelHeaderRef={panelHeaderRef}
-                dragging={dragging}
-              />
-            ) : undefined
-          }
+        <ChatTopBar
+          title={title}
+          workspacePath={active?.workspacePath}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={toggleSidebarCollapsed}
+          editorCollapsed={editorCollapsed}
+          onToggleEditor={toggleEditorCollapsed}
+          panelCollapsed={panelCollapsedEffective}
+          onTogglePanel={handleTogglePanel}
         />
 
         {actionError && (
@@ -260,23 +312,19 @@ export default function ChatPage() {
         )}
 
         <div
-          id="center-tabpanel"
-          role="tabpanel"
           ref={centerRowRef}
           className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
         >
-          <ChatCenterPane
-            active={active}
-            engines={engines}
-            workspaces={workspaces}
-            startNewChat={startNewChat}
-            composerInputRef={composerInputRef}
-            openFiles={openFiles}
-            activeFilePath={activeFilePath}
-            diffView={diffView}
-            diffStatus={diffStatus}
-            closeDiff={closeDiff}
-          />
+          {/* Conversation column: always just the conversation. */}
+          <div className="relative flex min-w-0 flex-1 basis-0 flex-col overflow-hidden bg-background-primary-default">
+            <ChatConversation
+              active={active}
+              engines={engines}
+              workspaces={workspaces}
+              startNewChat={startNewChat}
+              composerInputRef={composerInputRef}
+            />
+          </div>
           <ChatSidePanel
             active={active}
             panelRef={panelRef}
@@ -284,7 +332,17 @@ export default function ChatPage() {
             panelCollapsed={panelCollapsedEffective}
             dragging={dragging}
             panelTab={panelTab}
+            onPanelTabChange={setPanelTab}
             onResizeStart={handleResizeStart("panel")}
+          />
+          <EditorDock
+            width={editorWidthEffective}
+            collapsed={!editorVisible}
+            dragging={dragging}
+            dockRef={editorRef}
+            onResizeStart={handleResizeStart("editor")}
+            onDirtyClose={handleDirtyClose}
+            onDragOut={handleDragOut}
           />
         </div>
         {active && <TerminalDock workspacePath={active.workspacePath} />}

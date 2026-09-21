@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { getAllWindows } from "@tauri-apps/api/window";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { cx } from "@/utils/cx";
 import { Button } from "@/components/base/buttons/button";
@@ -184,11 +185,30 @@ export function GrantAccessDialogHost() {
 export function CloseConfirmDialogHost() {
   const { t } = useTranslation();
   const pending = useSyncExternalStore(subscribeCloseConfirm, closeConfirmPending);
+  // With extra windows open, closing the main window no longer ends the app —
+  // the confirmation says so instead of claiming to kill every session.
+  const [otherWindows, setOtherWindows] = useState(0);
+  useEffect(() => {
+    if (!pending) return;
+    let alive = true;
+    void getAllWindows()
+      .then((windows) => {
+        if (alive) setOtherWindows(windows.length - 1);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [pending]);
   if (!pending) return null;
   return (
     <ConfirmDialog
       danger
-      message={t("common.confirmCloseApp")}
+      message={
+        otherWindows > 0
+          ? t("common.confirmCloseWindow")
+          : t("common.confirmCloseApp")
+      }
       onConfirm={confirmAppClose}
       onCancel={cancelAppClose}
     />

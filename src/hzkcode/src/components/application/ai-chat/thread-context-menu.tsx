@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import Copy from "lucide-react/dist/esm/icons/copy";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
+import SquareArrowOutUpRight from "lucide-react/dist/esm/icons/square-arrow-out-up-right";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
 import {
   sessionMenuRegistry,
@@ -55,6 +56,12 @@ function buildHostSections({
 }): MenuEntry[][] {
   const actions: MenuEntry[] = [];
   if (onThreadAction && !isDraft) {
+    actions.push({
+      id: "open-window",
+      label: t("chat.openInNewWindow"),
+      icon: <SquareArrowOutUpRight className="size-4" aria-hidden />,
+      onSelect: () => onThreadAction(threadId, "open-window"),
+    });
     actions.push({
       id: "rename",
       label: t("chat.renameSession"),

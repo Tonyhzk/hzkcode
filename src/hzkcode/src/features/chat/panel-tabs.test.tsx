@@ -15,6 +15,13 @@ vi.mock("@/features/git/ChangesPanel", () => ({
   ChangesPanel: () => <div>changes-panel-stub</div>,
 }));
 
+// jsdom has no ResizeObserver; the panel header's pill tabs measure with it.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const active: ActiveSession = {
@@ -44,6 +51,7 @@ describe("panel tabs registry integration (plan §4.2 #4)", () => {
   }
 
   beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -52,6 +60,7 @@ describe("panel tabs registry integration (plan §4.2 #4)", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.unstubAllGlobals();
   });
 
   it("renders a registered plugin tab's component; disposer removes it", () => {

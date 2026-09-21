@@ -24,6 +24,7 @@ pub mod slash_commands;
 pub mod terminal;
 pub mod relay;
 pub mod web;
+pub mod windows;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -163,47 +164,47 @@ pub fn run() {
             // 设置决定装饰：Windows 可选仿 mac 自绘标题栏（decorations=false + shadow，
             // 保留 DWM 阴影与四边缩放），macOS 保持 Overlay + 系统原生红绿灯（与原配置
             // 一致）。放在 manage(state) 之后：窗口一开始加载前端就会 invoke 命令，
-            // 状态必须已经就位。设置改动需重启应用。
-            #[cfg(target_os = "windows")]
-            let settings = settings::read_settings().unwrap_or_default();
-            let mut window_builder =
-                tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-                    .title("HZK CODE")
-                    .inner_size(1400.0, 900.0)
-                    .min_inner_size(900.0, 600.0);
-            #[cfg(target_os = "macos")]
-            {
-                // 原 tauri.conf.json: titleBarStyle "Overlay" + hiddenTitle true。
-                window_builder = window_builder
-                    .title_bar_style(tauri::TitleBarStyle::Overlay)
-                    .hidden_title(true);
-            }
-            #[cfg(target_os = "windows")]
-            {
-                let mac_like = settings.titlebar == "mac";
-                window_builder = window_builder.decorations(!mac_like);
-                if mac_like {
-                    // 无装饰窗口默认没有 DWM 阴影；打开它保住阴影（也让四边缩放走原生路径）。
-                    window_builder = window_builder.shadow(true);
-                }
-            }
-            window_builder
-                .build()
-                .expect("failed to create main window");
+            // 状态必须已经就位。设置改动需重启应用。会话/编辑器窗口共用同一构建逻辑
+            // （windows::build_window）。主窗口 label 固定为 "main"。
+            windows::build_window(
+                app.handle(),
+                "main",
+                "index.html".to_string(),
+                "HZK CODE",
+                1400.0,
+                900.0,
+            )
+            .expect("failed to create main window");
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(state) = window.try_state::<AppState>() {
-                    state.processes.kill_all();
-                    plugin_caps::kill_all_tracked_children();
-                    tauri::async_runtime::block_on(terminal::kill_all(&state.terminals));
+                    // Multi-window: only the last window's destruction ends the
+                    // app — closing one of several windows (a conversation or
+                    // editor window) must never kill engine runs or terminals
+                    // the other windows still own. Counting the others works
+                    // whether or not the dying window left the registry first.
+                    let self_label = window.label();
+                    let others = window
+                        .app_handle()
+                        .webview_windows()
+                        .keys()
+                        .filter(|label| label.as_str() != self_label)
+                        .count();
+                    if others == 0 {
+                        state.processes.kill_all();
+                        plugin_caps::kill_all_tracked_children();
+                        tauri::async_runtime::block_on(terminal::kill_all(&state.terminals));
+                    }
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
             // 窗口
             settings::restart_app,
+            windows::open_chat_window,
+            windows::open_editor_window,
             // config
             config::get_cli_config,
             config::upsert_provider,

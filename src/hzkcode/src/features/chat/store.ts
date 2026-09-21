@@ -13,6 +13,7 @@ import { pruneSlashCommands } from "@/components/application/ai-chat/slash-comma
 import { listenEngineEvents, listenSessionsChanged } from "@/lib/events";
 import { errorText } from "@/lib/errors";
 import { writeStored } from "@/lib/storage";
+import { windowContext } from "@/lib/window-context";
 import { newId } from "@/lib/id";
 import { subscribeTauriEvent } from "@/hooks/use-tauri-event";
 import {
@@ -676,6 +677,16 @@ export const useChatStore = create<ChatStore>((set, get) => {
           ? persistedActive
           : (restoredTabs[0] ?? null);
       if (activeTab) activateTab(activeTab);
+      // A window created for one specific conversation (?ctx=chat) focuses it
+      // after the restore pass; its own tab list starts empty, so this is the
+      // window's only active tab.
+      if (windowContext.kind === "chat") {
+        void get().selectSession(
+          windowContext.engine,
+          windowContext.sessionId,
+          windowContext.workspacePath,
+        );
+      }
       ipc
         .getAppSettings()
         .then((settings) =>

@@ -17,6 +17,8 @@ export const en: Messages = {
     copied: "Copied",
     confirmCloseApp:
       "Quit HZK CODE? All running sessions and terminals will be terminated.",
+    confirmCloseWindow:
+      "Close the main window? Sessions in other windows keep running.",
   },
   chat: {
     newChat: "New chat",
@@ -27,6 +29,10 @@ export const en: Messages = {
     expandSidebar: "Expand sidebar",
     resizeSidebar: "Drag to resize sidebar",
     resizePanel: "Drag to resize panel",
+    resizeFileEditor: "Drag to resize the file editor",
+    showFileEditor: "Show file editor",
+    hideFileEditor: "Hide file editor",
+    openInNewWindow: "Open in new window",
     workspaces: "Workspaces",
     expandWorkspace: "Expand session list",
     collapseWorkspace: "Collapse session list",
@@ -644,6 +650,10 @@ export const en: Messages = {
       "This path is outside the registered workspaces. Allow access to {{dir}}? The app will be able to read and write all files inside; you can revoke it anytime in Settings → Workspaces.",
     confirmCloseDirty:
       "“{{name}}” has unsaved changes. Closing the tab will discard them.",
+    confirmDragOut:
+      "“{{name}}” has unsaved changes. Moving it to a new window opens the on-disk version and discards them.",
+    editorEmpty: "Open a file from the file list to edit it here",
+    dragOutHint: "Release to open in a new window",
   },
   git: {
     changes: "Changes",

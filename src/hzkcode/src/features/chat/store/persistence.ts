@@ -1,4 +1,5 @@
 import { readStoredJson, writeStored } from "@/lib/storage";
+import { windowStorageSuffix } from "@/lib/window-context";
 import type { EffortLevel } from "@/components/application/ai-chat/cli-menu";
 
 /**
@@ -43,8 +44,12 @@ export function parseDraftSessionKey(
   return { engine: rest.slice(0, colon), workspacePath: rest.slice(colon + 1) };
 }
 
-export const OPEN_TABS_KEY = "hzkcode.openTabs:v1";
-const ACTIVE_SESSION_KEY = "hzkcode.activeSession:v1";
+// Extra windows (conversation / editor) get their own tab state: they must
+// not overwrite the main window's restored tabs, and each window browses
+// conversations independently. The main window keeps the legacy keys.
+const WINDOW_SUFFIX = windowStorageSuffix();
+export const OPEN_TABS_KEY = "hzkcode.openTabs:v1" + WINDOW_SUFFIX;
+const ACTIVE_SESSION_KEY = "hzkcode.activeSession:v1" + WINDOW_SUFFIX;
 const LEGACY_OPEN_TABS_KEY = "hzkcode.openTabs";
 const LEGACY_ACTIVE_SESSION_KEY = "hzkcode.activeSession";
 export const ENGINE_PREF_KEY = "hzkcode.enginePref";
@@ -94,6 +99,9 @@ function readPersistedValue<T>(
 ): T | null {
   const current = readStoredJson(key, validate);
   if (current !== null) return current;
+  // The pre-versioned keys belong to the main window; extra windows start
+  // with an empty tab set instead of adopting the main window's history.
+  if (WINDOW_SUFFIX) return null;
   const legacy = readStoredJson(legacyKey, validate);
   if (legacy === null) return null;
   // One-time migration: the validated legacy value moves to the versioned key.

@@ -6,6 +6,7 @@ import type { AiChatRepo, AiChatRepoSection, ThreadAction } from "@/components/a
 import { ARCHIVED_SECTION_ID } from "@/components/application/ai-chat/use-sidebar-state";
 import type { SessionMeta } from "@/lib/ipc";
 import { pickDirectory } from "@/lib/platform";
+import { openChatWindow } from "@/lib/window-actions";
 import { parseDraftSessionKey, sessionKey, useChatStore, sortedWorkspaceGroups } from "./store";
 import { relativeTime } from "./time";
 import { useWorkspaceUIHooks, workspaceLabelSuffix } from "./workspace-ui-bridge";
@@ -202,6 +203,12 @@ export function useChatSidebar({
           setDialog({ kind: "rename", session });
         } else if (action === "delete") {
           setDialog({ kind: "delete", session });
+        } else if (action === "open-window") {
+          void openChatWindow(
+            session.engine,
+            session.sessionId,
+            session.workspacePath,
+          );
         }
         return;
       }

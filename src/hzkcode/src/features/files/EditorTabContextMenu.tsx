@@ -3,9 +3,9 @@ import CircleX from "lucide-react/dist/esm/icons/circle-x";
 import { useTranslation } from "react-i18next";
 import { ContextMenu } from "@/components/context-menu";
 
-/** Tab right-click menu (a single "Close All" entry for now), anchored at
- * the pointer like every other context menu in the app. */
-export function TabStripContextMenu({
+/** Editor tab right-click menu: close-inactive / close-all, anchored at the
+ * pointer like every other context menu in the app. */
+export function EditorTabContextMenu({
   menu,
   onCloseAll,
   onCloseInactive,

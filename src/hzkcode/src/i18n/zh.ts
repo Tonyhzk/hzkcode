@@ -14,6 +14,7 @@ export const zh = {
     refresh: "刷新",
     copied: "已复制",
     confirmCloseApp: "确定要退出 HZK CODE 吗？退出将结束所有进行中的会话和终端。",
+    confirmCloseWindow: "关闭主窗口？其他窗口中的会话将继续运行。",
   },
   chat: {
     newChat: "新对话",
@@ -24,6 +25,10 @@ export const zh = {
     expandSidebar: "展开侧边栏",
     resizeSidebar: "拖拽调整侧边栏宽度",
     resizePanel: "拖拽调整面板宽度",
+    resizeFileEditor: "拖拽调整文件编辑区宽度",
+    showFileEditor: "展开文件编辑区",
+    hideFileEditor: "收起文件编辑区",
+    openInNewWindow: "在新窗口打开",
     workspaces: "工作区",
     expandWorkspace: "展开会话列表",
     collapseWorkspace: "收起会话列表",
@@ -622,6 +627,10 @@ export const zh = {
     opFailed: "操作失败：{{message}}",
     fileTruncated: "文件过大，仅显示部分内容（只读）",
     confirmCloseDirty: "“{{name}}” 有未保存的更改，关闭标签将丢弃这些更改。",
+    confirmDragOut:
+      "“{{name}}” 有未保存的更改。拖出将在新窗口打开磁盘上的版本，这些更改会丢失。",
+    editorEmpty: "从文件列表打开文件，在此编辑",
+    dragOutHint: "松开鼠标，在新窗口打开",
     grantAccess:
       "该路径不在已注册的工作区内。允许访问目录 {{dir}}？授权后可读写其中的所有文件，可在「设置 → 工作区」中随时撤销。",
   },

@@ -39,7 +39,7 @@ export function ChatSidebarFrame({
   active: ActiveSession | null;
   collapsed: boolean;
   width: number;
-  dragging: "sidebar" | "panel" | null;
+  dragging: "sidebar" | "panel" | "editor" | null;
   sidebarRef: React.RefObject<HTMLElement>;
   resizerRef: React.RefObject<HTMLDivElement>;
   onResizeStart: (e: React.PointerEvent) => void;

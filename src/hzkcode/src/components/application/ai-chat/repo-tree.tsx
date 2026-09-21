@@ -9,6 +9,7 @@ import Menu from "lucide-react/dist/esm/icons/menu";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
 import Pin from "lucide-react/dist/esm/icons/pin";
 import Plus from "lucide-react/dist/esm/icons/plus";
+import SquareArrowOutUpRight from "lucide-react/dist/esm/icons/square-arrow-out-up-right";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
 import X from "lucide-react/dist/esm/icons/x";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
@@ -122,6 +123,20 @@ function ThreadItem({
               className="text-foreground-icon-secondary hover:text-foreground-icon-primary"
             >
               <Pencil className="size-3.5" aria-hidden />
+            </button>
+          )}
+          {!isDraft && (
+            <button
+              type="button"
+              aria-label={t("chat.openInNewWindow")}
+              title={t("chat.openInNewWindow")}
+              onClick={(event) => {
+                event.stopPropagation();
+                onAction(id, "open-window");
+              }}
+              className="text-foreground-icon-secondary hover:text-foreground-icon-primary"
+            >
+              <SquareArrowOutUpRight className="size-3.5" aria-hidden />
             </button>
           )}
           <button

@@ -41,6 +41,13 @@
 - 新增「通用 → 行为 → 详细显示」开关（开发者模式）：开启后过程行默认展开，工具调用的参数与结果内联显示；关闭时保持现状（折叠 + 点击展开）
 - 功能开关补充第二大脑「请求数门槛」（`HZKCODE_SECOND_BRAIN_MIN_NEW_RESPONSES`）：GUI 每次发送都是新进程、间隔与请求计数从零开始，设为 0 时任意工具轮次结束后即可复核
 - 内置 CLI 同步更新：fork 在无头 stream-json 输出中转发用户可见的系统通知（此前 headless 只输出压缩边界与重试事件），通知在产生时即写入会话记录，刷新、重开或另行读取该会话时仍然保留、顺序与显示一致；第二大脑的主对话判定纳入 GUI 无头会话（querySource `sdk`，与 fork 内部 isMainThread 口径一致），使其在 GUI 会话中同样可运行、可见
+- 界面布局改为四分区（从左到右：对话列表 | 对话区 | 文件列表 | 文件编辑器）：对话区不再与会话标签页、文件编辑器、diff 共用中心区域——会话切换只经由左侧列表，打开文件与查看 diff 都在最右侧独立分区；顶部标签条替换为对话区顶栏（当前会话标题 + 在外部应用打开 + 文件列表/编辑器开合按钮），文件列表分区的 files/changes 切换与刷新按钮移入分区自身头部
+- 文件编辑器成为最右侧独立分区：多标签页（文件标签 + 变更 diff 标签）、宽度可拖拽（320–720）、可折叠；打开文件时自动展开编辑器区，窄窗口空间不足时自动收起文件列表分区腾出空间；编辑器不再从对话区抢位置（`ChatCenterPane`、`SessionTabStrip`、`ChatPanelHeader` 等旧布局组件删除，新增 `EditorDock`/`EditorTabStrip`/`use-editor-tabs` 与 `use-layout-panels` 的 editor 分区）
+- 对话在新窗口打开：左侧会话列表悬停按钮与右键菜单新增「在新窗口打开」，经 Rust 命令 `open_chat_window` 创建独立窗口（按 URL `?ctx=chat&engine=…&sessionId=…&workspacePath=…` 定位会话）；重复打开同一会话聚焦已有窗口而不重复创建
+- 文件编辑器标签拖出成独立窗口：标签拖到窗口边缘松手（拖拽中显示提示浮层）或右键菜单「在新窗口打开」打开 `?ctx=editor&filePath=…` 的独立编辑器窗口（只渲染该文件的编辑器）；主窗口的标签按移动语义关闭，未保存的修改先经确认对话框
+- 多窗口支持与修复：新增 `windows` 模块与 `open_chat_window` / `open_editor_window` 命令，窗口构建与主窗口共用 `windows::build_window`（macOS Overlay 标题栏、Windows 装饰跟随设置）；关闭任意窗口不再杀掉全局引擎进程与终端（`on_window_event` 改为仅在最后一个窗口销毁时清理）；各窗口的标签与当前会话状态独立持久化（localStorage 键按窗口 label 命名空间隔离，主窗口沿用原键）；主窗口关闭确认在有其他窗口时改为提示「其他窗口中的会话将继续运行」
+- 新窗口权限修复：`capabilities/default.json` 原本只授权 `main` 窗口，导致新开的会话 / 编辑器窗口无法拖动、无法设置标题、无法最大化（所有 `core:*` 与插件命令被拒）；授权范围改为 `["main", "chat-*", "editor-*"]` 并补 `core:window:allow-set-title`；文件编辑器头部（`FileEditorHeader`）接入窗口拖动区域，独立编辑器窗口与编辑器区顶行都可拖动窗口
+- 新增开发用冒烟示例 `src-tauri/examples/window_smoke.rs`：不启动完整应用即可创建会话 / 编辑器窗口（复用 `windows::build_window` 与真实 `?ctx=…` URL），用于人工核对多窗口行为
 
 ## [0.1.0] - 2026-09-19
 

@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import { ConfirmDialog, PromptDialog } from "@/components/dialogs";
+import { moveFileToNewWindow } from "@/features/files/open-in-window";
 import { fileName, useFilesStore } from "@/features/files/store";
 import { useTerminalStore } from "@/features/terminal/store";
 import type { SessionMeta } from "@/lib/ipc";
@@ -12,7 +13,8 @@ export type ChatPageDialog =
   | { kind: "delete"; session: SessionMeta }
   | { kind: "removeWorkspace"; workspaceId: string }
   | { kind: "workspaceAlias"; workspaceId: string }
-  | { kind: "closeFile"; path: string };
+  | { kind: "closeFile"; path: string }
+  | { kind: "dragOutFile"; path: string };
 
 /** Session rename/delete, dirty-file close, and workspace removal
  * confirmations, rendered above the chat page. */
@@ -68,6 +70,17 @@ export function ChatPageDialogs({
           onConfirm={() => {
             closeFile(dialog.path);
             onClose();
+          }}
+          onCancel={onClose}
+        />
+      )}
+      {dialog?.kind === "dragOutFile" && (
+        <ConfirmDialog
+          danger
+          message={t("files.confirmDragOut", { name: fileName(dialog.path) })}
+          onConfirm={() => {
+            onClose();
+            void moveFileToNewWindow(dialog.path);
           }}
           onCancel={onClose}
         />
