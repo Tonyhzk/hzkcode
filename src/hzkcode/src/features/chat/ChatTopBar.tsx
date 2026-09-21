@@ -9,15 +9,10 @@ import PanelRightOpen from "lucide-react/dist/esm/icons/panel-right-open";
 import { WindowControls } from "@/components/application/window-controls";
 import { HeaderOpenActions } from "@/features/open-app/HeaderOpenActions";
 import { needsWindowControls, useTitlebarStyle } from "@/features/settings/titlebar";
-import { isWeb } from "@/lib/platform";
+import { IS_MAC, isWeb } from "@/lib/platform";
 import { cx } from "@/utils/cx";
 import { DRAG_IGNORE_SELECTOR, useWindowDragRegion } from "@/hooks/use-window-drag";
 import { PANEL_TOGGLE_CLASSES } from "./panel-toggle-classes";
-
-// Overlay titlebar leaves the native traffic lights floating over the
-// window's top-left corner; other platforms keep their own titlebar.
-const IS_MAC =
-  typeof navigator !== "undefined" && /macintosh|mac os x/i.test(navigator.userAgent);
 
 /** Top bar of the conversation column: the active session's title, the
  *  open-in-app cluster, and the panel/editor collapse toggles. Doubles as the

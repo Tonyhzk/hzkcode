@@ -11,6 +11,11 @@ export { isWeb } from "./transport";
 export const IS_WINDOWS =
   typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent);
 
+/** macOS desktop: every window keeps the Overlay titlebar, so the native
+ *  traffic lights float over each window's top-left corner. */
+export const IS_MAC =
+  typeof navigator !== "undefined" && /macintosh|mac os x/i.test(navigator.userAgent);
+
 /**
  * Platform shims for the few places that touch native APIs outside the
  * invoke/listen surface. Each has a browser fallback used in web-access mode.

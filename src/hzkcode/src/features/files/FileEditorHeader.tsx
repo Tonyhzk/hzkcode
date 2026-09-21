@@ -5,6 +5,8 @@ import PencilLine from "lucide-react/dist/esm/icons/pencil-line";
 import Save from "lucide-react/dist/esm/icons/save";
 import { Button } from "@/components/base/buttons/button";
 import { useWindowDragRegion } from "@/hooks/use-window-drag";
+import { IS_MAC, isWeb } from "@/lib/platform";
+import { windowContext } from "@/lib/window-context";
 import { cx } from "@/utils/cx";
 
 export function FileEditorHeader({
@@ -33,11 +35,19 @@ export function FileEditorHeader({
   // (and of the editor dock's top row); buttons keep their own behavior.
   const headerRef = useRef<HTMLDivElement>(null);
   useWindowDragRegion(headerRef);
+  // A standalone editor window is a window of its own: on macOS the native
+  // traffic lights float over its top-left corner, so the file name must
+  // start clear of them. The dock's header (main / chat windows) keeps the
+  // normal inset — there the lights sit over the sidebar, not the editor.
+  const trafficLightInset = windowContext.kind === "editor" && IS_MAC && !isWeb;
 
   return (
     <div
       ref={headerRef}
-      className="flex h-10 shrink-0 items-center gap-2 border-b border-border-button-default px-3"
+      className={cx(
+        "flex h-10 shrink-0 items-center gap-2 border-b border-border-button-default",
+        trafficLightInset ? "pl-[80px] pr-3" : "px-3",
+      )}
     >
       <span className="truncate text-body-medium text-text-primary" title={path}>
         {name}
