@@ -104,6 +104,14 @@ describe("ProcessDisclosure tool args", () => {
     expect(container.querySelector("pre")).toBeNull();
   });
 
+  it("opens payload panels on rows already mounted when detailed display turns on", async () => {
+    await render(ITEMS, { detailedDisplay: false });
+    expect(container.querySelector("pre")).toBeNull();
+
+    await render(ITEMS, { detailedDisplay: true });
+    expect(container.querySelector("pre")?.textContent).toContain("file_path");
+  });
+
   it("renders git diff style comparison for Edit tool calls", async () => {
     const editItem: ProcessItem = {
       type: "tool",
@@ -207,5 +215,32 @@ describe("ProcessDisclosure thinking expansion", () => {
       header!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(headerExpanded()).toBe(false);
+  });
+
+  it("keeps the row open when its thinking settles in detailed mode", async () => {
+    // The real flow: thinking streams, then the first tool call settles the
+    // thinking row (settleLiveRows) and joins the same process run. The
+    // default fold-on-settle would hide the tool call the mode is meant to
+    // show, so detailed display suppresses it.
+    await render([{ type: "thinking", text: "先分析需求", live: true }], {
+      turnLive: true,
+      detailedDisplay: true,
+    });
+    expect(headerExpanded()).toBe(true);
+
+    await render(
+      [
+        { type: "thinking", text: "先分析需求" },
+        {
+          type: "tool",
+          text: "Read",
+          path: "src/a.ts",
+          args: { file_path: "src/a.ts", offset: 1, limit: 40 },
+        },
+      ],
+      { turnLive: true, detailedDisplay: true },
+    );
+    expect(headerExpanded()).toBe(true);
+    expect(container.querySelector("pre")?.textContent).toContain("file_path");
   });
 });

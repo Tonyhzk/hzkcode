@@ -120,7 +120,10 @@ const FrozenStepRow = memo(function FrozenStepRow({
 }) {
   const reduceRef = useRef(!play);
   const { t } = useTranslation();
-  const [open, setOpen] = useState(detailedDisplay);
+  // null = follow the display mode (open in detailed, folded in concise);
+  // a click pins this row's own choice and survives mode switches.
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const open = manualOpen ?? detailedDisplay;
   const hasPayload = args != null || result != null;
   const fileChip = fileChipFor(path);
   const step = {
@@ -146,7 +149,7 @@ const FrozenStepRow = memo(function FrozenStepRow({
             aria-label={open ? t("chat.toolCallCollapse") : t("chat.toolCallExpand")}
             onClick={(e) => {
               e.stopPropagation();
-              setOpen((v) => !v);
+              setManualOpen(!open);
             }}
             className="flex cursor-pointer items-center gap-0.5 text-caption-1-regular text-text-tertiary transition-colors hover:text-text-secondary"
           >
@@ -228,16 +231,17 @@ type ExpansionProps = { auto: boolean; live: boolean; thinking: boolean };
  *  and current prop snapshot plus the user's override flag, decide the next
  *  expanded/overridden pair. Automation opens a row while its thinking is
  *  streaming and folds it the moment that thinking settles — unless
- *  `thinkingAutoCollapse` is off (设置 → 通用 → 行为), in which case the row
- *  stays open so the timeline does not jump shut. A superseded or
- *  turn-settled row folds either way, until the user's own click takes
- *  over. */
+ *  `thinkingAutoCollapse` is off (设置 → 通用 → 行为), or the detailed
+ *  display is on, where a settled thinking row must keep its tool calls
+ *  visible. A superseded or turn-settled row folds either way, until the
+ *  user's own click takes over. */
 function expansionTransition(
   prev: ExpansionProps,
   next: ExpansionProps,
   expanded: boolean,
   overridden: boolean,
   thinkingAutoCollapse: boolean,
+  detailedDisplay: boolean,
 ): { expanded: boolean; overridden: boolean } {
   if (next.auto && !prev.auto) {
     // Became the latest row: open it and hand control back to automation.
@@ -248,7 +252,13 @@ function expansionTransition(
     // calls): show it again unless the user folded the row on purpose.
     return { expanded: true, overridden };
   }
-  if (thinkingAutoCollapse && !next.thinking && prev.thinking && !overridden) {
+  if (
+    thinkingAutoCollapse &&
+    !detailedDisplay &&
+    !next.thinking &&
+    prev.thinking &&
+    !overridden
+  ) {
     // The thinking settled: fold immediately — expanded-on-demand shows
     // the full text afterwards. A deliberate user click wins: it keeps
     // its chosen state and stays sticky across thinking resume cycles.
@@ -272,6 +282,7 @@ function useProcessExpansion(
   turnLive: boolean,
   hasLiveThinking: boolean,
   thinkingAutoCollapse: boolean,
+  detailedDisplay: boolean,
 ) {
   const [expanded, setExpanded] = useState(autoExpand);
   // Once the user clicks the header, their choice wins over the auto
@@ -284,7 +295,14 @@ function useProcessExpansion(
   const next = { auto: autoExpand, live: turnLive, thinking: hasLiveThinking };
   if (prev.auto !== next.auto || prev.live !== next.live || prev.thinking !== next.thinking) {
     setPrev(next);
-    const settled = expansionTransition(prev, next, expanded, overridden, thinkingAutoCollapse);
+    const settled = expansionTransition(
+      prev,
+      next,
+      expanded,
+      overridden,
+      thinkingAutoCollapse,
+      detailedDisplay,
+    );
     // Setting state to its current value bails out without a re-render, so
     // the no-op transitions are free.
     setOverridden(settled.overridden);
@@ -402,7 +420,13 @@ export const ProcessDisclosure = memo(function ProcessDisclosure({
   const { t } = useTranslation();
   const sections = useMemo(() => groupProcessSections(items), [items]);
   const hasLiveThinking = sections.some((s) => s.type === "thinking" && s.live);
-  const { expanded, toggleExpanded } = useProcessExpansion(autoExpand, turnLive, hasLiveThinking, thinkingAutoCollapse);
+  const { expanded, toggleExpanded } = useProcessExpansion(
+    autoExpand,
+    turnLive,
+    hasLiveThinking,
+    thinkingAutoCollapse,
+    detailedDisplay,
+  );
   const reduceMotion = useReducedMotion() ?? false;
   // Mark after paint, not at animation complete: a virtualizer remount
   // mid-entrance must skip the replay. New keys still play on this first
