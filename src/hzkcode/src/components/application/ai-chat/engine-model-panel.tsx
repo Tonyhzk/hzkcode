@@ -131,7 +131,7 @@ function ModelRow({
         <span className="truncate text-body-medium whitespace-nowrap text-text-primary">
           {option.label}
         </span>
-        {/* CLI /model-menu style subtitle ("Custom Opus model"); absent
+        {/* CLI /model-menu style subtitle ("Custom High model"); absent
             for plain catalog rows. */}
         {option.description && (
           <span className="truncate text-body-2-regular whitespace-nowrap text-text-secondary">
@@ -279,11 +279,11 @@ function ModelGroupList({
  *  ModelGroupList: provider sections layer the list whenever the engine's
  *  catalog mixes sources (OMP serving several relays) — including while
  *  filtering, so the results keep naming their origin instead of collapsing
- *  into identical rows. Pinning the active row to the top would tear it out
- *  of its section, so a grouped list keeps the catalog order and marks the
- *  pick in place; only a flat single-source list reorders to surface the
- *  pick. The section holding the current pick leads so the selection is
- *  never scrolled out of view; within sections the catalog order stands. */
+ *  into identical rows. Catalog order always stands: a flat list keeps its
+ *  own order (the effort tiers read High → Mid → Low, never reshuffled
+ *  around the current pick), and a grouped list marks the pick in place
+ *  while the section holding it leads, so the selection is never scrolled
+ *  out of view. */
 function useOrderedModelGroups(
   models: ModelOption[],
   query: string,
@@ -304,11 +304,7 @@ function useOrderedModelGroups(
       );
       return { groups: ordered, empty: filtered.length === 0 };
     }
-    const flat = [...filtered].sort(
-      (a, b) =>
-        Number(b.id === selectedModelId) - Number(a.id === selectedModelId),
-    );
-    return { groups: [{ key: "", rows: flat }], empty: flat.length === 0 };
+    return { groups: [{ key: "", rows: filtered }], empty: filtered.length === 0 };
   }, [models, query, selectedModelId]);
 }
 

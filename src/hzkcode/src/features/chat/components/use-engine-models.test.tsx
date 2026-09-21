@@ -201,8 +201,8 @@ describe("useEngineModels tier display names", () => {
     const byId = new Map(latest.modelsByEngine.claude.map((m) => [m.id, m]));
     // Mapped tiers carry the "[tier]" tag so the rows stay tellable apart
     // even when two tiers resolve to the same model.
-    expect(byId.get("opus")?.label).toBe("[opus]deepseek-v4-pro[1m]");
-    expect(byId.get("sonnet")?.label).toBe("[sonnet]deepseek-v4.1-flash[1m]");
+    expect(byId.get("opus")?.label).toBe("[High]deepseek-v4-pro[1m]");
+    expect(byId.get("sonnet")?.label).toBe("[Mid]deepseek-v4.1-flash[1m]");
     // The catalog's built-in-model description would contradict the mapped
     // name, so it is dropped for mapped tiers only.
     expect(byId.get("sonnet")?.description).toBeUndefined();
@@ -256,7 +256,7 @@ describe("useEngineModels tier display names", () => {
     } as never);
     await show([engineInfo("claude", true)]);
     const sonnet = latest.modelsByEngine.claude.find((m) => m.id === "sonnet");
-    expect(sonnet?.label).toBe("[sonnet]glm-5.2[1m]");
+    expect(sonnet?.label).toBe("[Mid]glm-5.2[1m]");
   });
 });
 

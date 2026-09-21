@@ -64,6 +64,15 @@ const TIER_ENV_KEYS: Record<string, string> = {
   haiku: "HZKCODE_DEFAULT_LOW_MODEL",
 };
 
+/** Alias → the tier name the UI shows. The app speaks High/Mid/Low, matching
+ *  the env variables; the CLI's own aliases (what --model accepts) stay
+ *  opus/sonnet/haiku. */
+const TIER_LABELS: Record<string, string> = {
+  opus: "High",
+  sonnet: "Mid",
+  haiku: "Low",
+};
+
 /** Alias → configured model id of the channel (settingsConfig.env first,
  *  then the flat env shape — the same order providerModel reads). The
  *  "default" alias stands for the explicit default model, or the high tier
@@ -228,8 +237,8 @@ export function useEngineModels(
       result[engine.id] = known.map((m) => {
         const entry = byId.get(m);
         // A capability alias displays "[tier]model" — the tier tag plus the
-        // model the active channel maps it to ("[sonnet]deepseek-v4.1-flash[1m]"),
-        // never just "Sonnet"; the tier tag is how the user tells the tiers
+        // model the active channel maps it to ("[Mid]deepseek-v4.1-flash[1m]"),
+        // never just the alias; the tier tag is how the user tells the tiers
         // apart when they resolve to the same model. The default row is an
         // internal fallback (hidden from the list), so it shows the bare
         // model name without a tag. The catalog's description (the alias's
@@ -237,7 +246,7 @@ export function useEngineModels(
         const tierModel = tierModels[m];
         const label =
           tierModel && m !== "default"
-            ? `[${m}]${tierModel}`
+            ? `[${TIER_LABELS[m] ?? m}]${tierModel}`
             : (tierModel ?? entry?.name ?? m);
         return {
           id: m,

@@ -123,14 +123,15 @@ fn claude_config_dir() -> PathBuf {
 }
 
 /// env keys that remap a built-in alias family to a custom model id,
-/// mirroring the CLI's own /model menu ("Custom Opus model" rows). The CLI
+/// mirroring the CLI's own /model menu ("Custom High model" rows). The CLI
 /// names the three capability tiers high/mid/low — opus, sonnet and haiku
-/// resolve through them.
+/// resolve through them, but the app labels them by the tier name it uses
+/// everywhere else (the env variables).
 const FAMILY_ENV_KEYS: &[(&str, &str, &str)] = &[
     // (alias family, env key, display name)
-    ("opus", "HZKCODE_DEFAULT_HIGH_MODEL", "Opus"),
-    ("sonnet", "HZKCODE_DEFAULT_MID_MODEL", "Sonnet"),
-    ("haiku", "HZKCODE_DEFAULT_LOW_MODEL", "Haiku"),
+    ("opus", "HZKCODE_DEFAULT_HIGH_MODEL", "High"),
+    ("sonnet", "HZKCODE_DEFAULT_MID_MODEL", "Mid"),
+    ("haiku", "HZKCODE_DEFAULT_LOW_MODEL", "Low"),
 ];
 
 /// The CLI's model configuration from ~/.hzkcode/settings.json, merged per
@@ -393,7 +394,7 @@ mod tests {
         let by_id = |id: &str| models.iter().find(|m| m.id == id).unwrap();
         let opus = by_id("opus");
         assert_eq!(opus.name.as_deref(), Some("grok-4.5"));
-        assert_eq!(opus.description.as_deref(), Some("Custom Opus model"));
+        assert_eq!(opus.description.as_deref(), Some("Custom High model"));
         let default = by_id("default");
         assert_eq!(default.name.as_deref(), Some("Default"));
         assert_eq!(

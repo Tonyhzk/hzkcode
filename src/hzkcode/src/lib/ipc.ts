@@ -143,7 +143,7 @@ export interface EngineModel {
   id: string;
   /** Display name when the catalog carries one. */
   name?: string | null;
-  /** Secondary line under the name (e.g. "Custom Opus model"). */
+  /** Secondary line under the name (e.g. "Custom High model"). */
   description?: string | null;
   provider: string;
   /** Context window tokens when the catalog reports one. */

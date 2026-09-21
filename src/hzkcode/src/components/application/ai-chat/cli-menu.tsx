@@ -49,7 +49,7 @@ export interface ModelOption {
   /** "" selects the CLI/provider default model. */
   id: string;
   label: string;
-  /** Secondary line under the label (e.g. "Custom Opus model"). */
+  /** Secondary line under the label (e.g. "Custom High model"). */
   description?: string;
   /** Catalog provider ("kimi-code"); derived from the "provider/model" id
    *  when the catalog entry is missing. Two or more distinct providers turn

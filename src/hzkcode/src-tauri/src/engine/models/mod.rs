@@ -28,7 +28,7 @@ pub struct EngineModel {
     pub id: String,
     /// Display name when the catalog carries one (JSON probe only).
     pub name: Option<String>,
-    /// Secondary line under the name (e.g. "Custom Opus model"), mirroring
+    /// Secondary line under the name (e.g. "Custom High model"), mirroring
     /// the CLI's own /model menu descriptions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
