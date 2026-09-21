@@ -5,9 +5,9 @@
 //   swiftc -O 1_Script/mac-window-shot.swift -o 1_Script/mac-window-shot
 //
 // 用法：
-//   mac-window-shot list [过滤词]                  # 列出当前屏幕上的窗口
-//   mac-window-shot shot <匹配词> <输出.png>       # 按窗口名匹配（取面积最大者）
-//   mac-window-shot shot --id <窗口ID> <输出.png>  # 按窗口 ID 截图
+//   mac-window-shot list [过滤词] [--all]              # 列出窗口（--all 含其他桌面/最小化）
+//   mac-window-shot shot <匹配词> <输出.png> [--all]   # 按窗口名匹配（取面积最大者）
+//   mac-window-shot shot --id <窗口ID> <输出.png>      # 按窗口 ID 截图
 //
 // 说明：截图走系统 screencapture（-l 指定窗口、-o 去阴影、-x 静音），
 // 需要「屏幕录制」权限（终端所在应用已授权即可）。
@@ -30,8 +30,11 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
-func onScreenWindows() -> [WindowInfo] {
-    let options = CGWindowListOption([.optionOnScreenOnly, .excludeDesktopElements])
+func listWindows(all: Bool) -> [WindowInfo] {
+    var options: CGWindowListOption = [.excludeDesktopElements]
+    if !all {
+        options.insert(.optionOnScreenOnly)
+    }
     guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
         return []
     }
@@ -72,12 +75,14 @@ func capture(_ window: WindowInfo, to path: String) {
 }
 
 let args = Array(CommandLine.arguments.dropFirst())
-let command = args.first ?? "list"
+let wantsAll = args.contains("--all")
+let positional = args.filter { $0 != "--all" }
+let command = positional.first ?? "list"
 
 switch command {
 case "list":
-    let filter = args.count > 1 ? args[1].lowercased() : nil
-    for window in onScreenWindows() {
+    let filter = positional.count > 1 ? positional[1].lowercased() : nil
+    for window in listWindows(all: wantsAll) {
         if let filter {
             let haystack = (window.owner + " " + window.title).lowercased()
             if !haystack.contains(filter) { continue }
@@ -87,31 +92,31 @@ case "list":
         )
     }
 case "shot":
-    let windows = onScreenWindows()
+    let windows = listWindows(all: wantsAll)
     let target: WindowInfo?
     let output: String
-    if args.count >= 2, args[1] == "--id" {
-        guard args.count >= 4, let id = Int(args[2]) else {
+    if positional.count >= 2, positional[1] == "--id" {
+        guard positional.count >= 4, let id = Int(positional[2]) else {
             fail("用法：mac-window-shot shot --id <窗口ID> <输出.png>")
         }
         target = windows.first { $0.id == id }
-        output = args[3]
+        output = positional[3]
     } else {
-        guard args.count >= 3 else {
+        guard positional.count >= 3 else {
             fail("用法：mac-window-shot shot <匹配词> <输出.png>")
         }
-        let match = args[1].lowercased()
+        let match = positional[1].lowercased()
         let matches = windows.filter {
             ($0.owner + " " + $0.title).lowercased().contains(match)
         }
         // 多个候选时取面积最大的窗口（通常是主窗口）。
         target = matches.max { $0.width * $0.height < $1.width * $1.height }
-        output = args[2]
+        output = positional[2]
     }
     guard let window = target else {
-        fail("没有匹配的窗口（先用 list 查看）")
+        fail("没有匹配的窗口（先用 list 查看；其他桌面的窗口加 --all）")
     }
     capture(window, to: output)
 default:
-    fail("用法：mac-window-shot list [过滤词] | shot <匹配词> <输出.png> | shot --id <窗口ID> <输出.png>")
+    fail("用法：mac-window-shot list [过滤词] [--all] | shot <匹配词> <输出.png> [--all] | shot --id <窗口ID> <输出.png>")
 }
