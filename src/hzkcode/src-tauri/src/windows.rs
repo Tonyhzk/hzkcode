@@ -15,7 +15,7 @@ fn next_window_id() -> u64 {
 }
 
 /// Percent-encode a query value, keeping the RFC 3986 unreserved set.
-fn encode(value: &str) -> String {
+pub(crate) fn encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {
@@ -57,6 +57,25 @@ fn focus_existing(app: &AppHandle, prefix: &str, key: &str, value: &str) -> bool
     false
 }
 
+/// Clamp a logical drop point so a `width × height` window whose top-left is
+/// placed there stays inside the monitor the point falls on.
+fn clamp_to_monitor(app: &AppHandle, x: f64, y: f64, width: f64, height: f64) -> (f64, f64) {
+    let monitors = app.available_monitors().unwrap_or_default();
+    let hit = monitors.iter().find(|monitor| {
+        let scale = monitor.scale_factor();
+        let origin = monitor.position().to_logical::<f64>(scale);
+        let size = monitor.size().to_logical::<f64>(scale);
+        x >= origin.x && x < origin.x + size.width && y >= origin.y && y < origin.y + size.height
+    });
+    let Some(monitor) = hit else { return (x, y) };
+    let scale = monitor.scale_factor();
+    let origin = monitor.position().to_logical::<f64>(scale);
+    let size = monitor.size().to_logical::<f64>(scale);
+    let max_x = (origin.x + size.width - width).max(origin.x);
+    let max_y = (origin.y + size.height - height).max(origin.y);
+    (x.clamp(origin.x, max_x), y.clamp(origin.y, max_y))
+}
+
 /// Build an app window matching the main window's chrome: macOS keeps the
 /// Overlay titlebar with hidden title, Windows optionally draws the mac-like
 /// captionless frame (setting: 标题栏样式), every other platform is native.
@@ -67,11 +86,23 @@ pub fn build_window(
     title: &str,
     width: f64,
     height: f64,
+    position: Option<(f64, f64)>,
 ) -> Result<WebviewWindow, String> {
     let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
         .title(title)
         .inner_size(width, height)
-        .min_inner_size(900.0, 600.0);
+        .min_inner_size(900.0, 600.0)
+        // Tauri 默认接管 webview 的拖放（用于自己的文件拖入事件），会吞掉
+        // 前端的 HTML5 拖拽事件（WKWebView 下 dragstart/dragover 都不派发）。
+        // 编辑器标签用 HTML5 拖拽实现"系统拖拽图像跟随鼠标出窗口"，且应用
+        // 不使用文件拖入，故关闭该接管。
+        .disable_drag_drop_handler();
+    // 拖出标签的窗口落在松手处（左上角对齐、钳制在所在显示器内），其余
+    // 窗口交给系统默认位置。
+    if let Some((x, y)) = position {
+        let (x, y) = clamp_to_monitor(app, x, y, width, height);
+        builder = builder.position(x, y);
+    }
     #[cfg(target_os = "macos")]
     {
         builder = builder
@@ -110,20 +141,27 @@ pub async fn open_chat_window(
         ("workspacePath", &workspace_path),
     ]);
     let label = format!("{CHAT_WINDOW_PREFIX}{}", next_window_id());
-    build_window(&app, &label, url, "HZK CODE", 1180.0, 820.0)?;
+    build_window(&app, &label, url, "HZK CODE", 1180.0, 820.0, None)?;
     Ok(())
 }
 
 /// Open one file in a standalone editor window. An existing window for the
-/// same file is focused instead.
+/// same file is focused instead. `position` is the logical screen point the
+/// tab was dropped at; the new window opens with its top-left there (clamped
+/// to the monitor the point falls on).
 #[tauri::command]
-pub async fn open_editor_window(app: AppHandle, file_path: String) -> Result<(), String> {
+pub async fn open_editor_window(
+    app: AppHandle,
+    file_path: String,
+    position: Option<[f64; 2]>,
+) -> Result<(), String> {
     if focus_existing(&app, EDITOR_WINDOW_PREFIX, "filePath", &file_path) {
         return Ok(());
     }
     let url = window_url(&[("ctx", "editor"), ("filePath", &file_path)]);
     let label = format!("{EDITOR_WINDOW_PREFIX}{}", next_window_id());
-    build_window(&app, &label, url, "HZK CODE", 960.0, 720.0)?;
+    let position = position.map(|[x, y]| (x, y));
+    build_window(&app, &label, url, "HZK CODE", 960.0, 720.0, position)?;
     Ok(())
 }
 

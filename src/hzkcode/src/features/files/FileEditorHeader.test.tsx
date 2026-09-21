@@ -8,6 +8,7 @@ import "@/lib/i18n";
 const env = vi.hoisted(() => ({
   mac: true,
   kind: "editor" as "main" | "editor",
+  customControls: false,
 }));
 
 vi.mock("@/lib/platform", () => ({
@@ -26,11 +27,22 @@ vi.mock("@/lib/window-context", () => ({
   },
 }));
 
+vi.mock("@/features/settings/titlebar", () => ({
+  useTitlebarStyle: () => "native",
+  needsWindowControls: () => env.customControls,
+}));
+
+// The real buttons call the Tauri window API; the header's decision to mount
+// them is what this file tests.
+vi.mock("@/components/application/window-controls", () => ({
+  WindowControls: () => <div data-testid="window-controls" />,
+}));
+
 import { FileEditorHeader } from "./FileEditorHeader";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("FileEditorHeader traffic-light inset", () => {
+describe("FileEditorHeader window chrome", () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -56,6 +68,7 @@ describe("FileEditorHeader traffic-light inset", () => {
   beforeEach(() => {
     env.mac = true;
     env.kind = "editor";
+    env.customControls = false;
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -84,5 +97,19 @@ describe("FileEditorHeader traffic-light inset", () => {
     const el = render();
     expect(el.className).toContain("px-3");
     expect(el.className).not.toContain("pl-[80px]");
+  });
+
+  it("draws the custom window buttons in a standalone window (Windows 仿 mac)", () => {
+    env.mac = false;
+    env.customControls = true;
+    const el = render();
+    expect(el.querySelector('[data-testid="window-controls"]')).not.toBeNull();
+  });
+
+  it("leaves the dock's header without window buttons", () => {
+    env.kind = "main";
+    env.customControls = true;
+    const el = render();
+    expect(el.querySelector('[data-testid="window-controls"]')).toBeNull();
   });
 });

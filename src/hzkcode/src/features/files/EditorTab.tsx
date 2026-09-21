@@ -1,6 +1,6 @@
 import X from "lucide-react/dist/esm/icons/x";
 import { useTranslation } from "react-i18next";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { DragEvent as ReactDragEvent } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cx } from "@/utils/cx";
 
@@ -41,7 +41,9 @@ export function EditorTabFace({ tab }: { tab: EditorTabItem }) {
 
 /** One tab of the file-editor dock: icon, dirty dot, label, drop indicator,
  *  close button. Selection lives on the tab; the close button sits beside it
- *  so no focusable control nests inside the tab. */
+ *  so no focusable control nests inside the tab. The tab itself is the drag
+ *  handle — HTML5 drag-and-drop with a transparent system image; the visible
+ *  feedback is the dock's own ghost card. */
 export function EditorTab({
   tab,
   isActive,
@@ -51,12 +53,13 @@ export function EditorTab({
   onShowMenu,
   onSelect,
   onClose,
-  onPointerDown,
+  onDragStart,
+  onDragEnd,
   suppressClickRef,
 }: {
   tab: EditorTabItem;
   isActive: boolean;
-  /** This tab is the one being drag-reordered. */
+  /** This tab is the one being dragged. */
   dragged: boolean;
   /** Drop indicator side, null when this tab is not the drop target. */
   dropBefore: boolean | null;
@@ -65,7 +68,8 @@ export function EditorTab({
   onShowMenu?: (position: { x: number; y: number }) => void;
   onSelect: (key: string) => void;
   onClose: (key: string) => void;
-  onPointerDown?: (e: ReactPointerEvent<HTMLDivElement>) => void;
+  onDragStart?: (e: ReactDragEvent<HTMLDivElement>) => void;
+  onDragEnd?: (e: ReactDragEvent<HTMLDivElement>) => void;
   suppressClickRef: React.MutableRefObject<boolean>;
 }) {
   return (
@@ -73,6 +77,9 @@ export function EditorTab({
       data-tab-key={tab.key}
       role="presentation"
       title={tab.title ?? tab.label}
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onContextMenu={(e) => {
         if (!onShowMenu) return;
         e.preventDefault();
@@ -107,7 +114,6 @@ export function EditorTab({
         onAuxClick={(e) => {
           if (e.button === 1) onClose(tab.key);
         }}
-        onPointerDown={onPointerDown}
         className="flex min-w-0 flex-1 cursor-default items-center gap-1.5"
       >
         <EditorTabFace tab={tab} />

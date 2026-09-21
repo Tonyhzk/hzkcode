@@ -662,9 +662,23 @@ export const ipc = {
   /** Open a conversation in its own app window (multi-window). */
   openChatWindow: (engine: string, sessionId: string, workspacePath: string) =>
     invoke<void>("open_chat_window", { engine, sessionId, workspacePath }),
-  /** Open a file in a standalone editor window. */
-  openEditorWindow: (filePath: string) =>
-    invoke<void>("open_editor_window", { filePath }),
+  /** Open a file in a standalone editor window, optionally placing it at the
+   *  logical screen point the tab was dropped at. */
+  openEditorWindow: (filePath: string, position: { x: number; y: number } | null) =>
+    invoke<void>("open_editor_window", {
+      filePath,
+      position: position ? [position.x, position.y] : null,
+    }),
+  /** Drag ghost window: a native card following the cursor while an editor
+   *  tab is dragged outside the main window. */
+  showDragGhost: (args: {
+    label: string;
+    width: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+  }) => invoke<void>("show_drag_ghost", args),
+  hideDragGhost: () => invoke<void>("hide_drag_ghost"),
   // engine
   sendMessage: (args: {
     /** Route events before the send invocation resolves (older callers may omit). */

@@ -123,3 +123,11 @@ export function listenCliUpdateProgress(
 ): Promise<UnlistenFn> {
   return listen<CliUpdateProgress[]>("cli://update-progress", (e) => cb(e.payload));
 }
+
+/** A standalone editor window closed; the main window takes its file back
+ *  into the dock (the tab left it when it was dragged out into that window). */
+export function listenEditorWindowClosed(
+  cb: (filePath: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>("editor://window-closed", (e) => cb(e.payload));
+}

@@ -254,13 +254,16 @@ export default function ChatPage() {
   const handleDirtyClose = useCallback((path: string) => {
     setDialog({ kind: "closeFile", path });
   }, []);
-  const handleDragOut = useCallback((path: string) => {
-    if (useFilesStore.getState().dirtyPaths[path]) {
-      setDialog({ kind: "dragOutFile", path });
-    } else {
-      void moveFileToNewWindow(path);
-    }
-  }, []);
+  const handleDragOut = useCallback(
+    (path: string, screenPosition: { x: number; y: number }) => {
+      if (useFilesStore.getState().dirtyPaths[path]) {
+        setDialog({ kind: "dragOutFile", path, screenPosition });
+      } else {
+        void moveFileToNewWindow(path, screenPosition);
+      }
+    },
+    [],
+  );
 
   return (
     <div

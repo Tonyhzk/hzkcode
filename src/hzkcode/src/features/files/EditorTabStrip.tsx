@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { KeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import type { DragEvent as ReactDragEvent, KeyboardEvent, RefObject } from "react";
 import { EditorTab, type EditorTabItem } from "./EditorTab";
 import { EditorTabContextMenu } from "./EditorTabContextMenu";
 
@@ -72,11 +72,12 @@ export function EditorTabStrip({
   onClose,
   onCloseAll,
   onCloseInactive,
-  onTabPointerDown,
+  onTabDragStart,
+  onTabDragEnd,
 }: {
   tabs: EditorTabItem[];
   activeKey: string | null;
-  /** Key of the tab currently in flight (ghost up), null when idle. */
+  /** Key of the tab currently being dragged, null when idle. */
   draggedKey: string | null;
   dropTarget: { draggedKey: string; key: string; before: boolean } | null;
   suppressClickRef: React.MutableRefObject<boolean>;
@@ -86,7 +87,8 @@ export function EditorTabStrip({
   onCloseAll?: () => void;
   /** Tab right-click menu entry: close every tab but the one in view. */
   onCloseInactive?: () => void;
-  onTabPointerDown: (key: string) => (e: ReactPointerEvent<HTMLDivElement>) => void;
+  onTabDragStart: (key: string) => (e: ReactDragEvent<HTMLDivElement>) => void;
+  onTabDragEnd: (key: string) => (e: ReactDragEvent<HTMLDivElement>) => void;
 }) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -113,7 +115,8 @@ export function EditorTabStrip({
               onShowMenu={onCloseAll || onCloseInactive ? setMenu : undefined}
               onSelect={onSelect}
               onClose={onClose}
-              onPointerDown={onTabPointerDown(tab.key)}
+              onDragStart={onTabDragStart(tab.key)}
+              onDragEnd={onTabDragEnd(tab.key)}
               suppressClickRef={suppressClickRef}
             />
           ))}

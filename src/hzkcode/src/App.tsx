@@ -8,11 +8,15 @@ import { bindSystemThemeSync, bindThemeChangePersistence } from "@/features/sett
 import { UpdateToast } from "@/features/update/UpdateToast";
 import { useUpdateStore } from "@/features/update/store";
 import { EditorWindow } from "@/features/files/EditorWindow";
+import { DragGhostCard } from "@/features/files/DragGhostCard";
+import { useFilesStore } from "@/features/files/store";
 import { GrantAccessDialogHost } from "@/components/dialogs";
 import { startPluginSystem } from "@/features/plugins";
 import { CloseConfirmDialogHost } from "@/components/dialogs";
 import { installCloseConfirm } from "@/lib/close-confirm";
 import { installSelectionGuard } from "@/lib/selection-guard";
+import { listenEditorWindowClosed } from "@/lib/events";
+import { claimMovedOutEditorTab } from "@/lib/window-actions";
 import { windowContext } from "@/lib/window-context";
 import { startShortcutRuntime } from "@/features/shortcuts/runtime";
 import { ShortcutsGuideModal } from "@/features/shortcuts/ShortcutsGuideModal";
@@ -34,37 +38,64 @@ export default function App() {
   // no settings chunk, plugin host, command palette, or update toast.
   const editorFilePath =
     windowContext.kind === "editor" ? windowContext.filePath : null;
+  // The drag-ghost window (?ctx=drag-ghost) is a bare card: none of the
+  // startup work below applies to it.
+  const isGhostWindow = windowContext.kind === "drag-ghost";
   // Prefetch the settings chunk once startup work has settled.
   useEffect(() => {
-    if (editorFilePath) return;
+    if (editorFilePath || isGhostWindow) return;
     const id = setTimeout(() => void loadSettingsPage(), 2000);
     return () => clearTimeout(id);
-  }, [editorFilePath]);
+  }, [editorFilePath, isGhostWindow]);
   // Plugin system bootstrap: hardening + event bridge + builtin/installed
   // plugin activation. Failures are logged, never fatal to the host UI.
   useEffect(() => {
-    if (editorFilePath) return;
+    if (editorFilePath || isGhostWindow) return;
     return startPluginSystem();
-  }, [editorFilePath]);
+  }, [editorFilePath, isGhostWindow]);
   // Intercept the window close button so quitting the main window needs a
   // confirmation (no-op in extra windows and in web-access mode).
   useEffect(() => {
+    if (isGhostWindow) return;
     return installCloseConfirm();
-  }, []);
+  }, [isGhostWindow]);
   // Desktop-grade selection: a press on chrome (tabs, dividers, empty space)
   // turns the window non-selectable until release, so dragging never smears
   // a selection across the pane the way a web page does.
   useEffect(() => installSelectionGuard(), []);
+  // An editor window closed: hand its file back to the window that moved the
+  // tab out (the close is broadcast to every window; only the source window
+  // claims it).
+  useEffect(() => {
+    if (editorFilePath || isGhostWindow) return;
+    const unlisten = listenEditorWindowClosed((filePath) => {
+      if (claimMovedOutEditorTab(filePath)) {
+        void useFilesStore.getState().openFile(filePath);
+      }
+    });
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, [editorFilePath, isGhostWindow]);
   // Global keyboard-shortcut runtime: one dispatcher handler binding the
   // configured keys to registered action handlers / palette commands.
-  useEffect(() => startShortcutRuntime(), []);
+  useEffect(() => {
+    if (isGhostWindow) return;
+    return startShortcutRuntime();
+  }, [isGhostWindow]);
   // Background update check after startup settles; dev builds skip it so
   // `tauri dev` doesn't nag about the published release being newer.
   useEffect(() => {
-    if (editorFilePath || import.meta.env.DEV) return;
+    if (editorFilePath || isGhostWindow || import.meta.env.DEV) return;
     const id = setTimeout(() => void useUpdateStore.getState().checkForUpdates(), 3000);
     return () => clearTimeout(id);
-  }, [editorFilePath]);
+  }, [editorFilePath, isGhostWindow]);
+
+  // Drag ghost window (?ctx=drag-ghost): a bare card the native window shows
+  // under the cursor while an editor tab is dragged outside the main window.
+  if (windowContext.kind === "drag-ghost") {
+    return <DragGhostCard label={windowContext.label} />;
+  }
 
   if (editorFilePath) {
     return (

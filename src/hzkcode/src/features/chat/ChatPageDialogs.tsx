@@ -14,7 +14,7 @@ export type ChatPageDialog =
   | { kind: "removeWorkspace"; workspaceId: string }
   | { kind: "workspaceAlias"; workspaceId: string }
   | { kind: "closeFile"; path: string }
-  | { kind: "dragOutFile"; path: string };
+  | { kind: "dragOutFile"; path: string; screenPosition: { x: number; y: number } };
 
 /** Session rename/delete, dirty-file close, and workspace removal
  * confirmations, rendered above the chat page. */
@@ -80,7 +80,7 @@ export function ChatPageDialogs({
           message={t("files.confirmDragOut", { name: fileName(dialog.path) })}
           onConfirm={() => {
             onClose();
-            void moveFileToNewWindow(dialog.path);
+            void moveFileToNewWindow(dialog.path, dialog.screenPosition);
           }}
           onCancel={onClose}
         />

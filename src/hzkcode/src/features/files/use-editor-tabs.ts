@@ -21,7 +21,7 @@ export function useEditorTabs({
   onDragOut,
 }: {
   onDirtyClose: (path: string) => void;
-  onDragOut: (path: string) => void;
+  onDragOut: (path: string, screenPosition: { x: number; y: number }) => void;
 }) {
   const { openFiles, activeFilePath, dirtyPaths, activateFile, closeFile, moveOpenFile } =
     useFilesStore(
@@ -135,9 +135,9 @@ export function useEditorTabs({
   }, [activeKey, openFiles, dirtyPaths, closeFile, closeDiff, onDirtyClose]);
 
   const handleDragOut = useCallback(
-    (tabKey: string) => {
+    (tabKey: string, screenPosition: { x: number; y: number }) => {
       if (tabKey === DIFF_TAB_KEY || !tabKey.startsWith(FILE_TAB_PREFIX)) return;
-      onDragOut(tabKey.slice(FILE_TAB_PREFIX.length));
+      onDragOut(tabKey.slice(FILE_TAB_PREFIX.length), screenPosition);
     },
     [onDragOut],
   );

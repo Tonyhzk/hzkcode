@@ -34,8 +34,9 @@ export function EditorDock({
   onResizeStart: (e: React.PointerEvent) => void;
   /** Unsaved tab close confirmation (owned by the page's dialog host). */
   onDirtyClose: (path: string) => void;
-  /** Tab dragged out of the window; the page moves it to a new window. */
-  onDragOut: (path: string) => void;
+  /** Tab dragged out of the window; the page moves it to a new window at the
+   *  drop point. */
+  onDragOut: (path: string, screenPosition: { x: number; y: number }) => void;
 }) {
   const { t } = useTranslation();
   const {
@@ -53,11 +54,18 @@ export function EditorDock({
     diffStatus,
     closeDiff,
   } = useEditorTabs({ onDirtyClose, onDragOut });
-  const { dropTarget, dragOutActive, dragGhost, suppressClickRef, handleTabPointerDown } =
-    useEditorTabDrag({
-      onReorder: handleReorder,
-      onDragOut: handleDragOut,
-    });
+  const {
+    draggedKey,
+    dragGhost,
+    dropTarget,
+    dragOutActive,
+    suppressClickRef,
+    handleTabDragStart,
+    handleTabDragEnd,
+  } = useEditorTabDrag({
+    onReorder: handleReorder,
+    onDragOut: handleDragOut,
+  });
   const dragGhostTab = dragGhost
     ? tabItems.find((tab) => tab.key === dragGhost.key)
     : undefined;
@@ -105,14 +113,15 @@ export function EditorDock({
         <EditorTabStrip
           tabs={tabItems}
           activeKey={activeKey}
-          draggedKey={dragGhost?.key ?? null}
+          draggedKey={draggedKey}
           dropTarget={dropTarget}
           suppressClickRef={suppressClickRef}
           onSelect={handleSelect}
           onClose={handleClose}
           onCloseAll={handleCloseAll}
           onCloseInactive={handleCloseInactive}
-          onTabPointerDown={handleTabPointerDown}
+          onTabDragStart={handleTabDragStart}
+          onTabDragEnd={handleTabDragEnd}
         />
         <div
           id="editor-tabpanel"
@@ -162,13 +171,15 @@ export function EditorDock({
           )}
         </div>
       </div>
-      {/* Ghost card riding under the pointer during a tab drag; portalled to
-          the body so the dock's overflow-hidden can never clip it. */}
+      {/* Ghost card riding under the pointer during a tab drag: the system
+          drag image is transparent (to hide the platform's cancel
+          animation), so this is the visible feedback. Portalled to the body
+          so the dock's overflow-hidden can never clip it. */}
       {dragGhost && dragGhostTab
         ? createPortal(
             <div
               aria-hidden
-              className="pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-lg bg-background-secondary-default px-2.5 text-body-medium text-text-primary shadow-lg"
+              className="pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-lg border border-border-button-default bg-background-primary-default px-2.5 text-body-medium text-text-primary shadow-lg"
               style={{
                 left: dragGhost.x,
                 top: dragGhost.y,

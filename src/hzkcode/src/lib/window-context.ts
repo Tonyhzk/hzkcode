@@ -12,7 +12,8 @@ import { isWeb } from "./transport";
 export type WindowContext =
   | { kind: "main" }
   | { kind: "chat"; engine: string; sessionId: string; workspacePath: string }
-  | { kind: "editor"; filePath: string };
+  | { kind: "editor"; filePath: string }
+  | { kind: "drag-ghost"; label: string };
 
 export function parseWindowContext(search: string): WindowContext {
   const params = new URLSearchParams(search);
@@ -29,6 +30,9 @@ export function parseWindowContext(search: string): WindowContext {
   if (ctx === "editor") {
     const filePath = params.get("filePath");
     if (filePath) return { kind: "editor", filePath };
+  }
+  if (ctx === "drag-ghost") {
+    return { kind: "drag-ghost", label: params.get("label") ?? "" };
   }
   return { kind: "main" };
 }

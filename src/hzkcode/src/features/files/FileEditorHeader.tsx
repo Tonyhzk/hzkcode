@@ -4,6 +4,8 @@ import Eye from "lucide-react/dist/esm/icons/eye";
 import PencilLine from "lucide-react/dist/esm/icons/pencil-line";
 import Save from "lucide-react/dist/esm/icons/save";
 import { Button } from "@/components/base/buttons/button";
+import { WindowControls } from "@/components/application/window-controls";
+import { needsWindowControls, useTitlebarStyle } from "@/features/settings/titlebar";
 import { useWindowDragRegion } from "@/hooks/use-window-drag";
 import { IS_MAC, isWeb } from "@/lib/platform";
 import { windowContext } from "@/lib/window-context";
@@ -35,11 +37,15 @@ export function FileEditorHeader({
   // (and of the editor dock's top row); buttons keep their own behavior.
   const headerRef = useRef<HTMLDivElement>(null);
   useWindowDragRegion(headerRef);
+  const titlebarStyle = useTitlebarStyle();
   // A standalone editor window is a window of its own: on macOS the native
-  // traffic lights float over its top-left corner, so the file name must
-  // start clear of them. The dock's header (main / chat windows) keeps the
-  // normal inset — there the lights sit over the sidebar, not the editor.
-  const trafficLightInset = windowContext.kind === "editor" && IS_MAC && !isWeb;
+  // traffic lights float over its top-left corner (leave 80px), on Windows
+  // 仿 mac 模式 the three dots are drawn here — no sidebar or top bar carries
+  // them in this window. The dock's header (main / chat windows) stays as-is:
+  // there the window chrome lives on the sidebar, not the editor.
+  const standalone = windowContext.kind === "editor";
+  const customControls = standalone && needsWindowControls(titlebarStyle);
+  const trafficLightInset = standalone && IS_MAC && !isWeb;
 
   return (
     <div
@@ -49,6 +55,7 @@ export function FileEditorHeader({
         trafficLightInset ? "pl-[80px] pr-3" : "px-3",
       )}
     >
+      {customControls && <WindowControls className="mr-1" />}
       <span className="truncate text-body-medium text-text-primary" title={path}>
         {name}
       </span>

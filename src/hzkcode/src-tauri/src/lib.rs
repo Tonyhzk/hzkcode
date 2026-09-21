@@ -4,6 +4,7 @@ pub mod baidu_tongji;
 pub mod cli_lifecycle;
 pub mod config;
 pub mod db;
+pub mod drag_ghost;
 pub mod engine;
 pub mod event_sink;
 pub mod files;
@@ -27,7 +28,7 @@ pub mod web;
 pub mod windows;
 
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 pub struct AppState {
     pub db: Arc<db::Db>,
@@ -116,6 +117,7 @@ pub fn run() {
             app.manage(config::ConfigStore::default());
             app.manage(metrics::MetricsState::new());
             app.manage(baidu_tongji::BaiduTongjiState::load());
+            app.manage(drag_ghost::DragGhostState::default());
             // Keep the pairing key from lingering: while the switch is on, a
             // fresh code is minted every ten minutes and broadcast.
             {
@@ -173,11 +175,33 @@ pub fn run() {
                 "HZK CODE",
                 1400.0,
                 900.0,
+                None,
             )
             .expect("failed to create main window");
             Ok(())
         })
         .on_window_event(|window, event| {
+            // 独立编辑器窗口关闭：把文件还给来源窗口，标签回到编辑器区（拖出时
+            // 它从那里移走了）。CloseRequested 时窗口仍在，URL 里的 filePath
+            // 可读；Destroyed 时窗口已经没了。广播给所有窗口，各窗口按
+            // localStorage 里的拖出记录认领（会话窗口拖出的要还给会话窗口）。
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if window.label().starts_with(windows::EDITOR_WINDOW_PREFIX) {
+                    // 事件给的是 Window（不含 webview），URL 要从对应的
+                    // WebviewWindow 取；CloseRequested 时窗口尚未销毁。
+                    if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+                        if let Ok(url) = webview.url() {
+                            if let Some((_, file_path)) =
+                                url.query_pairs().find(|(key, _)| key == "filePath")
+                            {
+                                let _ = window
+                                    .app_handle()
+                                    .emit("editor://window-closed", file_path.into_owned());
+                            }
+                        }
+                    }
+                }
+            }
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(state) = window.try_state::<AppState>() {
                     // Multi-window: only the last window's destruction ends the
@@ -205,6 +229,9 @@ pub fn run() {
             settings::restart_app,
             windows::open_chat_window,
             windows::open_editor_window,
+            // 拖拽浮层窗口（跟随光标的标签卡片）
+            drag_ghost::show_drag_ghost,
+            drag_ghost::hide_drag_ghost,
             // config
             config::get_cli_config,
             config::upsert_provider,

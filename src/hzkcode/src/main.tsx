@@ -4,7 +4,14 @@ import App from "./App";
 import "./index.css";
 import i18n from "./lib/i18n";
 import { ipc } from "./lib/ipc";
+import { windowContext } from "./lib/window-context";
 import { applyTheme, THEME_STORAGE_KEY } from "./features/settings/theme";
+
+// The drag-ghost window must stay fully transparent so its rounded card shows
+// through — the default page background would otherwise fill it solid.
+if (windowContext.kind === "drag-ghost") {
+  document.documentElement.dataset.windowCtx = "drag-ghost";
+}
 
 // Apply the locally cached theme synchronously, before first paint, so the
 // window never flashes the wrong color scheme while settings load.

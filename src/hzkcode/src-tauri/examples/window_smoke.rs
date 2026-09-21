@@ -66,8 +66,16 @@ fn main() {
             println!("[window_smoke] opening {url}");
             // Label matches the `chat-*` capability grant so the window gets
             // the same permissions a real extra window has.
-            windows::build_window(app.handle(), "chat-smoke", url, "HZK CODE", 1100.0, 800.0)
-                .map_err(|error| error.to_string())?;
+            windows::build_window(
+                app.handle(),
+                "chat-smoke",
+                url,
+                "HZK CODE",
+                1100.0,
+                800.0,
+                None,
+            )
+            .map_err(|error| error.to_string())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

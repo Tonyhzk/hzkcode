@@ -320,35 +320,27 @@ describe("ChatPage four-column layout", () => {
       (el) => el.dataset.tabKey === "file:" + path,
     );
     expect(tab).toBeTruthy();
-    const inner = tab!.querySelector('[role="tab"]') as HTMLElement;
-    const rect = tab!.getBoundingClientRect();
+    // HTML5 drag-and-drop: dragstart on the tab, then dragend against the
+    // window edge (jsdom needs dataTransfer attached by hand).
+    const fireDrag = (type: string, init: MouseEventInit) => {
+      const e = new MouseEvent(type, { bubbles: true, ...init });
+      Object.defineProperty(e, "dataTransfer", {
+        value: {
+          effectAllowed: "none",
+          dropEffect: "none",
+          setData: () => {},
+          getData: () => "",
+          setDragImage: () => {},
+        },
+      });
+      return e;
+    };
     act(() => {
-      inner.dispatchEvent(
-        new MouseEvent("pointerdown", {
-          bubbles: true,
-          cancelable: true,
-          button: 0,
-          clientX: rect.left + 50,
-          clientY: rect.top + 14,
-        }),
-      );
+      tab!.dispatchEvent(fireDrag("dragstart", {}));
     });
     act(() => {
-      window.dispatchEvent(
-        new MouseEvent("pointermove", {
-          bubbles: true,
-          clientX: window.innerWidth - 2,
-          clientY: 300,
-        }),
-      );
-    });
-    act(() => {
-      window.dispatchEvent(
-        new MouseEvent("pointerup", {
-          bubbles: true,
-          clientX: window.innerWidth - 2,
-          clientY: 300,
-        }),
+      tab!.dispatchEvent(
+        fireDrag("dragend", { clientX: window.innerWidth - 2, clientY: 300 }),
       );
     });
     expect(document.body.textContent).toContain(

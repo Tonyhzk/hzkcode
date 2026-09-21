@@ -171,6 +171,14 @@ body {
   color: var(--color-text-primary);
 }
 
+/* Drag-ghost window (?ctx=drag-ghost): the page must stay fully transparent
+ * so the native window's rounded card shows through — the default page
+ * background would fill the window solid. */
+html[data-window-ctx="drag-ghost"],
+html[data-window-ctx="drag-ghost"] body {
+  background-color: transparent;
+}
+
 /* The window is not a document: press-dragging the shell — tab strips, pane
  * dividers, empty space — must never smear a text selection across the UI
  * the way a web page does. Text is opt-in below, on the surfaces people
