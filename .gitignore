@@ -116,3 +116,6 @@ logs/
 *.tmp
 *.temp
 .cache/
+
+# ==================== 编译产物 ====================
+1_Script/mac-window-shot
