@@ -144,6 +144,12 @@ export const CLI_FEATURE_GROUPS: readonly {
         labelKey: "settings.cliEnvSecondBrainInterval",
       },
       {
+        envKey: "HZKCODE_SECOND_BRAIN_MIN_NEW_RESPONSES",
+        kind: "number",
+        labelKey: "settings.cliEnvSecondBrainMinResponses",
+        hintKey: "settings.cliEnvSecondBrainMinResponsesHint",
+      },
+      {
         envKey: "HZKCODE_SECOND_BRAIN_TIMEOUT_MS",
         kind: "number",
         labelKey: "settings.cliEnvSecondBrainTimeout",

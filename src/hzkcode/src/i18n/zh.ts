@@ -550,6 +550,9 @@ export const zh = {
     cliEnvSecondBrainModel: "复核模型",
     cliEnvApiChannel: "接口渠道",
     cliEnvSecondBrainInterval: "检查间隔（毫秒）",
+    cliEnvSecondBrainMinResponses: "请求数门槛",
+    cliEnvSecondBrainMinResponsesHint:
+      "同一轮内新增请求数达标才复核；0 = 不设要求，工具轮次后即可复核（每次发送都是新进程，间隔从零开始）",
     cliEnvSecondBrainTimeout: "超时（毫秒）",
     cliEnvSecondBrainBudget: "思考预算（令牌）",
     cliEnvAutoModeModel: "分类器模型",

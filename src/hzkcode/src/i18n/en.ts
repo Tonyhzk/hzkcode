@@ -567,6 +567,9 @@ export const en: Messages = {
     cliEnvSecondBrainModel: "Review model",
     cliEnvApiChannel: "API channel",
     cliEnvSecondBrainInterval: "Interval (ms)",
+    cliEnvSecondBrainMinResponses: "Request threshold",
+    cliEnvSecondBrainMinResponsesHint:
+      "Reviews after this many new requests in the run; 0 = no requirement, one tool round suffices (each send is a fresh process, so the interval starts at zero)",
     cliEnvSecondBrainTimeout: "Timeout (ms)",
     cliEnvSecondBrainBudget: "Thinking budget (tokens)",
     cliEnvAutoModeModel: "Classifier model",
