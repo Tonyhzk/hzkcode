@@ -68,7 +68,7 @@ export function ChangesPanel({
   );
   const stageOne = useCallback((file: string) => stage([file]), [stage]);
   const unstageOne = useCallback((file: string) => unstage([file]), [unstage]);
-  // File rows open the diff in the center area, where it has room.
+  // File rows open the diff in the editor dock (ChatPage expands it).
   const openStagedDiff = useCallback(
     (file: string) =>
       useGitStore.getState().openDiff(workspacePath, { file, staged: true }),

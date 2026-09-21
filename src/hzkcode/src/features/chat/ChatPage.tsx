@@ -67,6 +67,9 @@ export default function ChatPage() {
   const actionError = useChatStore((s) => s.actionError);
   const dismissActionError = useChatStore((s) => s.dismissActionError);
   const gitRefresh = useGitStore((s) => s.refresh);
+  // The changes diff renders in the editor dock; the row below must expand
+  // that dock when a diff opens, same as it does for files.
+  const diffView = useGitStore((s) => s.diffView);
   // Terminal dock: toggled from the header open-actions cluster (and ⌘J).
   const toggleTerminal = useTerminalStore((s) => s.toggle);
   const activeFilePath = useFilesStore((s) => s.activeFilePath);
@@ -147,14 +150,18 @@ export default function ChatPage() {
       : editorWidth;
   const editorVisible = !editorCollapsed && editorWidthEffective > 0;
 
-  // Opening a file must never land in a hidden dock: expand it, and reclaim
-  // space from the file panel when the row cannot fit both side by side.
+  // Opening a file — or the changes diff — must never land in a hidden dock:
+  // expand it, and reclaim space from the file panel when the row cannot fit
+  // both side by side.
   const lastActiveFilePath = useRef<string | null>(null);
+  const lastDiffView = useRef<typeof diffView>(null);
   useEffect(() => {
-    const opened =
+    const fileOpened =
       activeFilePath !== null && activeFilePath !== lastActiveFilePath.current;
+    const diffOpened = diffView !== null && lastDiffView.current === null;
     lastActiveFilePath.current = activeFilePath;
-    if (!opened) return;
+    lastDiffView.current = diffView;
+    if (!fileOpened && !diffOpened) return;
     setEditorCollapsedValue(false);
     if (centerRowWidth <= 0) return;
     const avail =
@@ -167,6 +174,7 @@ export default function ChatPage() {
     }
   }, [
     activeFilePath,
+    diffView,
     centerRowWidth,
     panelCollapsedEffective,
     panelWidthEffective,

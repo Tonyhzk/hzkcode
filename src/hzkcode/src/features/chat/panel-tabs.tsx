@@ -40,8 +40,8 @@ panelTabRegistry.register({
 });
 
 /** Registry entries in display order (compareByOrder: undefined order sorts
- *  last, ties by id). Shared by ChatPanelHeader's pills and ChatSidePanel's
- *  panels so both always agree on tab order. */
+ *  last, ties by id). The panel header's pills and the mounted panels both
+ *  read this list, so they always agree on tab order. */
 export function useSortedPanelTabs(): PanelTabDef[] {
   const tabs = useRegistry(panelTabRegistry);
   return useMemo(() => [...tabs].sort(compareByOrder), [tabs]);
