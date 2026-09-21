@@ -118,6 +118,9 @@ async fn run_one(engine_id: &str, workspace: &PathBuf) -> Result<(), String> {
                 EngineEvent::Usage(u) => println!("  usage: {u}"),
                 EngineEvent::Error(e) => println!("  ERROR: {e}"),
                 EngineEvent::Warn(e) => println!("  warn: {e}"),
+                EngineEvent::Notice { level, text } => {
+                    println!("  notice[{level}]: {text}");
+                }
                 EngineEvent::Retry { attempt, max, message } => {
                     println!("  retry {attempt}/{max}: {message}");
                 }

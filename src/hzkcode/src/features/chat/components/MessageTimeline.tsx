@@ -3,6 +3,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import Copy from "lucide-react/dist/esm/icons/copy";
 import Check from "lucide-react/dist/esm/icons/check";
+import AlertCircle from "lucide-react/dist/esm/icons/alert-circle";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle";
+import Info from "lucide-react/dist/esm/icons/info";
 import type { Message } from "@/lib/ipc";
 
 import type { SessionState } from "../store";
@@ -36,6 +39,7 @@ const TimelineRowView = memo(function TimelineRowView({
   turnLive,
   autoExpand,
   thinkingAutoCollapse,
+  detailedDisplay,
   seenTools,
 }: {
   row: TimelineRow;
@@ -47,6 +51,9 @@ const TimelineRowView = memo(function TimelineRowView({
   autoExpand: boolean;
   /** False keeps a settled thinking row expanded (设置 → 通用 → 行为). */
   thinkingAutoCollapse: boolean;
+  /** True (设置 → 通用 → 行为 → 详细显示): every process row rides open and
+   *  tool calls print their arguments and results inline. */
+  detailedDisplay: boolean;
   seenTools: Set<string>;
 }) {
   // Plugin-defined row kinds (plan §4.2 #5) dispatch to the registered
@@ -73,6 +80,7 @@ const TimelineRowView = memo(function TimelineRowView({
         autoExpand={autoExpand}
         turnLive={turnLive}
         thinkingAutoCollapse={thinkingAutoCollapse}
+        detailedDisplay={detailedDisplay}
         processId={row.firstSeq}
         seenTools={seenTools}
       />
@@ -254,6 +262,27 @@ function UserMessageRow({ message }: { message: Message }) {
   );
 }
 
+/** A CLI system notice (role "notice"): the line the terminal prints inline —
+ *  second-brain advice and call failures, personal-memory notes, model
+ *  fallback. Kept in the timeline as a quiet row: no bubble, no markdown,
+ *  severity-tinted icon and text. */
+const NoticeRow = memo(function NoticeRow({ message }: { message: Message }) {
+  const level = message.level ?? "info";
+  const tone =
+    level === "error"
+      ? "text-text-error-primary"
+      : level === "warning"
+        ? "text-text-warning-primary"
+        : "text-text-tertiary";
+  const Icon = level === "error" ? AlertCircle : level === "warning" ? AlertTriangle : Info;
+  return (
+    <div className="flex items-start gap-1.5 text-body-2-regular">
+      <Icon className={cx("mt-[3px] size-3.5 shrink-0", tone)} aria-hidden />
+      <span className={cx("whitespace-pre-wrap break-words", tone)}>{message.text}</span>
+    </div>
+  );
+});
+
 export const MessageRow = memo(function MessageRow({
   message,
   workspacePath,
@@ -279,6 +308,9 @@ export const MessageRow = memo(function MessageRow({
   }
   if (message.role === "user") {
     return <UserMessageRow message={message} />;
+  }
+  if (message.role === "notice") {
+    return <NoticeRow message={message} />;
   }
   return (
     <div className="group flex flex-col text-left">
@@ -307,6 +339,7 @@ export const MessageTimeline = memo(function MessageTimeline({
 
   const { t } = useTranslation();
   const thinkingAutoCollapse = useChatStore((s) => s.thinkingAutoCollapse);
+  const detailedDisplay = useChatStore((s) => s.detailedDisplay);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const items = session.messages;
   const rows = useMemo(() => buildRows(items), [items]);
@@ -489,8 +522,11 @@ export const MessageTimeline = memo(function MessageTimeline({
                     row={rows[item.index]}
                     workspacePath={workspacePath}
                     turnLive={turnLive}
-                    autoExpand={rowKey(rows[item.index]) === lastProcessKey}
+                    autoExpand={
+                      detailedDisplay || rowKey(rows[item.index]) === lastProcessKey
+                    }
                     thinkingAutoCollapse={thinkingAutoCollapse}
+                    detailedDisplay={detailedDisplay}
                     seenTools={seenTools}
                   />
                 )}

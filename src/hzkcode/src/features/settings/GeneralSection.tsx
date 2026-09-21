@@ -151,6 +151,12 @@ export function GeneralSection() {
     useChatStore.getState().setThinkingAutoCollapse(autoCollapse);
     void save({ thinkingAutoCollapse: autoCollapse });
   };
+  const onDetailedDisplayChange = (detailed: boolean) => {
+    if (!settings) return;
+    setSettings({ ...settings, detailedDisplay: detailed });
+    useChatStore.getState().setDetailedDisplay(detailed);
+    void save({ detailedDisplay: detailed });
+  };
   return (
     <div className="flex w-full flex-col gap-6">
       {error && (
@@ -266,6 +272,17 @@ export function GeneralSection() {
                 aria-label={t("settings.thinkingAutoCollapse")}
                 isSelected={settings.thinkingAutoCollapse ?? true}
                 onChange={onThinkingAutoCollapseChange}
+              />
+            </SettingsRow>
+            <SettingsRow
+              label={t("settings.detailedDisplay")}
+              description={t("settings.detailedDisplayDesc")}
+            >
+              <Switch
+                size="sm"
+                aria-label={t("settings.detailedDisplay")}
+                isSelected={settings.detailedDisplay ?? false}
+                onChange={onDetailedDisplayChange}
               />
             </SettingsRow>
             <PromptHistoryToggleRow />

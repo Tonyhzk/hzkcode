@@ -105,6 +105,7 @@ const FrozenStepRow = memo(function FrozenStepRow({
   result,
   first,
   last,
+  detailedDisplay,
 }: {
   play: boolean;
   text: string;
@@ -113,10 +114,13 @@ const FrozenStepRow = memo(function FrozenStepRow({
   result?: unknown;
   first: boolean;
   last: boolean;
+  /** True (设置 → 通用 → 行为 → 详细显示): the payload panel rides open;
+   *  the user can still fold it by hand. */
+  detailedDisplay: boolean;
 }) {
   const reduceRef = useRef(!play);
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(detailedDisplay);
   const hasPayload = args != null || result != null;
   const fileChip = fileChipFor(path);
   const step = {
@@ -319,6 +323,7 @@ function ProcessDisclosureBody({
   singleThinking,
   processId,
   seenTools,
+  detailedDisplay,
 }: {
   sections: ProcessSection[];
   expanded: boolean;
@@ -326,6 +331,7 @@ function ProcessDisclosureBody({
   singleThinking: boolean;
   processId: number;
   seenTools: Set<string>;
+  detailedDisplay: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -350,6 +356,7 @@ function ProcessDisclosureBody({
                   result={call.result}
                   first={j === 0}
                   last={j === section.calls.length - 1}
+                  detailedDisplay={detailedDisplay}
                 />
               );
             })}
@@ -372,6 +379,7 @@ export const ProcessDisclosure = memo(function ProcessDisclosure({
   autoExpand = false,
   turnLive = false,
   thinkingAutoCollapse = true,
+  detailedDisplay = false,
   processId,
   seenTools,
 }: {
@@ -385,6 +393,9 @@ export const ProcessDisclosure = memo(function ProcessDisclosure({
    *  通用 → 行为): keep the settled thinking expanded so the timeline does
    *  not jump shut; the user can still fold it by hand. */
   thinkingAutoCollapse?: boolean;
+  /** True (设置 → 通用 → 行为 → 详细显示): tool calls print their arguments
+   *  and results inline instead of behind the payload toggle. */
+  detailedDisplay?: boolean;
   processId: number;
   seenTools: Set<string>;
 }) {
@@ -454,6 +465,7 @@ export const ProcessDisclosure = memo(function ProcessDisclosure({
             singleThinking={singleThinking}
             processId={processId}
             seenTools={seenTools}
+            detailedDisplay={detailedDisplay}
           />
         ) : null}
       </m.div>

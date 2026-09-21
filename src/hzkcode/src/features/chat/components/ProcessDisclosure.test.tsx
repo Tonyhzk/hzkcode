@@ -37,7 +37,12 @@ const ITEMS: ProcessItem[] = [
 
 async function render(
   items: ProcessItem[] = ITEMS,
-  props: { autoExpand?: boolean; turnLive?: boolean; thinkingAutoCollapse?: boolean } = {},
+  props: {
+    autoExpand?: boolean;
+    turnLive?: boolean;
+    thinkingAutoCollapse?: boolean;
+    detailedDisplay?: boolean;
+  } = {},
 ) {
   await act(async () => {
     root.render(
@@ -46,6 +51,7 @@ async function render(
         autoExpand={props.autoExpand ?? true}
         turnLive={props.turnLive}
         thinkingAutoCollapse={props.thinkingAutoCollapse}
+        detailedDisplay={props.detailedDisplay}
         processId={1}
         seenTools={new Set()}
       />,
@@ -81,6 +87,21 @@ describe("ProcessDisclosure tool args", () => {
       el.getAttribute("aria-label")?.includes("工具参数"),
     );
     expect(toggles).toHaveLength(1);
+  });
+
+  it("prints args inline when detailed display is on", async () => {
+    await render(ITEMS, { detailedDisplay: true });
+
+    // No click: the panel rides open, and its toggle can still fold it.
+    expect(container.querySelector("pre")?.textContent).toContain("file_path");
+    const toggle = [...container.querySelectorAll("button")].find((el) =>
+      el.getAttribute("aria-label")?.includes("收起工具参数"),
+    );
+    expect(toggle).toBeTruthy();
+    await act(async () => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(container.querySelector("pre")).toBeNull();
   });
 
   it("renders git diff style comparison for Edit tool calls", async () => {

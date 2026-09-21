@@ -318,6 +318,9 @@ export const zh = {
     thinkingAutoCollapse: "思考结束后自动收起",
     thinkingAutoCollapseDesc:
       "关闭后，思考结束时思考过程保持展开（界面不再跳动），可点击标题手动收起",
+    detailedDisplay: "详细显示",
+    detailedDisplayDesc:
+      "过程默认展开，工具调用直接显示参数和结果（开发者）",
     promptHistory: "历史输入补全",
     promptHistoryDesc:
       "输入时按 Tab 接受历史补全建议；输入框为空时按 ↑↓ 翻阅历史",

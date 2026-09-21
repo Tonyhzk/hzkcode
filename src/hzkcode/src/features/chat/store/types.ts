@@ -46,6 +46,10 @@ export interface ChatStore {
    *  (default), false = stay expanded until the user folds it. Persisted in
    *  app settings. */
   thinkingAutoCollapse: boolean;
+  /** Detailed chat display: true = process rows stay expanded and tool calls
+   *  show their arguments and results inline; false = concise (default).
+   *  Persisted in app settings. */
+  detailedDisplay: boolean;
   bySession: Record<string, SessionState>;
   /** Flat sessionKey -> streaming map, written only when a flag flips. The
    * tab strip and sidebar select this instead of scanning bySession on every
@@ -135,6 +139,7 @@ export interface ChatStore {
   ) => Promise<void>;
   setSendShortcut: (shortcut: string) => void;
   setThinkingAutoCollapse: (autoCollapse: boolean) => void;
+  setDetailedDisplay: (detailed: boolean) => void;
   setDraft: (key: string, text: string) => void;
   /** Ask the active composer to insert an @path mention at the caret. */
   requestMention: (path: string) => void;

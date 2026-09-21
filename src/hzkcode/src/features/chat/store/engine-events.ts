@@ -846,6 +846,58 @@ function onWarn(event: EngineEventPayload, key: string, deps: EngineEventDeps) {
   patchSession(deps.set, key, { error: event.data as string });
 }
 
+/** A user-facing system notice from the CLI (`system/informational`): the
+ *  terminal prints these inline (second-brain advice and call failures,
+ *  personal-memory notes, model fallback) and the timeline mirrors them as
+ *  their own rows. Not the error banner: this is conversation content, it
+ *  survives the turn, and it is also what history load renders later. */
+function onNotice(
+  event: EngineEventPayload,
+  key: string,
+  deps: EngineEventDeps,
+) {
+  const data = (event.data ?? {}) as { level?: unknown; text?: unknown };
+  const text = typeof data.text === "string" ? data.text.trim() : "";
+  if (!text) return;
+  const level = typeof data.level === "string" ? data.level : "info";
+  // Fold unflushed chunks first so the notice lands after the streamed text
+  // it follows — appending over a pending buffer would reorder them. The
+  // notice is a boundary in time: rows above it settle, and the next delta
+  // opens a fresh row below instead of growing through it.
+  const pending = drainPending(key);
+  deps.set((s) => {
+    const cur = s.bySession[key] ?? EMPTY_SESSION;
+    const messages = settleLiveRows(
+      pending
+        ? applyStreamParts(
+            cur.messages,
+            pending.parts,
+            pending.model ?? (deps.get().models[event.engine] || null),
+          )
+        : cur.messages,
+    );
+    const seq = messages.length ? messages[messages.length - 1].seq + 1 : 1;
+    return {
+      bySession: {
+        ...s.bySession,
+        [key]: {
+          ...cur,
+          messages: [
+            ...messages,
+            {
+              role: "notice",
+              text,
+              level,
+              ts: new Date().toISOString(),
+              seq,
+            },
+          ],
+        },
+      },
+    };
+  });
+}
+
 /**
  * Live provider-retry progress (claude `system/api_retry`, codex
  * `Reconnecting... n/m`, omp `auto_retry_start`). Shown in the run status
@@ -1128,6 +1180,9 @@ export function handleEngineEvents(
         break;
       case "warn":
         onWarn(event, key, deps);
+        break;
+      case "notice":
+        onNotice(event, key, deps);
         break;
       case "retry":
         onRetry(event, key, deps);

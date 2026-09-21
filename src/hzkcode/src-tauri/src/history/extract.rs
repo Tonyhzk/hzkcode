@@ -174,6 +174,7 @@ fn fold_rows(rows: Vec<LineRow>) -> ParsedSession {
             effort: row.effort,
             duration_ms,
             images: row.images,
+            level: row.level,
         });
         if let Some(id) = call_id {
             call_rows.insert(id, messages.len() - 1);
@@ -285,6 +286,7 @@ struct LineRow {
     effort: Option<String>,
     duration_ms: Option<i64>,
     images: Vec<String>,
+    level: Option<String>,
 }
 
 impl LineRow {
@@ -304,6 +306,7 @@ impl LineRow {
             effort: None,
             duration_ms: None,
             images: Vec::new(),
+            level: None,
         }
     }
 }
@@ -415,7 +418,8 @@ fn claude_block_rows(
 fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
     let line_type = type_str(value);
     if line_type == "system" {
-        if value.get("subtype").and_then(Value::as_str) == Some("compact_boundary") {
+        let subtype = value.get("subtype").and_then(Value::as_str);
+        if subtype == Some("compact_boundary") {
             let post_tokens = value
                 .get("compactMetadata")
                 .and_then(|m| m.get("postTokens").or_else(|| m.get("post_tokens")))
@@ -429,6 +433,21 @@ fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
                 return vec![LineRow {
                     usage: Some(usage),
                     ..LineRow::new("__usage__", String::new(), ts)
+                }];
+            }
+        }
+        // User-facing notice (second-brain advice and call failures,
+        // personal-memory notes, model fallback): the terminal prints
+        // warning/error notices and the timeline mirrors them. Info-level
+        // notices stay hidden, matching the REPL default.
+        if subtype == Some("informational") {
+            let level = value.get("level").and_then(Value::as_str).unwrap_or("info");
+            let content = value.get("content").and_then(Value::as_str).unwrap_or("");
+            if level != "info" && !content.trim().is_empty() {
+                let ts = ts_string(value, &["timestamp"]);
+                return vec![LineRow {
+                    level: Some(level.to_string()),
+                    ..LineRow::new("notice", content.to_string(), ts)
                 }];
             }
         }
@@ -612,6 +631,31 @@ mod tests {
         let rows = extract_claude_line(&image_only, ImageMode::Collect);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].images, ["data:image/jpeg;base64,eGk="]);
+    }
+
+    #[test]
+    fn claude_informational_line_becomes_a_levelled_notice() {
+        let line: Value = serde_json::json!({
+            "type": "system",
+            "subtype": "informational",
+            "content": "[第二大脑] 指导意见：核对测试覆盖",
+            "level": "warning",
+            "timestamp": "2026-09-20T14:32:00.571Z"
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "notice");
+        assert_eq!(rows[0].text, "[第二大脑] 指导意见：核对测试覆盖");
+        assert_eq!(rows[0].level.as_deref(), Some("warning"));
+
+        // Info-level notices match the REPL default and stay out of history.
+        let info: Value = serde_json::json!({
+            "type": "system",
+            "subtype": "informational",
+            "content": "Session completed successfully",
+            "level": "info"
+        });
+        assert!(extract_claude_line(&info, ImageMode::Collect).is_empty());
     }
 
     #[test]

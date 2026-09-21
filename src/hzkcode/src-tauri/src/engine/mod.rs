@@ -99,6 +99,15 @@ pub enum EngineEvent {
     /// Non-terminal engine notice (e.g. an upstream 429 the CLI is
     /// retrying): surfaced to the UI, but the turn is still running.
     Warn(String),
+    /// A user-facing system notice (claude `system/informational`):
+    /// second-brain advice and call failures, personal-memory notes,
+    /// model fallback. The terminal prints these inline; the UI appends
+    /// them to the timeline as their own rows.
+    Notice {
+        /// "warning" | "error" (info-level notices never leave the CLI).
+        level: String,
+        text: String,
+    },
     /// One model attempt ended, but the CLI may retry or compact next.
     /// Keep its outcome for EOF; unlike Error/Done, this never ends the run.
     AttemptEnd { error: Option<String> },
@@ -1432,6 +1441,17 @@ impl TurnCore {
                     &self.engine_id,
                     "warn",
                     Value::String(error),
+                );
+            }
+            EngineEvent::Notice { level, text } => {
+                // Not terminal either: the turn keeps running and the UI
+                // appends the notice to the timeline.
+                state.push(
+                    &self.sink,
+                    &self.run_id,
+                    &self.engine_id,
+                    "notice",
+                    serde_json::json!({ "level": level, "text": text }),
                 );
             }
             EngineEvent::Retry {

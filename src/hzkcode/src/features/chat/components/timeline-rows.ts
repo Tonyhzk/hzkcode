@@ -125,6 +125,10 @@ export function buildRows(messages: Message[]): TimelineRow[] {
     if (row.kind !== "msg") continue;
     if (row.message.role === "user") {
       seenAssistant = false;
+    } else if (row.message.role === "notice") {
+      // CLI notice rows are not reply segments: they take no footer and do
+      // not split the reply's own final-segment scan.
+      continue;
     } else {
       const turnFinal = !seenAssistant;
       seenAssistant = true;

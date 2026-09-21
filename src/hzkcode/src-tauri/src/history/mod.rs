@@ -43,6 +43,11 @@ pub struct Message {
     /// absolute paths (kimi/codex). Empty for every other row.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<String>,
+    /// Severity of a notice row (role "notice", claude `system/informational`:
+    /// second-brain advice and failures, personal-memory notes, model
+    /// fallback). Drives the row's color; None for every other role.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

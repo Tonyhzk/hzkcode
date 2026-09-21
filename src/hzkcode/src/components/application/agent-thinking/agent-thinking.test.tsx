@@ -99,4 +99,30 @@ describe("AgentThinking", () => {
     });
     expect(container.textContent ?? "").not.toContain("↑");
   });
+
+  it("prints the provider's retry reason on its own line, not in a tooltip", () => {
+    act(() => {
+      root.render(
+        <AgentThinking
+          label="响应中"
+          startedAt={Date.now() - 5000}
+          retry="重试中 3/10"
+          retryDetail="API error (HTTP 429); retrying (3/10) in 2.5s"
+        />,
+      );
+    });
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("重试中 3/10");
+    expect(text).toContain("API error (HTTP 429); retrying (3/10) in 2.5s");
+  });
+
+  it("skips the detail line when the CLI reports no reason", () => {
+    act(() => {
+      root.render(
+        <AgentThinking label="响应中" startedAt={Date.now() - 5000} retry="重试中 1/10" />,
+      );
+    });
+    expect(container.querySelectorAll("p")).toHaveLength(0);
+  });
 });

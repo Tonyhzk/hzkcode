@@ -360,6 +360,7 @@ fn subagent_history_row(message: &Message, delegation: bool) -> Message {
         effort: None,
         duration_ms: None,
         images: Vec::new(),
+        level: None,
     }
 }
 
@@ -916,6 +917,7 @@ mod tests {
             effort: None,
             duration_ms: None,
             images: Vec::new(),
+            level: None,
         }
     }
 

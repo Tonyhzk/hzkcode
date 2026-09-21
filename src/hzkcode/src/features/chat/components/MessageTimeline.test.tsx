@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatDuration } from "./format-duration";
 import { MessageRow } from "./MessageTimeline";
+import { buildRows } from "./timeline-rows";
 import type { Message } from "@/lib/ipc";
 
 // React's act() environment flag — same setup as Markdown.test.tsx.
@@ -121,6 +122,73 @@ describe("user bubble copy affordance", () => {
     const shown = container.textContent ?? "";
     expect(shown).toContain("↑1.5M");
     expect(shown).toContain("↓2.2k");
+  });
+});
+
+describe("CLI notice rows", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  function noticeMessage(level: string, text: string): Message {
+    return { seq: 5, role: "notice", text, level, ts: null };
+  }
+
+  it("renders the CLI's line as a severity-tinted row, not a markdown bubble", async () => {
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={noticeMessage("warning", "[第二大脑] 指导意见：先核对测试覆盖")}
+          workspacePath="/ws"
+          turnFinal={false}
+        />,
+      );
+    });
+    const body = container.querySelector("span");
+    expect(body).not.toBeNull();
+    expect(container.textContent).toContain("[第二大脑] 指导意见：先核对测试覆盖");
+    expect(body!.className).toContain("text-text-warning-primary");
+  });
+
+  it("tints errors red and takes no reply footer even when marked turn-final", async () => {
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={noticeMessage("error", "第二大脑调用失败：502")}
+          workspacePath="/ws"
+          turnFinal
+        />,
+      );
+    });
+    const body = container.querySelector("span");
+    expect(body!.className).toContain("text-text-error-primary");
+    // The reply footer (copy button / meta line) belongs to assistant
+    // segments; a notice row must not grow one.
+    expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("keeps the reply footer on the assistant segment when a notice trails it", () => {
+    const assistant: Message = { seq: 1, role: "assistant", text: "reply", ts: null };
+    const rows = buildRows([assistant, noticeMessage("warning", "[第二大脑] 指导意见")]);
+    const [first, second] = rows;
+    expect(first?.kind).toBe("msg");
+    expect(second?.kind).toBe("msg");
+    if (first?.kind === "msg" && second?.kind === "msg") {
+      expect(first.message).toBe(assistant);
+      expect(first.turnFinal).toBe(true);
+      expect(second.message.role).toBe("notice");
+      expect(second.turnFinal).toBe(false);
+    }
   });
 });
 

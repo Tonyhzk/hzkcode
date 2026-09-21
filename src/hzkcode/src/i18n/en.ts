@@ -330,6 +330,9 @@ export const en: Messages = {
     thinkingAutoCollapse: "Fold thinking when it finishes",
     thinkingAutoCollapseDesc:
       "Turn off to keep the thinking process expanded after thinking settles (no layout jump); click the header to fold it manually",
+    detailedDisplay: "Detailed display",
+    detailedDisplayDesc:
+      "Process steps stay expanded and tool calls show their arguments and results inline (developer)",
     promptHistory: "History completion",
     promptHistoryDesc:
       "Tab accepts a history suggestion while typing; ↑↓ recall history when the input is empty",

@@ -52,7 +52,8 @@ export interface AgentThinkingProps {
    *  request, so this is progress rather than a failure. */
   retry?: string | null;
   /** The provider's own reason for the retry ("HTTP 502", "stream
-   *  disconnected"), revealed on hover. */
+   *  disconnected"). Printed on its own line under the status row so the
+   *  reader sees why the request is being re-issued. */
   retryDetail?: string | null;
 }
 
@@ -324,7 +325,6 @@ type MetaRowProps = Pick<
   | "model"
   | "effort"
   | "retry"
-  | "retryDetail"
 >;
 
 function MetaRow({
@@ -335,7 +335,6 @@ function MetaRow({
   model,
   effort,
   retry,
-  retryDetail,
 }: MetaRowProps) {
   if (!(showTimer || model || effort || usage || retry)) {
     return null;
@@ -355,10 +354,9 @@ function MetaRow({
         <MetaItem>
           {/* Progress, not an error: a retry that recovers is invisible
               apart from this chip, and one that fails surfaces as the
-              turn's own error banner. */}
-          <span title={retryDetail ?? undefined} className="text-text-warning-primary">
-            {retry}
-          </span>
+              turn's own error banner. The CLI's own reason prints on the
+              line below (see AgentThinking). */}
+          <span className="text-text-warning-primary">{retry}</span>
         </MetaItem>
       )}
     </div>
@@ -383,28 +381,36 @@ export function AgentThinking({
   const color = TONE_COLORS[tone ?? VARIANT_TONE[variant]];
 
   return (
-    <div
-      role="status"
-      className={cx("flex items-center gap-2.5", className)}
-      style={{ color, "--bui-agent-thinking-tone": color } as CSSProperties}
-    >
-      <VariantIndicator variant={variant} />
-      <span
-        aria-label={label}
-        className={cx("text-body-medium", shimmer && "bui-agent-thinking-label")}
+    <div className={cx("flex flex-col gap-0.5", className)}>
+      <div
+        role="status"
+        className="flex items-center gap-2.5"
+        style={{ color, "--bui-agent-thinking-tone": color } as CSSProperties}
       >
-        {label}
-      </span>
-      <MetaRow
-        showTimer={showTimer}
-        startedAt={startedAt}
-        durationFormatter={durationFormatter}
-        usage={usage}
-        model={model}
-        effort={effort}
-        retry={retry}
-        retryDetail={retryDetail}
-      />
+        <VariantIndicator variant={variant} />
+        <span
+          aria-label={label}
+          className={cx("text-body-medium", shimmer && "bui-agent-thinking-label")}
+        >
+          {label}
+        </span>
+        <MetaRow
+          showTimer={showTimer}
+          startedAt={startedAt}
+          durationFormatter={durationFormatter}
+          usage={usage}
+          model={model}
+          effort={effort}
+          retry={retry}
+        />
+      </div>
+      {retryDetail ? (
+        // The provider's own reason for the retry, verbatim: the terminal
+        // prints it and a buried tooltip showed it to nobody.
+        <p className="pl-6 text-caption-1-regular break-words text-text-warning-primary">
+          {retryDetail}
+        </p>
+      ) : null}
     </div>
   );
 }

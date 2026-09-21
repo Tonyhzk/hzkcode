@@ -115,6 +115,11 @@ pub struct AppSettings {
     /// until the user folds it (设置 → 通用 → 行为 → 思考过程).
     #[serde(default)]
     pub thinking_auto_collapse: Option<bool>,
+    /// Detailed chat display (设置 → 通用 → 行为 → 详细显示): None/false =
+    /// concise (current behavior), true = process rows stay expanded and
+    /// tool calls show their arguments and results inline.
+    #[serde(default)]
+    pub detailed_display: Option<bool>,
     /// Terminal shell override; None/empty = auto-detect from $SHELL/COMSPEC.
     /// Validated with the same spawn-target rules as bin overrides.
     #[serde(default)]
@@ -234,6 +239,7 @@ impl Default for AppSettings {
             decrease_ui_scale_shortcut: default_decrease_ui_scale_shortcut(),
             reset_ui_scale_shortcut: default_reset_ui_scale_shortcut(),
             thinking_auto_collapse: None,
+            detailed_display: None,
             terminal_shell_path: None,
             system_proxy_enabled: false,
             system_proxy_url: None,

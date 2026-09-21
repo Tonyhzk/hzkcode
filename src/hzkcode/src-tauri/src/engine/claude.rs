@@ -171,6 +171,26 @@ impl Engine for ClaudeEngine {
                         });
                         out.push(EngineEvent::Usage(usage_obj));
                     }
+                } else if subtype == Some("informational") {
+                    // User-facing notice the terminal prints inline
+                    // (second-brain advice and call failures, personal-memory
+                    // notes, model fallback). Level rides along so the row
+                    // keeps its severity color.
+                    let text = value
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .trim();
+                    if !text.is_empty() {
+                        out.push(EngineEvent::Notice {
+                            level: value
+                                .get("level")
+                                .and_then(Value::as_str)
+                                .unwrap_or("info")
+                                .to_string(),
+                            text: text.to_string(),
+                        });
+                    }
                 }
             }
             "stream_event" => {
@@ -901,6 +921,41 @@ mod tests {
             }
             other => panic!("expected retry progress, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn informational_system_event_becomes_a_notice() {
+        let line = serde_json::json!({
+            "type": "system",
+            "subtype": "informational",
+            "content": "[第二大脑] 指导意见：先核实文件路径",
+            "level": "warning",
+            "session_id": "s-1"
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        match &out[1] {
+            EngineEvent::Notice { level, text } => {
+                assert_eq!(level, "warning");
+                assert_eq!(text, "[第二大脑] 指导意见：先核实文件路径");
+            }
+            other => panic!("expected a notice, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn informational_event_without_content_emits_nothing() {
+        let line = serde_json::json!({
+            "type": "system",
+            "subtype": "informational",
+            "content": "   ",
+            "level": "error"
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(!out.iter().any(|event| matches!(event, EngineEvent::Notice { .. })));
     }
 
     #[test]

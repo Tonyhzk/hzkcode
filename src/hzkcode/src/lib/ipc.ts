@@ -59,8 +59,12 @@ export interface QuestionSpec {
 
 export interface Message {
   seq: number;
-  role: string; // "user" | "assistant" | "tool" | "thinking"
+  role: string; // "user" | "assistant" | "tool" | "thinking" | "notice"
   text: string;
+  /** Severity of a notice row (claude `system/informational` messages the
+   *  terminal prints inline: second-brain advice and call failures,
+   *  personal-memory notes, model fallback). Absent on every other role. */
+  level?: string | null;
   /** Target file of a tool call (read/edit/write/...); renders as a file chip. */
   path?: string | null;
   /** Full tool-call arguments; shown in the expandable tool-call panel. */
@@ -235,6 +239,9 @@ export interface AppSettings {
   /** Thinking-process row behavior once its thinking settles: true/absent =
    *  auto-fold (default), false = stay expanded until the user folds it. */
   thinkingAutoCollapse?: boolean | null;
+  /** Detailed chat display: absent/false = concise (default), true = process
+   *  rows stay expanded and tool calls show arguments and results inline. */
+  detailedDisplay?: boolean | null;
   /** Terminal shell override; null/empty = auto-detect. */
   terminalShellPath: string | null;
   /** Global network proxy switch; spawned children inherit the proxy env. */

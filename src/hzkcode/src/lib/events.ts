@@ -15,6 +15,7 @@ export interface EngineEventPayload {
     | "error"
     | "warn"
     | "retry"
+    | "notice"
     | "permission_denied"
     | "question"
     | "question_settled"

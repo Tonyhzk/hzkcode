@@ -36,6 +36,10 @@
 - 默认模板按 hzkcode 逐项校对：删除 CLI 不读或不该由渠道携带的键（`tui`、`teammateMode`、`autoDreamEnabled`、`hasCompletedOnboarding`、`skipAutoPermissionPrompt`、`language`、`cleanupPeriodDays`、`HZKCODE_NEW_INIT`、`HZKCODE_ANTHROPIC_BETAS`、`HZKCODE_SMALL_FAST_MODEL`、`HZKCODE_ENABLE_TOOL_SEARCH`）与写死的模型 id，只留 CLI 真正读取的变量
 - 新增「功能开关」区（模型配置页）：联网搜索（适配器 / Perplexity 凭据）、图片与文件上传（OSS）、飞书通知、用户记忆、第二大脑、自动模式、工作状态汇报、CLI 代理；由应用保存于 `settings.json` 的 `cliEnv`（`settings::feature_env`）并在启动 CLI 时注入所有会话，非法变量名与被拒键（`NODE_OPTIONS` 等）会被过滤
 - 引擎配置根目录从 Claude Code 的 `~/.claude` / `CLAUDE_CONFIG_DIR` 切换为 fork 的 `~/.hzkcode` / `HZKCODE_CONFIG_DIR`：会话扫描与远程回放白名单、渠道官方配置文件路径、全局 commands/skills 目录、模型目录（含 WSL 远端探针）、`config.rs` 测试用环境变量列表一并更新，GUI 与单独安装的 CLI 共用同一份数据
+- 对话显示：CLI 的 `system/informational` 通知（第二大脑指导意见与调用失败、个人记忆提示、模型降级、Stop Hook 失败）不再丢弃，实时流与历史记录都渲染为时间线通知行，按等级（warning / error）着色
+- 对话显示：重试详情从悬停提示改为常显——「重试中 x/y」下方直接打印 CLI 给出的具体原因（HTTP 状态、断流说明）
+- 新增「通用 → 行为 → 详细显示」开关（开发者模式）：开启后过程行默认展开，工具调用的参数与结果内联显示；关闭时保持现状（折叠 + 点击展开）
+- 内置 CLI 同步更新：fork 在无头 stream-json 输出中转发用户可见的系统通知（此前 headless 只输出压缩边界与重试事件）；第二大脑的主对话判定纳入 GUI 无头会话（querySource `sdk`，与 fork 内部 isMainThread 口径一致），使其在 GUI 会话中同样可运行、可见
 
 ## [0.1.0] - 2026-09-19
 
