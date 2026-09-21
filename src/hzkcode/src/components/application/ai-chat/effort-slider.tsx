@@ -7,7 +7,7 @@ import {
   SliderThumb as AriaSliderThumb,
   SliderTrack as AriaSliderTrack,
 } from "react-aria-components";
-import { AnimatePresence, m } from "motion/react";
+import { m } from "motion/react";
 import { FlameOverlay } from "./effort-flame";
 import { EFFORT_LEVELS, type EffortLevel } from "./effort-levels";
 
@@ -72,8 +72,9 @@ export function EffortTicks({
  *
  * The thumb travels edge to edge: its center moves from 10.5px to
  * (width − 10.5)px, and the tick row is inset to match, so ticks sit on the
- * stops at any rendered width. At max the ticks blast off like exhaust
- * debris and the flame shader washes over the track.
+ * stops at any rendered width. The flame shader burns at every stop — pale
+ * yellow at the gentlest level, blue exhaust at max — and at max the ticks
+ * additionally blast off like exhaust debris.
  */
 export function EffortSlider({
   value,
@@ -108,8 +109,10 @@ export function EffortSlider({
           style={{ width: `calc(${fraction} * (100% - 21px) + 21px)` }}
         />
         <EffortTicks index={index} isMax={isMax} blast={blast} />
-        {/* Above the ticks so the flame washes over the step dividers. */}
-        <AnimatePresence>{isMax && <FlameOverlay />}</AnimatePresence>
+        {/* Above the ticks so the flame washes over the step dividers. The
+            flame burns at every stop — its origin rides the thumb and its
+            color, reach and height follow the level. */}
+        <FlameOverlay level={value} fraction={fraction} />
         {/* Rail inset by half the thumb width so the 21px thumb lands flush
             on both track edges. The wrapper does the absolute positioning
             because SliderTrack forces `position: relative` inline. */}

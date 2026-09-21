@@ -26,7 +26,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - **多窗口**：会话列表右键「在新窗口打开」，对话在独立窗口打开；文件编辑器标签拖到窗口边缘即可拖出成单独编辑窗口
 - **模型显示更直观**：模型选择器只保留高阶 / 中阶 / 低阶三个档位，并显示为「[档位]模型名」——直接看到每个档位实际运行的模型（如 [opus]deepseek-v4-pro[1m]）；渠道编辑的每个模型字段新增「1M 上下文」开关，一键为模型名加上 [1m] 后缀
 - **推理强度五档**：low / medium / high / xhigh / max，与 CLI 完全对齐
-- **推理强度火焰动画**：强度滑杆的每个档位都有火箭尾焰动画——从最弱档的黄色小火苗，随档位升高逐渐变长、变热，到最高档的蓝色尾焰
+- **推理强度火焰动画**：强度滑杆的每个档位都有火箭尾焰动画——火焰从滑块处喷出，长度随档位变化（最弱档是一枚短火苗、越往上越长，最高档铺满整条轨道）；星空与背景跟随已点燃的区间，且随档位越流越快；档位切换时火焰即时跟随、无延迟，颜色从最弱档的黄色渐变到最高档的蓝色尾焰
 - **终端信息不再隐藏**：重试的具体原因、第二大脑提醒、记忆提示等直接显示在对话时间线上
 - **详细显示**（设置 → 通用）：开启后工具调用参数与结果默认展开，适合查看完整过程`,
       en: `✨ Features
@@ -34,7 +34,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - **Multi-window**: right-click a session to "Open in new window"; drag an editor tab to the window edge to pop it into a standalone editor window
 - **Clearer model display**: the picker now offers exactly three tiers (high / mid / low) and shows "[tier]model" — the real model each tier runs (e.g. [opus]deepseek-v4-pro[1m]); every model field in the channel editor gains a "1M context" switch that appends the [1m] suffix
 - **Five reasoning levels**: low / medium / high / xhigh / max, matching the CLI exactly
-- **Reasoning-effort flame**: every stop on the effort slider burns — a small yellow flame at the gentlest level, growing longer and hotter with the level, up to the blue rocket exhaust at max
+- **Reasoning-effort flame**: every stop on the effort slider burns — the flame fires from the thumb and its length follows the level (a stubby lick at the gentlest stop, longer with each step, filling the whole track at max); the starfield and backdrop follow the burnt stretch and stream faster with the level; switching is instant, with the color running from yellow at the gentlest stop up to the blue rocket exhaust at max
 - **Terminal-only messages are no longer hidden**: retry reasons, second-brain notes and memory hints render in the conversation timeline
 - **Detailed display** (Settings → General): tool-call arguments and results expand by default`,
     },
