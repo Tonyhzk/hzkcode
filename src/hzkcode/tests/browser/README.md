@@ -1,7 +1,7 @@
 # Chat streaming regression
 
 With the Vite development server running, open
-`http://localhost:1420/tests/browser/stream-throttle.html`.
+`http://localhost:14210/tests/browser/stream-throttle.html`.
 The page reports `PASS` after exercising actual React StrictMode commits:
 completion, replacement, truncation, pending-timer cleanup, continuous Unicode
 appends, coalescing and unmount. It needs no model, account or saved conversation.

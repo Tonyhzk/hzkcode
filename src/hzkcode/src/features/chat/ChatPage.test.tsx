@@ -271,6 +271,30 @@ describe("ChatPage four-column layout", () => {
     expect(container.querySelector('[data-testid="diff"]')).not.toBeNull();
   });
 
+  it("switching to another diff while collapsed expands the dock (regression)", async () => {
+    await mount();
+    measure(1600);
+    await act(async () => {
+      openDiff();
+    });
+    expect(dockRoot().style.width).toBe("420px");
+    // The user collapses the dock, then clicks another changed file — the
+    // diff target swaps inside an already-set diffView.
+    const btn = Array.from(document.querySelectorAll("button")).find(
+      (b) => b.getAttribute("aria-label") === i18n.t("chat.hideFileEditor"),
+    );
+    act(() => (btn as HTMLButtonElement).click());
+    expect(dockRoot().style.width).toBe("0px");
+    await act(async () => {
+      useGitStore.setState({
+        diffView: { workspacePath: "/ws", target: { file: "/ws/other.ts", staged: false } },
+      });
+    });
+    expect(localStorage.getItem("hzkcode.editorCollapsed")).toBe("0");
+    expect(dockRoot().style.width).toBe("420px");
+    expect(container.querySelector('[data-testid="diff"]')).not.toBeNull();
+  });
+
   it("the top bar toggle hides the dock and persists the flag", async () => {
     localStorage.setItem("hzkcode.editorWidth", "420");
     await mount();

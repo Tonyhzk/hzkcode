@@ -29,7 +29,7 @@ export default defineConfig(() => ({
   },
   clearScreen: false,
   server: {
-    port: 1420,
+    port: 14210,
     strictPort: true,
     fs: {
       // Sibling plugin repos (e.g. ../hzkcode-plugin/usage-stats) are served in

@@ -152,13 +152,14 @@ export default function ChatPage() {
 
   // Opening a file — or the changes diff — must never land in a hidden dock:
   // expand it, and reclaim space from the file panel when the row cannot fit
-  // both side by side.
+  // both side by side. Clicking another changed file while a diff is already
+  // open swaps the target, which counts as opening too.
   const lastActiveFilePath = useRef<string | null>(null);
   const lastDiffView = useRef<typeof diffView>(null);
   useEffect(() => {
     const fileOpened =
       activeFilePath !== null && activeFilePath !== lastActiveFilePath.current;
-    const diffOpened = diffView !== null && lastDiffView.current === null;
+    const diffOpened = diffView !== null && diffView !== lastDiffView.current;
     lastActiveFilePath.current = activeFilePath;
     lastDiffView.current = diffView;
     if (!fileOpened && !diffOpened) return;

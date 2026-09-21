@@ -112,7 +112,7 @@ pnpm dev
 A few tips:
 
 - **The first launch compiles the entire Rust backend and can take a few minutes** — go grab a coffee. Later launches use incremental builds and are fast.
-- The frontend dev server runs on port `1420`.
+- The frontend dev server runs on port `14210`.
 
 ### Building installers
 
