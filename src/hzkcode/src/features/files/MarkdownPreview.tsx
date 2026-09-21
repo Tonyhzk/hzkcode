@@ -136,7 +136,10 @@ export function MarkdownPreview({ path, draft }: { path: string; draft: string }
   );
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-4 text-body-medium text-text-primary [&_h1]:mb-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-2 [&_a]:text-accent-600 [&_a]:underline">
+    <div
+      className="min-h-0 flex-1 overflow-auto p-4 text-body-medium text-text-primary [&_h1]:mb-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-2 [&_a]:text-accent-600 [&_a]:underline"
+      data-selectable
+    >
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}

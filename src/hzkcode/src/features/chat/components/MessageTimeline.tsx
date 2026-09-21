@@ -249,7 +249,10 @@ function UserMessageRow({ message }: { message: Message }) {
           {stripped.agentName}
         </span>
       )}
-      <div className="flex flex-col rounded-xl bg-bubble-user px-3.5 py-2.5 text-left text-body-regular whitespace-pre-wrap break-words text-text-white">
+      <div
+        className="flex flex-col rounded-xl bg-bubble-user px-3.5 py-2.5 text-left text-body-regular whitespace-pre-wrap break-words text-text-white"
+        data-selectable
+      >
         <CollapsibleMessage>
           {message.images && message.images.length > 0 && (
             <MessageImages images={message.images} />
@@ -278,7 +281,9 @@ const NoticeRow = memo(function NoticeRow({ message }: { message: Message }) {
   return (
     <div className="flex items-start gap-1.5 text-body-2-regular">
       <Icon className={cx("mt-[3px] size-3.5 shrink-0", tone)} aria-hidden />
-      <span className={cx("whitespace-pre-wrap break-words", tone)}>{message.text}</span>
+      <span className={cx("whitespace-pre-wrap break-words", tone)} data-selectable>
+        {message.text}
+      </span>
     </div>
   );
 });

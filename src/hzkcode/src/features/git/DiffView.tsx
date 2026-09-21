@@ -71,7 +71,7 @@ export function DiffView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <DiffViewHeader file={target.file} staged={target.staged} onBack={onBack} />
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto" data-selectable>
         <DiffContent
           error={error}
           lines={lines}

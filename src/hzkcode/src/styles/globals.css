@@ -171,6 +171,36 @@ body {
   color: var(--color-text-primary);
 }
 
+/* The window is not a document: press-dragging the shell — tab strips, pane
+ * dividers, empty space — must never smear a text selection across the UI
+ * the way a web page does. Text is opt-in below, on the surfaces people
+ * actually read and copy: form fields, the composer, the editor, chat
+ * markdown, code and diff output. */
+html,
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+input,
+textarea,
+select,
+[contenteditable="true"],
+.cm-editor,
+.prose-chat,
+pre,
+code,
+[data-selectable] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Links and images ghost-drag like a web page by default; the only drags in
+ * this app are our own pointer-driven ones (tabs, workspaces, panes). */
+a,
+img {
+  -webkit-user-drag: none;
+}
+
 /* Theme-aware monochrome BoardUI mark. Both images keep their intrinsic
  * dimensions while the root theme class decides which one participates in
  * layout, avoiding a light-logo flash during hydration. */

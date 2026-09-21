@@ -407,7 +407,10 @@ export function AgentThinking({
       {retryDetail ? (
         // The provider's own reason for the retry, verbatim: the terminal
         // prints it and a buried tooltip showed it to nobody.
-        <p className="pl-6 text-caption-1-regular break-words text-text-warning-primary">
+        <p
+          className="pl-6 text-caption-1-regular break-words text-text-warning-primary"
+          data-selectable
+        >
           {retryDetail}
         </p>
       ) : null}

@@ -122,7 +122,7 @@ export const FileDiffViewer = memo(function FileDiffViewer({
       </div>
 
       {/* Diff Content */}
-      <div className="max-h-72 overflow-auto py-1">
+      <div className="max-h-72 overflow-auto py-1" data-selectable>
         {diffLines.length === 0 ? (
           <div className="px-3 py-2 text-text-tertiary italic">
             {t("chat.diffEmpty")}

@@ -217,6 +217,7 @@ function ThinkingSurface({
           truncated &&
             "[mask-image:linear-gradient(to_bottom,transparent_0,#000_36px)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_36px)]",
         )}
+        data-selectable
       >
         {body}
       </div>

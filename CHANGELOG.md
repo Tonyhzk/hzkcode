@@ -59,6 +59,7 @@
 - 火焰自身长度随档位：新增 `span` 参数（火焰长度占已点燃区间的比例，low 0.65 → max 1.0），火焰从「填满滑块左侧空间」改为「按档位喷出自身长度」——低档是一枚不顶到左边缘的短火苗、max 才铺满；火焰形态（宽度收束、热核、光晕）改为在自身长度内归一化，低档呈现完整的小火焰；喷口右侧的溢出从 3.5% 收紧到 1.2%；火焰强度与高度的档位差距同步拉大（power 0.25 → 1.0、vscale 0.45 → 1.0）
 - 模型档位改名并固定顺序：三个档位显示为 **High / Mid / Low**（与环境变量 `HZKCODE_DEFAULT_HIGH/MID/LOW_MODEL` 的命名一致，界面不再出现 Opus / Sonnet / Haiku 字样），模型列表固定按 High → Mid → Low 排列、不再把当前选中项提到最上；渠道表单的档位字段文案与 Rust 侧「Custom `<档位>` model」描述同步（`--model` 的别名仍是 opus / sonnet / haiku，仅显示层改名）
 - 截图工具 `1_Script/mac-window-shot` 支持 `--all`：列出与截取其他桌面或已最小化的窗口（默认只列当前屏幕可见窗口）
+- 界面桌面化：全局默认禁止文本选择（`html` / `body` 上 `user-select: none`），拖拽标签条、分区空白与分隔条不再像网页一样扫出选区；内容区显式恢复可复制（输入框、聊天输入 contentEditable、CodeMirror 编辑器、聊天 Markdown 与代码块、用户气泡、通知行、思考正文、重试原因、工具输出、diff 与 Markdown 预览），DiffView、ToolPayloadViewer 文件 diff、MessageTimeline、ProcessDisclosure、agent-thinking、MarkdownPreview 相应容器加 `data-selectable`；链接与图片关闭 WebView 原生拖拽（`-webkit-user-drag: none`），防止拖出网页式拖拽幽灵
 
 ## [0.1.0] - 2026-09-19
 
