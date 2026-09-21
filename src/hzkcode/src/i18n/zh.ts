@@ -180,7 +180,6 @@ export const zh = {
     effortHigh: "high",
     effortXhigh: "xhigh",
     effortMax: "max",
-    effortUltra: "ultra",
     effortFaster: "更快",
     effortSmarter: "更深入",
     proxyOn: "网络代理：已开启，点击关闭",

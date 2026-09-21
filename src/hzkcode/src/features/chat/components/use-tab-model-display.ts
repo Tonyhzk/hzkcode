@@ -76,10 +76,10 @@ export function useTabModelDisplay({
   const tabEffort = useMemo(() => {
     if (!active || active.engine !== activeEngine) return undefined;
     return (
-      (active.sessionId === null ? active.effort : undefined) ||
+      asEffortLevel(active.sessionId === null ? active.effort : undefined) ||
       asEffortLevel(sessionActiveEffort) ||
       asEffortLevel(sessionHistoryEffort) ||
-      efforts[activeEngine]
+      asEffortLevel(efforts[activeEngine])
     );
   }, [
     active,
@@ -93,13 +93,17 @@ export function useTabModelDisplay({
       tabModel !== undefined ? { ...models, [activeEngine]: tabModel } : models,
     [tabModel, models, activeEngine],
   );
-  const displayEfforts = useMemo(
-    () =>
-      tabEffort !== undefined
-        ? { ...efforts, [activeEngine]: tabEffort }
-        : efforts,
-    [tabEffort, efforts, activeEngine],
-  );
+  const displayEfforts = useMemo(() => {
+    // Drop stored levels the ladder no longer knows (e.g. a persisted
+    // "ultra" from before it was removed): an unknown key would render as a
+    // raw i18n key and confuse the slider.
+    const sanitized = Object.fromEntries(
+      Object.entries(efforts).filter(([, level]) => asEffortLevel(level)),
+    ) as Record<string, EffortLevel>;
+    return tabEffort !== undefined
+      ? { ...sanitized, [activeEngine]: tabEffort }
+      : sanitized;
+  }, [tabEffort, efforts, activeEngine]);
   // Channel has no transcript scan: native files never record it. Tab
   // override only on a pending new-chat (same as effort).
   const sessionActiveProvider = useChatStore((s) =>

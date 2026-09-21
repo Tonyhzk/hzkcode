@@ -75,7 +75,7 @@ export interface Message {
   ts: string | null;
   usage?: unknown;
   model?: string | null;
-  /** Reasoning effort level ("low" | "medium" | "high" | "xhigh" | "max" | "ultra") */
+  /** Reasoning effort level ("low" | "medium" | "high" | "xhigh" | "max") */
   effort?: string | null;
   /** Turn duration in milliseconds (measured from prompt send to turn completion) */
   durationMs?: number | null;

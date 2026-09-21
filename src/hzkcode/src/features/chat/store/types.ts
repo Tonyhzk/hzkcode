@@ -21,7 +21,7 @@ export interface ChatStore {
    * persisted in localStorage; engines resolve unsupported modes to their
    * first supported one at send time (and the picker greys them out). */
   permission: ComposerPermission;
-  /** Per-engine reasoning effort ("low" | … | "ultra"), persisted in app settings. */
+  /** Per-engine reasoning effort ("low" | … | "max"), persisted in app settings. */
   efforts: Record<string, EffortLevel>;
   /** Per-engine model override ("" = CLI/provider default), persisted in app settings. */
   models: Record<string, string>;

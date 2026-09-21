@@ -190,7 +190,6 @@ export const en: Messages = {
     effortHigh: "high",
     effortXhigh: "xhigh",
     effortMax: "max",
-    effortUltra: "ultra",
     effortFaster: "Faster",
     effortSmarter: "Smarter",
     proxyOn: "Proxy: on - click to turn off",
