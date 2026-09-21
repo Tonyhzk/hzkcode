@@ -291,6 +291,18 @@ describe("useEditorTabDrag (HTML5 drag and drop)", () => {
     expect(state.dragGhost).toBeNull();
   });
 
+  it("tears the native ghost down when the window unmounts mid-drag", () => {
+    act(() => {
+      fireDrag(tab("t1"), "dragstart", { clientX: 100, clientY: 40 });
+      fireDrag(document, "dragleave", { relatedTarget: null });
+    });
+    vi.mocked(ipc.hideDragGhost).mockClear();
+    act(() => root.unmount());
+    // The window may be torn down mid-drag (close, reload): never leave the
+    // native ghost window behind.
+    expect(vi.mocked(ipc.hideDragGhost)).toHaveBeenCalledTimes(1);
+  });
+
   it("returns the feedback to the DOM card when the pointer comes back", () => {
     act(() => {
       fireDrag(tab("t1"), "dragstart", { clientX: 100, clientY: 40 });
@@ -312,5 +324,27 @@ describe("useEditorTabDrag (HTML5 drag and drop)", () => {
     expect(state.draggedKey).toBeNull();
     expect(state.dragGhost).toBeNull();
     expect(state.dropTarget).toBeNull();
+  });
+
+  it("ignores a stray dragend with no drag in flight", () => {
+    // Against the edge band: without the early bail this would hand the tab
+    // out even though nothing was dragged.
+    act(() => {
+      fireDrag(tab("t1"), "dragend", { clientX: 2, clientY: 2 });
+    });
+    expect(onDragOut).not.toHaveBeenCalled();
+    expect(onReorder).not.toHaveBeenCalled();
+
+    act(() => {
+      fireDrag(tab("t1"), "dragstart");
+      fireDrag(tab("t1"), "dragend", { clientX: 400, clientY: 300 });
+      // A second dragend trailing the finished drag must not fire either.
+      fireDrag(tab("t1"), "dragend", {
+        clientX: window.innerWidth - 2,
+        clientY: 40,
+      });
+    });
+    expect(onDragOut).not.toHaveBeenCalled();
+    expect(onReorder).not.toHaveBeenCalled();
   });
 });
