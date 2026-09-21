@@ -18,6 +18,28 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: "0.1.0",
+    date: "2026-09-22",
+    content: {
+      zh: `✨ 新功能
+- **全新四分区界面**：对话列表 ｜ 对话 ｜ 文件列表 ｜ 文件编辑器。文件编辑器独立在最右侧，支持多标签、拖拽调宽与折叠；对话区只属于对话，切换会话走左侧列表，变更（diff）也在编辑器区查看
+- **多窗口**：会话列表右键「在新窗口打开」，对话在独立窗口打开；文件编辑器标签拖到窗口边缘即可拖出成单独编辑窗口
+- **模型显示更直观**：模型选择器只保留高阶 / 中阶 / 低阶三个档位，并显示为「[档位]模型名」——直接看到每个档位实际运行的模型（如 [opus]deepseek-v4-pro[1m]）；渠道编辑的每个模型字段新增「1M 上下文」开关，一键为模型名加上 [1m] 后缀
+- **推理强度五档**：low / medium / high / xhigh / max，与 CLI 完全对齐
+- **推理强度火焰动画**：强度滑杆的每个档位都有火箭尾焰动画——从最弱档的黄色小火苗，随档位升高逐渐变长、变热，到最高档的蓝色尾焰
+- **终端信息不再隐藏**：重试的具体原因、第二大脑提醒、记忆提示等直接显示在对话时间线上
+- **详细显示**（设置 → 通用）：开启后工具调用参数与结果默认展开，适合查看完整过程`,
+      en: `✨ Features
+- **New four-pane layout**: sessions | conversation | files | file editor. The editor lives in its own right-most pane with tabs, drag-resize and collapse; the conversation column is just the conversation — switch sessions from the sidebar, and diffs open in the editor pane too
+- **Multi-window**: right-click a session to "Open in new window"; drag an editor tab to the window edge to pop it into a standalone editor window
+- **Clearer model display**: the picker now offers exactly three tiers (high / mid / low) and shows "[tier]model" — the real model each tier runs (e.g. [opus]deepseek-v4-pro[1m]); every model field in the channel editor gains a "1M context" switch that appends the [1m] suffix
+- **Five reasoning levels**: low / medium / high / xhigh / max, matching the CLI exactly
+- **Reasoning-effort flame**: every stop on the effort slider burns — a small yellow flame at the gentlest level, growing longer and hotter with the level, up to the blue rocket exhaust at max
+- **Terminal-only messages are no longer hidden**: retry reasons, second-brain notes and memory hints render in the conversation timeline
+- **Detailed display** (Settings → General): tool-call arguments and results expand by default`,
+    },
+  },
+  {
     version: "1.0.4",
     date: "2026-09-18",
     content: {
