@@ -227,13 +227,21 @@ export function useEngineModels(
       const tierModels = channelTierModels(engine.id, cliConfig, providers[engine.id]);
       result[engine.id] = known.map((m) => {
         const entry = byId.get(m);
-        // A capability alias displays the model the active channel maps it
-        // to ("deepseek-v4.1-flash[1m]"), never just "Sonnet"; the catalog's
-        // description (the alias's built-in model) would contradict it.
+        // A capability alias displays "[tier]model" — the tier tag plus the
+        // model the active channel maps it to ("[sonnet]deepseek-v4.1-flash[1m]"),
+        // never just "Sonnet"; the tier tag is how the user tells the tiers
+        // apart when they resolve to the same model. The default row is an
+        // internal fallback (hidden from the list), so it shows the bare
+        // model name without a tag. The catalog's description (the alias's
+        // built-in model) would contradict a mapped name.
         const tierModel = tierModels[m];
+        const label =
+          tierModel && m !== "default"
+            ? `[${m}]${tierModel}`
+            : (tierModel ?? entry?.name ?? m);
         return {
           id: m,
-          label: tierModel || entry?.name || m,
+          label,
           description: tierModel ? undefined : (entry?.description ?? undefined),
           // Channel/override ids keep the "provider/model" shape, so the
           // prefix stands in when the catalog doesn't name the provider.
@@ -280,9 +288,13 @@ export function useEngineModels(
     }
     return result;
   }, [engines, cliConfig, t]);
-  // No "default" pseudo entry: an unset selection would hide which model
-  // actually runs. Pin it to the first entry — the CLI's effective default.
-  // An authoritative catalog also invalidates stale stored picks (leftovers
+  // No unset selection: it would hide which model actually runs. Pin it to
+  // the channel's configured model, else the first real tier — the CLI's
+  // hidden "default" row is skipped (it just falls back to the high tier
+  // anyway, and the picker is a three-tier list). A stored "default" is
+  // normalized to the explicit tier for the same reason, unless the channel
+  // sets an explicit default model (then it is its own answer). An
+  // authoritative catalog also invalidates stale stored picks (leftovers
   // from older, broader catalogs) that the CLI's model flag cannot resolve.
   // All engines' pins are computed first and written in ONE store action:
   useEffect(() => {
@@ -296,13 +308,20 @@ export function useEngineModels(
       // 永不触发 pin;用户在远端的模型选择走引擎端 resume,不落地。
       if (catalogs[engine.id]?.remote === true) continue;
       const stored = models[engine.id]?.trim();
+      const explicitDefault = configuredModel(engine.id, cliConfig);
       const fallback =
-        configuredModel(engine.id, cliConfig) ||
-        catalogs[engine.id]?.models[0]?.id ||
+        explicitDefault ||
+        catalogs[engine.id]?.models.find((m) => m.id !== "default")?.id ||
         customModels[engine.id]?.[0];
-      if (!fallback) continue;
       if (!stored) {
-        updates[engine.id] = fallback;
+        if (fallback) updates[engine.id] = fallback;
+        continue;
+      }
+      // Normalize only once the channel config is actually loaded: before
+      // that the explicit default model is unknown, and normalizing early
+      // would move a channel that sets one off its default.
+      if (stored === "default" && cliConfig && !explicitDefault) {
+        updates[engine.id] = "opus";
         continue;
       }
       const catalog = catalogs[engine.id];
@@ -311,7 +330,7 @@ export function useEngineModels(
         catalog.models.length > 0 &&
         !knownIdsByEngine[engine.id]?.has(stored)
       ) {
-        updates[engine.id] = fallback;
+        if (fallback) updates[engine.id] = fallback;
       }
     }
     if (Object.keys(updates).length > 0) void pinModels(updates);

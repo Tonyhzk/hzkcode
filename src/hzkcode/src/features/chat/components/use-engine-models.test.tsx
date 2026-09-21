@@ -199,14 +199,17 @@ describe("useEngineModels tier display names", () => {
     } as never);
     await show([engineInfo("claude", true)]);
     const byId = new Map(latest.modelsByEngine.claude.map((m) => [m.id, m]));
-    expect(byId.get("opus")?.label).toBe("deepseek-v4-pro[1m]");
-    expect(byId.get("sonnet")?.label).toBe("deepseek-v4.1-flash[1m]");
+    // Mapped tiers carry the "[tier]" tag so the rows stay tellable apart
+    // even when two tiers resolve to the same model.
+    expect(byId.get("opus")?.label).toBe("[opus]deepseek-v4-pro[1m]");
+    expect(byId.get("sonnet")?.label).toBe("[sonnet]deepseek-v4.1-flash[1m]");
     // The catalog's built-in-model description would contradict the mapped
     // name, so it is dropped for mapped tiers only.
     expect(byId.get("sonnet")?.description).toBeUndefined();
     expect(byId.get("opus")?.description).toBeUndefined();
     // The default alias has no explicit model configured, so it stands for
-    // the high tier (the CLI's "留空走高阶" fallback).
+    // the high tier (the CLI's "留空走高阶" fallback) and shows the bare
+    // model name (no tag: it is the hidden internal fallback).
     expect(byId.get("default")?.label).toBe("deepseek-v4-pro[1m]");
     expect(byId.get("default")?.description).toBeUndefined();
     // Unmapped tiers keep the catalog presentation untouched.
@@ -253,6 +256,67 @@ describe("useEngineModels tier display names", () => {
     } as never);
     await show([engineInfo("claude", true)]);
     const sonnet = latest.modelsByEngine.claude.find((m) => m.id === "sonnet");
-    expect(sonnet?.label).toBe("glm-5.2[1m]");
+    expect(sonnet?.label).toBe("[sonnet]glm-5.2[1m]");
+  });
+});
+
+describe("useEngineModels default normalization", () => {
+  const CLAUDE_CATALOG = {
+    models: [
+      { id: "default", name: "Default" },
+      { id: "opus", name: "Opus" },
+      { id: "sonnet", name: "Sonnet" },
+    ],
+    authoritative: false,
+  };
+
+  it("回落时把 stored=default 归一化到 opus 档", async () => {
+    engines = [engineInfo("claude", true)];
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(
+      CLAUDE_CATALOG as unknown as EngineCatalog,
+    );
+    const pinModels = vi.fn(async () => {});
+    // 渠道没有显式默认模型：default 即高阶层（留空走高阶），归一化让选择器
+    // 能标出当前档位。
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      claude: {
+        current: "relay",
+        providers: {
+          relay: {
+            settingsConfig: { env: { HZKCODE_DEFAULT_HIGH_MODEL: "deepseek-v4-pro[1m]" } },
+          },
+        },
+      },
+    } as never);
+    await render({ models: { claude: "default" }, pinModels });
+    expect(pinModels).toHaveBeenCalledWith({ claude: "opus" });
+  });
+
+  it("渠道配了显式默认模型时保持 default", async () => {
+    engines = [engineInfo("claude", true)];
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(
+      CLAUDE_CATALOG as unknown as EngineCatalog,
+    );
+    const pinModels = vi.fn(async () => {});
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      claude: {
+        current: "relay",
+        providers: {
+          relay: { settingsConfig: { env: { HZKCODE_MODEL: "glm-5.2" } } },
+        },
+      },
+    } as never);
+    await render({ models: { claude: "default" }, pinModels });
+    expect(pinModels).not.toHaveBeenCalled();
+  });
+
+  it("新会话没有 stored 时 pin 到第一个真实档位而非 default", async () => {
+    engines = [engineInfo("claude", true)];
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(
+      CLAUDE_CATALOG as unknown as EngineCatalog,
+    );
+    const pinModels = vi.fn(async () => {});
+    await render({ models: {}, pinModels });
+    expect(pinModels).toHaveBeenCalledWith({ claude: "opus" });
   });
 });

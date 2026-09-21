@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterModels, groupModelsByProvider } from "./model-list";
+import { filterModels, groupModelsByProvider, withoutDefaultRow } from "./model-list";
 import type { ModelOption } from "./cli-menu";
 
 const model = (
@@ -56,5 +56,26 @@ describe("filterModels", () => {
     expect(filterModels(RELAYS, "v4-pro").map((m) => m.id)).toEqual([
       "agentrouter/deepseek-v4-pro",
     ]);
+  });
+});
+
+describe("withoutDefaultRow", () => {
+  it("hides the CLI default row, keeping the three tiers", () => {
+    const models: ModelOption[] = [
+      { id: "default", label: "Default" },
+      { id: "opus", label: "[opus]deepseek-v4-pro[1m]" },
+      { id: "sonnet", label: "[sonnet]deepseek-v4.1-flash[1m]" },
+      { id: "haiku", label: "[haiku]deepseek-v4.1-flash[1m]" },
+    ];
+    expect(withoutDefaultRow(models).map((m) => m.id)).toEqual([
+      "opus",
+      "sonnet",
+      "haiku",
+    ]);
+  });
+
+  it("passes catalogs without a default row through untouched", () => {
+    const models: ModelOption[] = [{ id: "m1", label: "M1" }];
+    expect(withoutDefaultRow(models)).toEqual(models);
   });
 });

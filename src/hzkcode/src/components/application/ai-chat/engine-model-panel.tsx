@@ -10,7 +10,12 @@ import { m } from "motion/react";
 import { inferModelEngine } from "@/components/foundations/icons/engine-brands";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { cx } from "@/utils/cx";
-import { filterModels, groupModelsByProvider, type ModelGroup } from "./model-list";
+import {
+  filterModels,
+  groupModelsByProvider,
+  withoutDefaultRow,
+  type ModelGroup,
+} from "./model-list";
 import { EFFORT_LABEL_KEYS, type EffortLevel } from "./effort-levels";
 import { EffortSlider } from "./effort-slider";
 import type { MenuOption, ModelOption } from "./cli-menu";
@@ -392,7 +397,9 @@ export function EngineModelPanel({
   /** This engine's catalog probe is still running. */
   loading?: boolean;
 }) {
-  const { groups, empty } = useOrderedModelGroups(models, query, selectedModelId);
+  // The picker is a three-tier list: the catalog's "default" row never shows.
+  const visibleModels = useMemo(() => withoutDefaultRow(models), [models]);
+  const { groups, empty } = useOrderedModelGroups(visibleModels, query, selectedModelId);
 
   return (
     <div className="flex w-full flex-col gap-1.5">

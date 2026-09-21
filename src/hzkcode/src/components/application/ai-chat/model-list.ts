@@ -32,10 +32,21 @@ export function groupModelsByProvider(models: ModelOption[]): ModelGroup[] {
 }
 
 /**
+ * Drop the CLI catalog's "default" selector row: the picker offers exactly
+ * the three capability tiers (high/mid/low), and which model the default
+ * resolves to is the channel's business, not a per-session pick. The id
+ * stays a valid stored value (existing sessions keep running on it).
+ */
+export function withoutDefaultRow(models: ModelOption[]): ModelOption[] {
+  return models.filter((m) => m.id !== "default");
+}
+
+/**
  * Case-insensitive label/id/description/provider match; an empty query passes
  * the catalog through untouched (identity, so memoized groups stay stable).
  * Provider is part of the match because several relays serve the same model
- * id — typing the channel is how you narrow to one of them.
+ * id — typing the channel is how you narrow to one of them. The "[opus]"
+ * tier tag lives inside the label, so tier names match through it too.
  */
 export function filterModels(
   models: ModelOption[],
