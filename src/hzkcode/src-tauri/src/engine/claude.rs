@@ -175,19 +175,18 @@ impl Engine for ClaudeEngine {
                     // User-facing notice the terminal prints inline
                     // (second-brain advice and call failures, personal-memory
                     // notes, model fallback). Level rides along so the row
-                    // keeps its severity color.
+                    // keeps its severity color. Info-level notices stay
+                    // hidden — the same rule the history parser applies, so
+                    // a row cannot disappear when the session is reloaded.
+                    let level = value.get("level").and_then(Value::as_str).unwrap_or("info");
                     let text = value
                         .get("content")
                         .and_then(Value::as_str)
                         .unwrap_or("")
                         .trim();
-                    if !text.is_empty() {
+                    if level != "info" && !text.is_empty() {
                         out.push(EngineEvent::Notice {
-                            level: value
-                                .get("level")
-                                .and_then(Value::as_str)
-                                .unwrap_or("info")
-                                .to_string(),
+                            level: level.to_string(),
                             text: text.to_string(),
                         });
                     }
@@ -951,6 +950,22 @@ mod tests {
             "subtype": "informational",
             "content": "   ",
             "level": "error"
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(!out.iter().any(|event| matches!(event, EngineEvent::Notice { .. })));
+    }
+
+    #[test]
+    fn informational_event_of_info_level_stays_hidden() {
+        // Same rule as the history parser: an info-level notice the REPL
+        // hides must not appear live, or a reload would drop the row.
+        let line = serde_json::json!({
+            "type": "system",
+            "subtype": "informational",
+            "content": "Session completed successfully",
+            "level": "info"
         })
         .to_string();
         let mut out = Vec::new();
