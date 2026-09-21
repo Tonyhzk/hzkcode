@@ -1,6 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "@/lib/i18n";
 import type { EngineCatalog, EngineInfo } from "@/lib/ipc";
 import { ipc } from "@/lib/ipc";
 import { useEngineModels, type EngineModelsState } from "./use-engine-models";
@@ -48,6 +49,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.mocked(ipc.listEngineModels).mockReset();
+  vi.mocked(ipc.getCliConfig).mockResolvedValue({} as never);
 });
 
 function Harness({
@@ -166,5 +168,91 @@ describe("useEngineModels probe dispatch", () => {
       "/ws-a",
       "/ws-b",
     ]);
+  });
+});
+
+describe("useEngineModels tier display names", () => {
+  it("档位显示当前渠道配置的模型名（而不是别名），未映射档位保持目录名", async () => {
+    vi.mocked(ipc.listEngineModels).mockResolvedValue({
+      models: [
+        { id: "default", name: "Default" },
+        { id: "opus", name: "Opus", description: "Opus 4.5" },
+        { id: "sonnet", name: "Sonnet", description: "Sonnet 4.5" },
+        { id: "haiku", name: "Haiku" },
+      ],
+      authoritative: false,
+    } as unknown as EngineCatalog);
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      claude: {
+        current: "relay",
+        providers: {
+          relay: {
+            settingsConfig: {
+              env: {
+                HZKCODE_DEFAULT_HIGH_MODEL: "deepseek-v4-pro[1m]",
+                HZKCODE_DEFAULT_MID_MODEL: "deepseek-v4.1-flash[1m]",
+              },
+            },
+          },
+        },
+      },
+    } as never);
+    await show([engineInfo("claude", true)]);
+    const byId = new Map(latest.modelsByEngine.claude.map((m) => [m.id, m]));
+    expect(byId.get("opus")?.label).toBe("deepseek-v4-pro[1m]");
+    expect(byId.get("sonnet")?.label).toBe("deepseek-v4.1-flash[1m]");
+    // The catalog's built-in-model description would contradict the mapped
+    // name, so it is dropped for mapped tiers only.
+    expect(byId.get("sonnet")?.description).toBeUndefined();
+    expect(byId.get("opus")?.description).toBeUndefined();
+    // The default alias has no explicit model configured, so it stands for
+    // the high tier (the CLI's "留空走高阶" fallback).
+    expect(byId.get("default")?.label).toBe("deepseek-v4-pro[1m]");
+    expect(byId.get("default")?.description).toBeUndefined();
+    // Unmapped tiers keep the catalog presentation untouched.
+    expect(byId.get("haiku")?.label).toBe("Haiku");
+  });
+
+  it("默认档优先显示显式配置的模型，高阶层回退不遮住它", async () => {
+    vi.mocked(ipc.listEngineModels).mockResolvedValue({
+      models: [{ id: "default", name: "Default" }],
+      authoritative: false,
+    } as unknown as EngineCatalog);
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      claude: {
+        current: "relay",
+        providers: {
+          relay: {
+            settingsConfig: {
+              env: {
+                HZKCODE_MODEL: "glm-5.2",
+                HZKCODE_DEFAULT_HIGH_MODEL: "deepseek-v4-pro[1m]",
+              },
+            },
+          },
+        },
+      },
+    } as never);
+    await show([engineInfo("claude", true)]);
+    const byId = new Map(latest.modelsByEngine.claude.map((m) => [m.id, m]));
+    expect(byId.get("default")?.label).toBe("glm-5.2");
+  });
+
+  it("渠道配置在扁平 env 形状里同样生效", async () => {
+    vi.mocked(ipc.listEngineModels).mockResolvedValue({
+      models: [{ id: "sonnet", name: "Sonnet" }],
+      authoritative: false,
+    } as unknown as EngineCatalog);
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      claude: {
+        current: "relay",
+        providers: {
+          relay: { env: { HZKCODE_DEFAULT_MID_MODEL: "glm-5.2[1m]" } },
+        },
+      },
+    } as never);
+    await show([engineInfo("claude", true)]);
+    const sonnet = latest.modelsByEngine.claude.find((m) => m.id === "sonnet");
+    expect(sonnet?.label).toBe("glm-5.2[1m]");
   });
 });

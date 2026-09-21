@@ -538,6 +538,7 @@ export const en: Messages = {
     cliFieldReadModel: "Read model",
     cliFieldReadModelHint: "Model used to read images, OCR and other file reads.",
     cliFieldModelPlaceholder: "Model id, e.g. claude-sonnet-4-5",
+    cliField1m: "1M context",
     cliFeatures: "Feature switches",
     cliFeaturesHint: "Saved by the app and injected into every CLI launch",
     cliFeatureSearch: "Web search",

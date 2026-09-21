@@ -45,6 +45,28 @@ export function providerModel(engine: EngineId, raw: unknown): string {
   return "";
 }
 
+/** The only bracket suffix the CLI reads as "1M context" (`model[1m]`); the
+ *  channel form's 1M switch appends or replaces it. */
+export const MODEL_1M_SUFFIX = "[1m]";
+
+/** Whether a model id already carries the 1M-context suffix. */
+export function has1mSuffix(model: string): boolean {
+  return model.trim().endsWith(MODEL_1M_SUFFIX);
+}
+
+/** Model id with the 1M suffix ensured: appended when absent, replacing any
+ *  other trailing bracket suffix ("x[2m]" → "x[1m]"). Empty input stays empty. */
+export function with1mSuffix(model: string): string {
+  const trimmed = model.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.replace(/\[[^\]]*\]$/, "") + MODEL_1M_SUFFIX;
+}
+
+/** Model id with the 1M suffix removed; other suffixes are left alone. */
+export function without1mSuffix(model: string): string {
+  return model.trim().replace(/\[1m\]$/, "");
+}
+
 /**
  * Per-engine env keys backing the flat baseUrl/apiKey/model fields, mirroring
  * the backend provider_files::env_names() table. Imported channels carry these

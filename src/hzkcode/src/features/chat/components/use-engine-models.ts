@@ -55,6 +55,48 @@ function configuredModel(
   return raw ? providerModel(engineId as EngineId, raw).trim() : "";
 }
 
+/** Alias → channel env key: the picker's alias ids (opus/sonnet/haiku) run
+ *  whichever model the active channel maps them to, so they must display
+ *  that model instead of the bare alias name. */
+const TIER_ENV_KEYS: Record<string, string> = {
+  opus: "HZKCODE_DEFAULT_HIGH_MODEL",
+  sonnet: "HZKCODE_DEFAULT_MID_MODEL",
+  haiku: "HZKCODE_DEFAULT_LOW_MODEL",
+};
+
+/** Alias → configured model id of the channel (settingsConfig.env first,
+ *  then the flat env shape — the same order providerModel reads). The
+ *  "default" alias stands for the explicit default model, or the high tier
+ *  when that is blank (the CLI's own "留空走高阶" fallback). */
+function channelTierModels(
+  engineId: string,
+  cliConfig: CliConfig | null,
+  channelId?: string,
+): Record<string, string> {
+  const raw = channelRaw(engineId, cliConfig, channelId);
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const settingsEnv = (o.settingsConfig as Record<string, unknown> | undefined)?.env;
+  const flatEnv = o.env;
+  const pick = (key: string): string => {
+    for (const source of [settingsEnv, flatEnv]) {
+      if (source && typeof source === "object") {
+        const value = (source as Record<string, unknown>)[key];
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+    }
+    return "";
+  };
+  const out: Record<string, string> = {};
+  for (const [alias, key] of Object.entries(TIER_ENV_KEYS)) {
+    const value = pick(key);
+    if (value) out[alias] = value;
+  }
+  const modelDefault =
+    configuredModel(engineId, cliConfig, channelId) || out.opus;
+  if (modelDefault) out.default = modelDefault;
+  return out;
+}
+
 export function useEngineModels(
   engines: EngineInfo[],
   models: Record<string, string>,
@@ -182,12 +224,17 @@ export function useEngineModels(
         ]),
       ];
       const byId = new Map(catalog.map((m) => [m.id, m]));
+      const tierModels = channelTierModels(engine.id, cliConfig, providers[engine.id]);
       result[engine.id] = known.map((m) => {
         const entry = byId.get(m);
+        // A capability alias displays the model the active channel maps it
+        // to ("deepseek-v4.1-flash[1m]"), never just "Sonnet"; the catalog's
+        // description (the alias's built-in model) would contradict it.
+        const tierModel = tierModels[m];
         return {
           id: m,
-          label: entry?.name || m,
-          description: entry?.description ?? undefined,
+          label: tierModel || entry?.name || m,
+          description: tierModel ? undefined : (entry?.description ?? undefined),
           // Channel/override ids keep the "provider/model" shape, so the
           // prefix stands in when the catalog doesn't name the provider.
           provider: entry?.provider ?? (m.includes("/") ? m.slice(0, m.indexOf("/")) : undefined),

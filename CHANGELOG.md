@@ -48,6 +48,8 @@
 - 多窗口支持与修复：新增 `windows` 模块与 `open_chat_window` / `open_editor_window` 命令，窗口构建与主窗口共用 `windows::build_window`（macOS Overlay 标题栏、Windows 装饰跟随设置）；关闭任意窗口不再杀掉全局引擎进程与终端（`on_window_event` 改为仅在最后一个窗口销毁时清理）；各窗口的标签与当前会话状态独立持久化（localStorage 键按窗口 label 命名空间隔离，主窗口沿用原键）；主窗口关闭确认在有其他窗口时改为提示「其他窗口中的会话将继续运行」
 - 新窗口权限修复：`capabilities/default.json` 原本只授权 `main` 窗口，导致新开的会话 / 编辑器窗口无法拖动、无法设置标题、无法最大化（所有 `core:*` 与插件命令被拒）；授权范围改为 `["main", "chat-*", "editor-*"]` 并补 `core:window:allow-set-title`；文件编辑器头部（`FileEditorHeader`）接入窗口拖动区域，独立编辑器窗口与编辑器区顶行都可拖动窗口
 - 新增开发用冒烟示例 `src-tauri/examples/window_smoke.rs`：不启动完整应用即可创建会话 / 编辑器窗口（复用 `windows::build_window` 与真实 `?ctx=…` URL），用于人工核对多窗口行为
+- 对话模型显示改为真实名称：模型选择器与底部触发键不再显示 opus / sonnet / haiku 这类别名，而是显示当前渠道为该档位配置的模型名（如 `deepseek-v4.1-flash[1m]`）；默认档未单独配置时显示高阶层配置的模型名（与「默认模型留空走高阶」的规则一致）；被映射档位的旧目录描述一并隐藏，自定义模型保持原始 id 显示（`use-engine-models` 读取渠道 env 合并显示名）
+- 渠道对话框的模型字段（默认 / 高阶 / 中阶 / 低阶 / 读取）新增「1M 上下文」开关：开启即把模型名后缀置为 `[1m]`（缺少则追加、`[2m]` 等其他后缀替换为 `[1m]`），已带 `[1m]` 显示为开启，关闭时移除后缀，空值不可操作（后缀识别与改写为 `providers.ts` 的 `has1mSuffix` / `with1mSuffix` / `without1mSuffix`，只识别小写 `[1m]`）
 
 ## [0.1.0] - 2026-09-19
 

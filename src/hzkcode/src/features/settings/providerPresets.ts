@@ -48,6 +48,9 @@ export interface EnvField {
   labelKey: string;
   hintKey?: string;
   placeholderKey?: string;
+  /** Model-id field: gets the 1M-context switch that appends/replaces the
+   *  `[1m]` suffix on the value. */
+  oneM?: boolean;
 }
 
 /** The channel fields the dialog exposes, grouped in display order. These are
@@ -86,24 +89,28 @@ export const CLAUDE_ENV_GROUPS: readonly {
         labelKey: "settings.cliFieldDefaultModel",
         hintKey: "settings.cliFieldDefaultModelHint",
         placeholderKey: "settings.cliFieldModelPlaceholder",
+        oneM: true,
       },
       {
         envKey: "HZKCODE_DEFAULT_HIGH_MODEL",
         kind: "text",
         labelKey: "settings.cliFieldHighModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
+        oneM: true,
       },
       {
         envKey: "HZKCODE_DEFAULT_MID_MODEL",
         kind: "text",
         labelKey: "settings.cliFieldMidModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
+        oneM: true,
       },
       {
         envKey: "HZKCODE_DEFAULT_LOW_MODEL",
         kind: "text",
         labelKey: "settings.cliFieldLowModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
+        oneM: true,
       },
       {
         envKey: "HZKCODE_READ_MODEL",
@@ -111,6 +118,7 @@ export const CLAUDE_ENV_GROUPS: readonly {
         labelKey: "settings.cliFieldReadModel",
         hintKey: "settings.cliFieldReadModelHint",
         placeholderKey: "settings.cliFieldModelPlaceholder",
+        oneM: true,
       },
     ],
   },

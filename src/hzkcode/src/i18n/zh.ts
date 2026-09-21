@@ -520,6 +520,7 @@ export const zh = {
     cliFieldReadModel: "读取模型",
     cliFieldReadModelHint: "读图、OCR 等文件读取用的模型。",
     cliFieldModelPlaceholder: "模型 ID，例如 claude-sonnet-4-5",
+    cliField1m: "1M 上下文",
     cliFeatures: "功能开关",
     cliFeaturesHint: "由应用保存，启动 CLI 时注入，对所有会话生效",
     cliFeatureSearch: "联网搜索",
