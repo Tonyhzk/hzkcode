@@ -31,7 +31,8 @@
 ## 内置 CLI 与数据互通
 
 - 应用内置 CLI 二进制：源码槽位 `src/hzkcode/src-tauri/binaries/`，打包后位于 `HZK CODE.app/Contents/Resources/binaries/`（Windows 为安装目录下的 `binaries\`）；文件名 `hzkcode`（Windows `hzkcode.exe`），也可放上游构建产物 `claude`，两者都在时优先 `hzkcode`。
-- 当前内置 CLI 版本：**2.9.17**（槽位二进制 `--version` 自报）；替换槽位二进制时必须同步更新本行。
+- 当前内置 CLI 版本：**3.0.0**（槽位二进制 `--version` 自报）；替换槽位二进制时必须同步更新本行。
+- 替换内置二进制前必须做接口检查：在 fork 仓库（`hzk-code-agent`）对旧版与新版的提交/标签对比有无影响 GUI 交互的接口变化——核对 GUI 注入的环境变量（`provider_files.rs` 的 `env_names` / `is_provider_env_key` 清单：`HZKCODE_BASE_URL` / `HZKCODE_API_KEY` / `HZKCODE_MODEL` / `HZKCODE_DEFAULT_HIGH|MID|LOW_MODEL` / `HZKCODE_API_MODE` / `HZKCODE_AUTH_MODE` / `HZKCODE_PROVIDER` / `HZKCODE_CONFIG_DIR` / `HZKCODE_PROVIDER_MANAGED_BY_HOST` 等）、无头 stream-json 会话协议与启动参数、配置与会话目录、系统通知输出；CLI 纯内部改动（记忆、第二大脑、提示词等）不算接口变化。方法：对两个提交分别 `git grep` 变量名与协议字段并对比，差异逐项确认无破坏或已在 GUI 侧适配后再替换。
 - 运行时解析顺序：设置页自定义路径 → 内置二进制 → 系统 PATH；命中内置时设置页版本行显示「内置」，且不提供 npm / 官方脚本的一键安装入口（随应用一起更新）。
 - 引擎配置根目录：`~/.hzkcode`（`HZKCODE_CONFIG_DIR` 可覆盖），与单独安装的 hzkcode CLI 共用同一份配置与会话数据，因此可以同时安装使用；GUI 不再读写 `~/.claude` 与 `CLAUDE_CONFIG_DIR`。
 - 提供商与 API Key 由界面管理：渠道配置存在应用自己的配置里，会话启动时以环境变量注入子进程，不依赖用户 shell 配置；变量名只用 CLI 自己的 `HZKCODE_*`（`HZKCODE_BASE_URL` / `HZKCODE_API_KEY` / `HZKCODE_MODEL` / `HZKCODE_DEFAULT_HIGH|MID|LOW_MODEL` / `HZKCODE_MAX_THINKING_TOKENS` 等），不再出现上游 `ANTHROPIC_*`、`CLAUDE_CODE_*` 拼写。注入前会清掉父进程继承的同名变量，选中具体渠道时同时设置 `HZKCODE_PROVIDER_MANAGED_BY_HOST=1`，CLI 自己的 `~/.hzkcode/settings.json` 只作为「官方配置」渠道使用。
@@ -50,7 +51,8 @@
 
 ## 版本记录与发布
 
-- 版本号四处保持一致：外层 `VERSION`、`src/hzkcode/package.json`、`src/hzkcode/src-tauri/Cargo.toml`、`src/hzkcode/src-tauri/tauri.conf.json`（当前版本线自 0.1.0 起）。
+- 版本号四处保持一致：外层 `VERSION`、`src/hzkcode/package.json`、`src/hzkcode/src-tauri/Cargo.toml`、`src/hzkcode/src-tauri/tauri.conf.json`。
+- 版本号采用四段语义：前三段跟随内置 CLI 版本、第四段为本程序在该 CLI 版本下的自增序号（如内置 CLI 3.0.0、本程序第 1 版 → 展示为 `3.0.0.1`）。构建链只接受三段 semver（Cargo 拒绝四级写法），存储用 `3.0.0-1`（第四段放 pre-release 段，Tauri updater 的版本比较仍然有效），界面与文档展示为 `3.0.0.1`；CLI 升版时前三段跟随、第四段从 1 重新计数。切换前版本为 0.1.0，下次发布起采用本规则。
 - 外层 `CHANGELOG.md` 是真实完整的记录，包含内部改动与源码级细节；bug 修复的完整描述写在这里。
 - 应用内 `src/hzkcode/src/version/changelog.ts` 的 `CHANGELOG_DATA`（设置 → 社区与反馈 → 版本记录）面向用户，只写功能与修复等用户可感知的变化，不出现源码相关内容。
 - 发布手动维护（CI 自动发布 workflow 已移除）：本地构建 → 创建 `v<版本号>` 标签与 GitHub Release → 上传安装包与 updater 产物（`latest.json`、`.app.tar.gz` 及其 `.sig`）。

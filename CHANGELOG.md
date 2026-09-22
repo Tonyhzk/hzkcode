@@ -67,6 +67,7 @@
 - 拖出标签创建独立窗口时按松手位置摆放：前端在 `dragend` 取 `screenX`/`screenY` 一路传到 Rust（use-editor-tabs → EditorDock → ChatPage → ChatPageDialogs → open-in-window → window-actions → ipc），`windows::build_window` 新增 `position` 参数（build 前 `.position()`，`clamp_to_monitor` 按松手点所在显示器钳制）；`examples/window_smoke.rs` 同步补参数
 - 新增 `macos-private-api` 编译特性与 `tauri.conf.json` 的 `macOSPrivateApi`：透明浮层窗口在 macOS 上的必要条件（自分发不受影响）
 - 编辑器分隔线拖拽改为与文件列表联动：拖动编辑器左边缘的分隔线时两侧此消彼长（编辑器 320–720 与文件列表 300–560 在各自限值内互相让位），三|四分界跟随指针移动，不再经由弹性列把整个文件列表分区连同其左边界一起推动；编辑器到达自身限值时整体停住，文件列表到达限值时编辑器的继续变化才落到对话区；文件列表折叠（渲染宽度 0）时不参与联动（`use-layout-panels` 在拖拽开始时快照文件列表宽度与可见性）
+- 内置 CLI 二进制更新至 fork 3.0.0 发布版（原 2.9.17，旧文件备份在 `.delete/`）：CLI 侧环境变量命名统一为 `HZKCODE_*`、默认配置目录为 `~/.hzkcode`、无头会话转发系统通知，均与 GUI 现有实现对齐；替换前已按接口检查流程核对（GUI 注入的核心变量在 2.9.17 中均不存在、在 3.0.0 中全部支持）
 
 ## [0.1.0] - 2026-09-19
 
