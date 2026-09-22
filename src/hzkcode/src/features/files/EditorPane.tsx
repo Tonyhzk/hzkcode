@@ -9,7 +9,8 @@ import { errorText } from "@/lib/errors";
 import { Button } from "@/components/base/buttons/button";
 import { CenteredSpinner, EmptyState } from "@/components/base/empty-state";
 import { fileName, useFilesStore } from "./store";
-import { BinaryFileView, ImageFileView } from "./EditorFallbackViews";
+import { fileUrl } from "@/lib/platform";
+import { BinaryFileView, ImageFileView, VideoFileView } from "./EditorFallbackViews";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { registerShortcutHandler } from "@/features/shortcuts/runtime";
@@ -142,8 +143,19 @@ function FileEditor({ path, content }: { path: string; content: FileContent }) {
     });
   }, [readOnly]);
 
+  // Media previews: the inline data URL wins when the backend provided one
+  // (small local images, remote files); everything else loads by path through
+  // the loopback media server (any size, video seeks with byte ranges — see
+  // platform.fileUrl). Remote (WSL) files without an inline copy have no
+  // local path to serve.
+  const remote = window.__hzkcodeFiles?.isRemote(path) ?? false;
   if (content.kind === "image") {
-    return <ImageFileView name={name} dataUrl={content.dataUrl} />;
+    const url = content.dataUrl ?? (remote ? null : fileUrl(path));
+    return <ImageFileView name={name} url={url} />;
+  }
+
+  if (content.kind === "video") {
+    return <VideoFileView name={name} url={remote ? null : fileUrl(path)} />;
   }
 
   if (content.kind === "binary") {

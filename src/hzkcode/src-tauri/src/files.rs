@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 const MAX_READ_BYTES: usize = 1024 * 1024;
+/// Ceiling for inline base64 image data URLs (chat thumbnails, remote-reader
+/// fallback). The editor previews images of any size through the asset
+/// protocol, so a larger file simply carries no inline copy.
 const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 const MAX_SEARCH_RESULTS: usize = 200;
 /// @-mention file index: bounds the walk on monster trees (the gitignore
@@ -22,7 +25,7 @@ pub struct DirEntry {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileContent {
-    pub kind: String, // "text" | "image" | "binary"
+    pub kind: String, // "text" | "image" | "video" | "binary"
     pub text: Option<String>,
     pub data_url: Option<String>,
     pub truncated: bool,
@@ -74,7 +77,7 @@ pub(crate) fn canonicalize_lenient(path: &Path) -> Result<PathBuf, String> {
 /// Workspace roots, user-granted directories and the pasted-images sandbox
 /// are the only trees the file commands may touch: `path` comes over IPC and
 /// would otherwise be an arbitrary-filesystem primitive.
-fn allowed_roots(db: &crate::db::Db) -> Vec<PathBuf> {
+pub(crate) fn allowed_roots(db: &crate::db::Db) -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = db
         .workspace_paths()
         .unwrap_or_default()
@@ -187,31 +190,70 @@ pub fn list_dir(
     Ok(out)
 }
 
+fn extension(path: &Path) -> String {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
 fn is_image(path: &Path) -> bool {
     matches!(
-        path.extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase()
-            .as_str(),
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "ico"
+        extension(path).as_str(),
+        "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "webp"
+            | "svg"
+            | "bmp"
+            | "ico"
+            | "heic"
+            | "heif"
+            | "avif"
+            | "jfif"
+            | "tif"
+            | "tiff"
+    )
+}
+
+/// Video containers the editor previews with a `<video>` element: the webview
+/// plays what the platform codecs support (ProRes / H.264 / HEVC on macOS,
+/// H.264 / VP9 on Windows); anything else gets the preview's own unsupported
+/// notice instead of the generic "binary file" placeholder. `.ts` is left out
+/// on purpose — it is TypeScript far more often than MPEG transport stream.
+fn is_video(path: &Path) -> bool {
+    matches!(
+        extension(path).as_str(),
+        "mp4"
+            | "m4v"
+            | "mov"
+            | "webm"
+            | "mkv"
+            | "avi"
+            | "wmv"
+            | "flv"
+            | "mpg"
+            | "mpeg"
+            | "m2ts"
+            | "mts"
+            | "ogv"
+            | "mxf"
     )
 }
 
 fn image_mime(path: &Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "jpg" | "jpeg" => "image/jpeg",
+    match extension(path).as_str() {
+        "jpg" | "jpeg" | "jfif" => "image/jpeg",
         "gif" => "image/gif",
         "webp" => "image/webp",
         "svg" => "image/svg+xml",
         "bmp" => "image/bmp",
         "ico" => "image/x-icon",
+        "heic" => "image/heic",
+        "heif" => "image/heif",
+        "avif" => "image/avif",
+        "tif" | "tiff" => "image/tiff",
         _ => "image/png",
     }
 }
@@ -221,20 +263,35 @@ fn image_mime(path: &Path) -> &'static str {
 fn read_file_blocking(db: &crate::db::Db, path: &str) -> Result<FileContent, String> {
     let file = ensure_allowed(path, db)?;
     let meta = std::fs::metadata(&file).map_err(|e| format!("stat {}: {e}", file.display()))?;
+    // Media previews stream through the loopback media server from the
+    // frontend, so their bytes never cross IPC. Images still carry an inline
+    // data URL while small — chat thumbnails and the WSL remote reader
+    // consume it — and the editor falls back to it for remote files (no local
+    // path to serve). Videos are never inlined.
     if is_image(&file) {
-        if meta.len() > MAX_IMAGE_BYTES as u64 {
-            return Err("image exceeds 5MB preview limit".to_string());
-        }
-        let bytes = std::fs::read(&file).map_err(|e| format!("read {}: {e}", file.display()))?;
-        let data_url = format!(
-            "data:{};base64,{}",
-            image_mime(&file),
-            base64::engine::general_purpose::STANDARD.encode(bytes)
-        );
+        let data_url = if meta.len() > MAX_IMAGE_BYTES as u64 {
+            None
+        } else {
+            let bytes =
+                std::fs::read(&file).map_err(|e| format!("read {}: {e}", file.display()))?;
+            Some(format!(
+                "data:{};base64,{}",
+                image_mime(&file),
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            ))
+        };
         return Ok(FileContent {
             kind: "image".to_string(),
             text: None,
-            data_url: Some(data_url),
+            data_url,
+            truncated: false,
+        });
+    }
+    if is_video(&file) {
+        return Ok(FileContent {
+            kind: "video".to_string(),
+            text: None,
+            data_url: None,
             truncated: false,
         });
     }
@@ -682,5 +739,57 @@ mod tests {
         assert!(!filtered.iter().any(|e| e.rel == "release/app.exe"));
         let all = list_file_index_blocking(&db, &root, true).unwrap();
         assert!(all.iter().any(|e| e.rel == "release/app.exe"));
+    }
+
+    #[test]
+    fn media_extensions_route_to_their_preview_kinds() {
+        assert!(is_image(Path::new("shot.HEIC")));
+        assert!(is_image(Path::new("pic.avif")));
+        assert!(!is_image(Path::new("pic.raw")));
+        assert!(is_video(Path::new("clip.MOV")));
+        assert!(is_video(Path::new("clip.mp4")));
+        // `.ts` stays TypeScript; it must not fall into the video preview.
+        assert!(!is_video(Path::new("module.ts")));
+    }
+
+    #[test]
+    fn read_file_reports_video_kind_without_inlining_content() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("test.db")).unwrap();
+        let root = scratch.0.to_string_lossy().to_string();
+        db.add_granted_root(&root).unwrap();
+        let video = scratch.0.join("clip.mp4");
+        // NUL bytes: without the extension rule this would classify as binary.
+        std::fs::write(&video, b"\0\0\0\x18ftypmp42").unwrap();
+
+        let content = read_file_blocking(&db, &video.to_string_lossy()).unwrap();
+        assert_eq!(content.kind, "video");
+        assert!(content.text.is_none());
+        assert!(content.data_url.is_none());
+    }
+
+    #[test]
+    fn oversized_images_keep_their_kind_without_inline_data() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("test.db")).unwrap();
+        let root = scratch.0.to_string_lossy().to_string();
+        db.add_granted_root(&root).unwrap();
+        let big = scratch.0.join("big.png");
+        std::fs::write(&big, vec![0u8; MAX_IMAGE_BYTES + 1]).unwrap();
+
+        // The editor previews the file through the asset protocol; the inline
+        // copy (chat thumbnails) is simply omitted instead of erroring.
+        let content = read_file_blocking(&db, &big.to_string_lossy()).unwrap();
+        assert_eq!(content.kind, "image");
+        assert!(content.data_url.is_none());
+
+        let small = scratch.0.join("small.png");
+        std::fs::write(&small, b"\x89PNG\r\n\x1a\n").unwrap();
+        let content = read_file_blocking(&db, &small.to_string_lossy()).unwrap();
+        assert_eq!(content.kind, "image");
+        assert!(content
+            .data_url
+            .as_deref()
+            .is_some_and(|u| u.starts_with("data:image/png;base64,")));
     }
 }

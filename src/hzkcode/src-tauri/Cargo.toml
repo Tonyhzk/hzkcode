@@ -23,7 +23,7 @@ serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
 regex = "1"
 toml_edit = "0.22"
 rusqlite = { version = "0.32", features = ["bundled"] }
-tokio = { version = "1", features = ["rt", "macros", "net", "process", "time", "sync", "io-util"] }
+tokio = { version = "1", features = ["rt", "macros", "net", "process", "time", "sync", "io-util", "fs"] }
 sha2 = "0.10"
 dirs = "6"
 dunce = "1"

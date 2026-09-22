@@ -72,6 +72,13 @@
 - 内置 CLI 二进制更新至 fork 3.0.0 发布版（原 2.9.17，旧文件备份在 `.delete/`）：CLI 侧环境变量命名统一为 `HZKCODE_*`、默认配置目录为 `~/.hzkcode`、无头会话转发系统通知，均与 GUI 现有实现对齐；替换前已按接口检查流程核对（GUI 注入的核心变量在 2.9.17 中均不存在、在 3.0.0 中全部支持）
 - 版本体系切换为「内置 CLI 版本 + 本程序自增序号」的四段语义：当前版本 0.1.0 → `3.0.0-1`（统一写法，视觉与存储一致、不出现四段点分）；四处版本文件与应用内版本记录条目同步更新，插件侧的宿主版本比较（前端 `ipcBackend.appVersion`、Rust `minAppVersion` 校验）剥离 pre-release 段后按三段比较
 - 文件列表分区收窄：默认宽度 300px → 150px，可挤压下限 100px（编辑器分隔线可把文件列表压到该下限、继续拖就地停住）；停留在旧最小宽度（300px）的持久化值做一次性迁移到 150px（带 `hzkcode.panelWidthMigrated` 标记，之后手动拖到 300px 不会被再次迁移）
+- 文件列表里的图片与视频可直接在编辑器分区查看：图片支持任意大小、扩展名扩展到 HEIC / HEIF / AVIF / JFIF / TIFF（webview 解不了的格式显示「无法预览该图片」），视频（mp4 / mov / webm / mkv / avi / mxf 等 14 种容器）用播放器打开、可拖动进度，不再落入「二进制文件，无法编辑」占位；`read_file` 对视频只回 `kind: "video"`（不读内容），图片仅 ≤5MB 时附带内联 dataURL（聊天缩略图与远程文件的回退通道），编辑器一律按路径加载
+- 本机回环媒体服务（`media_server.rs`）：绑定 `127.0.0.1` 随机端口 + 随机 token，`/media?token=…&path=…` 按 `files::ensure_allowed` 的工作区 / 授权目录范围读文件，整文件请求以 256KB 分块流式响应（图片任意大小、不在内存里整读），带单段 Range 时返回 206 + `Content-Range`（单次响应 1MB 切片，视频 seek 依赖）；macOS WKWebView 的媒体层不接受自定义 scheme——探针实测 `asset://` 的 `<video>` 报 `MEDIA_ERR_SRC_NOT_SUPPORTED`，同一文件走 http 正常播放，图片则不受影响——媒体统一改走 http；服务地址经 `windows::build_window` 初始化脚本注入 `window.__hzkcodeMediaBase`（`fileUrl` 拼上 path 使用，注入缺失时回退 asset 协议；web 访问模式继续走桥接的 `/file` 路由）
+- web 访问模式的 `/file` 路由补 Range 支持：单段 Range 返回 206 + `Content-Range` + `Accept-Ranges`（浏览器里的视频可拖动进度）；可见面从「$HOME（除凭证目录）」扩展为叠加已注册工作区与授权目录，与文件命令 `ensure_allowed` 的集合对齐
+- CSP 放行回环媒体与视频：`img-src` / `media-src` 增加 `http://127.0.0.1:*`（端口随机），`media-src` 增加 `asset:` 与 `http://asset.localhost`；CSP 只在打包产物注入，开发模式不校验
+- 媒体预览的图片加载路径不变的部分：`MarkdownPreview` 的本地图片同样经 `fileUrl` 走媒体服务（工作区内可达，超出范围显示为破图，与旧行为一致）
+- `read_file` 对超过 5MB 的图片不再报错（返回 `kind: "image"` + 空 `dataUrl`）：聊天缩略图无内联副本时降级为文件名 chip，编辑器照常经媒体服务显示全图
+- 冒烟示例 `window_smoke` 新增 `raw <页面>` 模式：加载开发服务器上的任意页面（本次用于媒体探针定位 WKWebView 的 scheme 限制）
 
 ## [0.1.0] - 2026-09-19
 

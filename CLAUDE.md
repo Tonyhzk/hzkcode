@@ -27,6 +27,7 @@
 - 窗口权限：`src/hzkcode/src-tauri/capabilities/default.json` 的 `windows` 必须含新窗口前缀（当前 `["main", "chat-*", "editor-*"]`），缺少时新窗口会拖不动、无法设置标题等（权限是编译期嵌入，改后需重新构建）。
 - 各窗口的标签与当前会话状态按窗口 label 独立持久化（localStorage 键后缀 `:w:<label>`）；关闭任一窗口不会清理引擎进程与终端，只有最后一个窗口销毁时才清理。
 - 文本选择：窗口默认不可选中文本（桌面化）；可复制内容靠 `styles/globals.css` 的 `user-select: text` 白名单，新加可读容器需带 `data-selectable`；从外壳（非白名单区）按下的拖拽由 `lib/selection-guard` 全局禁选（`html[data-window-dragging]`），防止拖动中扫选正文。
+- 媒体预览走本机回环 HTTP 服务：编辑器图片 / 视频与 Markdown 本地图片统一经 `lib/platform.ts` 的 `fileUrl` 加载；服务在 `media_server.rs`（127.0.0.1 随机端口 + token，单段 Range 1MB 分片，范围与文件命令 `files::ensure_allowed` 一致），地址由 `windows::build_window` 初始化脚本注入 `window.__hzkcodeMediaBase`（缺失时 `fileUrl` 回退 asset 协议，图片仍可显示）。不用 asset 协议的原因：macOS WKWebView 媒体层不接受自定义 scheme（`asset://` 的 `<video>` 报 MEDIA_ERR_SRC_NOT_SUPPORTED，图片不受影响，2026-09-23 探针实测）。web 访问模式走桥接 `/file` 路由（同样支持 Range）。CSP 的 `img-src` / `media-src` 必须含 `http://127.0.0.1:*` 与 `asset:`；CSP 只在打包产物注入、dev 不校验，改 CSP 后要用打包产物复验。
 
 ## 内置 CLI 与数据互通
 

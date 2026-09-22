@@ -97,6 +97,12 @@ pub fn build_window(
         // 编辑器标签用 HTML5 拖拽实现"系统拖拽图像跟随鼠标出窗口"，且应用
         // 不使用文件拖入，故关闭该接管。
         .disable_drag_drop_handler();
+    // 媒体 URL 基座（本机回环媒体服务，见 media_server.rs）：前端 platform.ts
+    // 拼上 path 即可用 http 加载图片/视频——WKWebView 的媒体层不接受自定义
+    // scheme，asset:// 的 <video> 直接 SRC_NOT_SUPPORTED。
+    if let Some(base) = app.state::<crate::media_server::MediaServerState>().base.as_deref() {
+        builder = builder.initialization_script(format!("window.__hzkcodeMediaBase = {base:?};"));
+    }
     // 拖出标签的窗口落在松手处（左上角对齐、钳制在所在显示器内），其余
     // 窗口交给系统默认位置。
     if let Some((x, y)) = position {

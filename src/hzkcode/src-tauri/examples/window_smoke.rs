@@ -6,6 +6,7 @@
 //!
 //!   cargo run --example window_smoke -- chat <engine> <sessionId> <workspacePath>
 //!   cargo run --example window_smoke -- editor <filePath>
+//!   cargo run --example window_smoke -- raw <relative page, e.g. index.html>
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -39,6 +40,16 @@ fn main() {
             app.manage(Arc::clone(&database));
             app.manage(state);
             app.manage(hzkcode_lib::config::ConfigStore::default());
+            // 与正式启动一致：媒体服务器（编辑器图片/视频预览的 http 源）。
+            let media_state = hzkcode_lib::media_server::start(Arc::clone(&database))
+                .unwrap_or_else(|error| {
+                    eprintln!("[window_smoke] media server: {error}");
+                    hzkcode_lib::media_server::MediaServerState::default()
+                });
+            if let Some(base) = media_state.base.as_deref() {
+                println!("[window_smoke] media base: {base}");
+            }
+            app.manage(media_state);
 
             let url = if kind_for_setup == "editor" {
                 let file = args_for_setup
@@ -46,6 +57,12 @@ fn main() {
                     .cloned()
                     .unwrap_or_else(|| "/tmp/window_smoke.txt".into());
                 windows::window_url(&[("ctx", "editor"), ("filePath", &file)])
+            } else if kind_for_setup == "raw" {
+                // Any page the dev server serves (media probes, fixtures).
+                args_for_setup
+                    .get(1)
+                    .cloned()
+                    .unwrap_or_else(|| "index.html".into())
             } else {
                 let engine = args_for_setup
                     .get(1)

@@ -837,30 +837,6 @@ async fn static_handler(
     }
 }
 
-fn content_type(path: &str) -> &'static str {
-    let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-    match ext.as_str() {
-        "html" => "text/html; charset=utf-8",
-        "js" | "mjs" => "text/javascript; charset=utf-8",
-        "css" => "text/css; charset=utf-8",
-        "json" | "map" => "application/json",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "svg" => "image/svg+xml",
-        "webp" => "image/webp",
-        "avif" => "image/avif",
-        "ico" => "image/x-icon",
-        "woff" => "font/woff",
-        "woff2" => "font/woff2",
-        "ttf" => "font/ttf",
-        "pdf" => "application/pdf",
-        "txt" | "md" => "text/plain; charset=utf-8",
-        "wasm" => "application/wasm",
-        _ => "application/octet-stream",
-    }
-}
-
 // ==================== /file (mirrors the Tauri asset protocol scope) ====================
 
 #[derive(Deserialize)]
@@ -886,36 +862,49 @@ async fn file_handler(
     if token_required(&headers, peer) && supplied != &*ctx.token {
         return StatusCode::FORBIDDEN.into_response();
     }
-    match read_scoped_file(Path::new(&q.path)) {
-        Some((bytes, mime)) => ([(header::CONTENT_TYPE, mime)], bytes).into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
+    let range = headers
+        .get(header::RANGE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let db = ctx.app.state::<Arc<crate::db::Db>>();
+    serve_scoped_file(&db, Path::new(&q.path), range.as_deref()).await
 }
 
-/// Same scope as tauri.conf.json's assetProtocol: everything under $HOME
-/// except the credential/app-data dirs. Canonicalized first so symlinks and
-/// `..` cannot escape.
-fn read_scoped_file(path: &Path) -> Option<(Vec<u8>, &'static str)> {
-    const MAX_BYTES: u64 = 64 * 1024 * 1024;
-    let canon = dunce::canonicalize(path).ok()?;
+/// Serve one file from the scoped tree — the same surface the file commands
+/// expose (see `in_file_scope`) — canonicalized first so symlinks and `..`
+/// cannot escape.
+async fn serve_scoped_file(db: &crate::db::Db, path: &Path, range: Option<&str>) -> Response {
+    let Some(canon) = dunce::canonicalize(path).ok() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
     if !canon.is_file() {
-        return None;
+        return StatusCode::NOT_FOUND.into_response();
     }
-    let home = dirs::home_dir()?;
-    if !canon.starts_with(&home) {
-        return None;
+    if !in_file_scope(&canon, db) {
+        return StatusCode::NOT_FOUND.into_response();
     }
-    for denied in [".ssh", ".aws", ".gnupg", ".hzkcode"] {
-        if canon.starts_with(home.join(denied)) {
-            return None;
+    crate::media_server::serve_file(&canon, range).await
+}
+
+/// $HOME is served wholesale except the credential/app-data dirs (the asset
+/// protocol's static scope); every other volume is served only when a
+/// registered workspace or granted root covers it — same set as
+/// `files::allowed_roots`, minus the pasted-images sandbox under `~/.hzkcode`
+/// that the deny list keeps out.
+fn in_file_scope(canon: &Path, db: &crate::db::Db) -> bool {
+    if let Some(home) = dirs::home_dir() {
+        for denied in [".ssh", ".aws", ".gnupg", ".hzkcode"] {
+            if canon.starts_with(home.join(denied)) {
+                return false;
+            }
+        }
+        if canon.starts_with(&home) {
+            return true;
         }
     }
-    if std::fs::metadata(&canon).ok()?.len() > MAX_BYTES {
-        return None;
-    }
-    let bytes = std::fs::read(&canon).ok()?;
-    let mime = content_type(&canon.to_string_lossy());
-    Some((bytes, mime))
+    crate::files::allowed_roots(db)
+        .iter()
+        .any(|root| canon.starts_with(root))
 }
 
 // ==================== Command dispatch ====================
@@ -2024,5 +2013,40 @@ mod tests {
         );
         assert_eq!(form_field("key=a+b%2C", "key").as_deref(), Some("a b,"));
         assert_eq!(form_field("other=1", "key"), None);
+    }
+
+    #[tokio::test]
+    async fn serve_scoped_file_refuses_paths_outside_home() {
+        let db_dir =
+            std::env::temp_dir().join(format!("hzkcode-web-scope-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let db = crate::db::Db::open_at(&db_dir.join("test.db")).unwrap();
+        // A real file that the /file scope must never expose.
+        let response = serve_scoped_file(&db, Path::new("/etc/hosts"), None).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let _ = std::fs::remove_dir_all(&db_dir);
+    }
+
+    #[test]
+    fn file_scope_follows_registered_roots_outside_home() {
+        let scratch =
+            std::env::temp_dir().join(format!("hzkcode-web-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&scratch).unwrap();
+        let file = scratch.join("clip.mp4");
+        std::fs::write(&file, b"\0\0\0\x18ftypmp42").unwrap();
+        let canon = dunce::canonicalize(&file).unwrap();
+        let home = dirs::home_dir().unwrap();
+        assert!(!canon.starts_with(&home), "scratch dir must be outside $HOME");
+
+        let db = crate::db::Db::open_at(&scratch.join("test.db")).unwrap();
+        // Unregistered: refused even though the path is readable.
+        assert!(!in_file_scope(&canon, &db));
+
+        // Registered as a workspace root: the file joins the scope — this is
+        // what keeps media previews working for workspaces on other volumes.
+        db.add_granted_root(&scratch.to_string_lossy()).unwrap();
+        assert!(in_file_scope(&canon, &db));
+
+        let _ = std::fs::remove_dir_all(&scratch);
     }
 }

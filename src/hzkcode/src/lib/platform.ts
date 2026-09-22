@@ -40,15 +40,31 @@ export function getAppVersion(): Promise<string | null> {
   return getVersion().catch(() => null);
 }
 
+declare global {
+  interface Window {
+    /** Loopback media-server base injected by the native shell (windows.rs);
+     *  absent in browsers, where the web bridge's /file route serves media. */
+    __hzkcodeMediaBase?: string;
+  }
+}
+
 /**
- * Absolute filesystem path → URL loadable by an <img>. Native uses the asset
- * protocol; web mode uses the bridge's scoped /file route (same $HOME scope,
- * see web.rs).
+ * Absolute filesystem path → URL loadable by an <img> or <video>. Native
+ * serves media over the loopback HTTP server (the shell injects its base):
+ * a macOS WKWebView media stack rejects custom URL schemes, so the asset
+ * protocol can show images but never plays `<video>`. Web mode uses the
+ * bridge's scoped /file route (same surface, see web.rs).
  */
 export function fileUrl(path: string): string {
   if (isWeb) {
     return `/file?path=${encodeURIComponent(path)}&token=${encodeURIComponent(webToken ?? "")}`;
   }
+  const base = window.__hzkcodeMediaBase;
+  if (base) {
+    return `${base}&path=${encodeURIComponent(path)}`;
+  }
+  // Pre-injection window (shell without the media server): images still load
+  // through the asset protocol; videos surface the unsupported notice.
   return convertFileSrc(path);
 }
 

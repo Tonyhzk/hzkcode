@@ -269,8 +269,12 @@ export interface DirEntry {
 }
 
 export interface FileContent {
-  kind: "text" | "image" | "binary";
+  kind: "text" | "image" | "video" | "binary";
   text: string | null;
+  /** Inline base64 for images small enough to carry one (chat thumbnails,
+   *  remote-reader fallback). Large images and all videos leave it null — the
+   *  editor loads those by path through the loopback media server
+   *  (`fileUrl`). */
   dataUrl: string | null;
   truncated: boolean;
   /** Served by a remote reader (e.g. WSL distro, features/files/remote-files):

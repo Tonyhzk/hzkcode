@@ -10,6 +10,7 @@ pub mod event_sink;
 pub mod files;
 pub mod git;
 pub mod history;
+pub mod media_server;
 pub mod metrics;
 pub mod open_app;
 pub mod paths;
@@ -92,6 +93,16 @@ pub fn run() {
             // files.rs commands inject State<'_, Arc<db::Db>> for workspace
             // confinement, so the Arc itself must be managed alongside.
             app.manage(Arc::clone(&db));
+            // 媒体预览（编辑器图片/视频、markdown 图片）走本机回环 HTTP 服务：
+            // macOS WKWebView 的媒体层不接受自定义 scheme（asset:// 的 <video>
+            // 直接 SRC_NOT_SUPPORTED），http 才有可靠的视频播放。失败只降级
+            // 媒体显示，不阻塞启动。必须在创建窗口前 manage——窗口的初始化
+            // 脚本要写出 URL 基座。
+            let media_state = media_server::start(Arc::clone(&db)).unwrap_or_else(|error| {
+                eprintln!("[media] server start failed: {error}");
+                media_server::MediaServerState::default()
+            });
+            app.manage(media_state);
             let emitters = event_sink::BroadcastEmit::new(Arc::new(app.handle().clone()));
             let state = AppState {
                 db,
