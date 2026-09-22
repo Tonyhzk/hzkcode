@@ -241,6 +241,22 @@ describe("ChatPage four-column layout", () => {
     expect(dockRoot().style.width).toBe("0px");
   });
 
+  it("migrates a stored legacy 300px panel width to the tightened default", async () => {
+    localStorage.setItem("hzkcode.panelWidth", "300");
+    await mount();
+    measure(1600);
+    expect(panelRoot().style.width).toBe("150px");
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("150");
+  });
+
+  it("keeps a stored 300px once the migration marker is set", async () => {
+    localStorage.setItem("hzkcode.panelWidth", "300");
+    localStorage.setItem("hzkcode.panelWidthMigrated", "1");
+    await mount();
+    measure(1600);
+    expect(panelRoot().style.width).toBe("300px");
+  });
+
   it("opening a file expands a collapsed dock and reclaims space from the panel", async () => {
     localStorage.setItem("hzkcode.panelWidth", "480");
     localStorage.setItem("hzkcode.editorCollapsed", "1");
@@ -419,15 +435,227 @@ describe("ChatPage four-column layout", () => {
         );
       });
     };
+    // Left drag: the panel hands width to the editor, down to its squeeze
+    // floor — the pair's sum stays constant (the conversation column never
+    // moves) and the panel tightens past its 150px default.
     drag(900);
-    expect(localStorage.getItem("hzkcode.editorWidth")).toBe("520");
-    expect(dockRoot().style.width).toBe("520px");
+    expect(localStorage.getItem("hzkcode.editorWidth")).toBe("470");
+    expect(dockRoot().style.width).toBe("470px");
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("100");
+    // Right drag: the panel takes width back; the editor clamps at its 320px
+    // minimum and the pair settles at 250/320.
     drag(2000);
     expect(localStorage.getItem("hzkcode.editorWidth")).toBe("320");
     expect(dockRoot().style.width).toBe("320px");
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("250");
+    // And left again, back to the floor.
     drag(0);
-    expect(localStorage.getItem("hzkcode.editorWidth")).toBe("720");
+    expect(localStorage.getItem("hzkcode.editorWidth")).toBe("470");
+    expect(dockRoot().style.width).toBe("470px");
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("100");
+  });
+
+  it("parks the panel at its squeeze floor when the editor is dragged further", async () => {
+    await mount();
+    measure(3000);
+    const label = i18n.t("chat.resizeFileEditor");
+    const sep = Array.from(document.querySelectorAll<HTMLElement>('[role="separator"]')).find(
+      (el) => el.getAttribute("aria-label") === label,
+    );
+    expect(sep).toBeTruthy();
+    const drag = (toX: number) => {
+      act(() => {
+        sep!.dispatchEvent(
+          new MouseEvent("pointerdown", {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            clientX: 1000,
+            clientY: 100,
+          }),
+        );
+      });
+      act(() => {
+        window.dispatchEvent(
+          new MouseEvent("pointermove", { bubbles: true, clientX: toX, clientY: 100 }),
+        );
+      });
+      act(() => {
+        window.dispatchEvent(
+          new MouseEvent("pointerup", { bubbles: true, clientX: toX, clientY: 100 }),
+        );
+      });
+    };
+    // A hard left drag squeezes the panel from its 150px default to the
+    // 100px floor and hands 50px to the editor; nothing goes to the
+    // conversation column.
+    drag(0);
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("100");
+    expect(localStorage.getItem("hzkcode.editorWidth")).toBe("470");
+    expect(panelRoot().style.width).toBe("100px");
+    // A second drag can't squeeze further; the pair is parked at the limit.
+    drag(0);
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("100");
+    expect(localStorage.getItem("hzkcode.editorWidth")).toBe("470");
+  });
+
+  it("splits the rendered widths when the stored editor width is squeezed by the chat minimum", async () => {
+    localStorage.setItem("hzkcode.panelWidth", "560");
+    localStorage.setItem("hzkcode.editorWidth", "720");
+    await mount();
+    measure(1328);
+    // The chat minimum squeezes the rendered editor to 1328 - 320 - 560 =
+    // 448, so the border must split the on-screen 560/448 — not the stale
+    // 560/720 (which has no room left and freezes the drag entirely).
+    expect(panelRoot().style.width).toBe("560px");
+    expect(dockRoot().style.width).toBe("448px");
+    const label = i18n.t("chat.resizeFileEditor");
+    const sep = Array.from(document.querySelectorAll<HTMLElement>('[role="separator"]')).find(
+      (el) => el.getAttribute("aria-label") === label,
+    );
+    expect(sep).toBeTruthy();
+    const drag = (toX: number) => {
+      act(() => {
+        sep!.dispatchEvent(
+          new MouseEvent("pointerdown", {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            clientX: 1000,
+            clientY: 100,
+          }),
+        );
+      });
+      act(() => {
+        window.dispatchEvent(
+          new MouseEvent("pointermove", { bubbles: true, clientX: toX, clientY: 100 }),
+        );
+      });
+      act(() => {
+        window.dispatchEvent(
+          new MouseEvent("pointerup", { bubbles: true, clientX: toX, clientY: 100 }),
+        );
+      });
+    };
+    drag(928);
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("488");
+    expect(localStorage.getItem("hzkcode.editorWidth")).toBe("520");
+    expect(panelRoot().style.width).toBe("488px");
+  });
+
+  it("keeps the editor|panel border movable when both columns sit at their caps", async () => {
+    localStorage.setItem("hzkcode.panelWidth", "560");
+    localStorage.setItem("hzkcode.editorWidth", "720");
+    await mount();
+    measure(2360);
+    // Both at their old caps froze the border; the generous caps leave room
+    // to trade width between the two columns without touching the chat.
+    expect(panelRoot().style.width).toBe("560px");
     expect(dockRoot().style.width).toBe("720px");
+    const label = i18n.t("chat.resizeFileEditor");
+    const sep = Array.from(document.querySelectorAll<HTMLElement>('[role="separator"]')).find(
+      (el) => el.getAttribute("aria-label") === label,
+    );
+    expect(sep).toBeTruthy();
+    act(() => {
+      sep!.dispatchEvent(
+        new MouseEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          clientX: 1000,
+          clientY: 100,
+        }),
+      );
+    });
+    act(() => {
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientX: 0, clientY: 100 }),
+      );
+    });
+    act(() => {
+      window.dispatchEvent(
+        new MouseEvent("pointerup", { bubbles: true, clientX: 0, clientY: 100 }),
+      );
+    });
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("100");
+    expect(localStorage.getItem("hzkcode.editorWidth")).toBe("1180");
+    expect(dockRoot().style.width).toBe("1180px");
+  });
+
+  it("scales the panel and the editor together when the panel edge is dragged", async () => {
+    localStorage.setItem("hzkcode.panelWidth", "200");
+    localStorage.setItem("hzkcode.editorWidth", "400");
+    await mount();
+    measure(1600);
+    const label = i18n.t("chat.resizePanel");
+    const sep = Array.from(document.querySelectorAll<HTMLElement>('[role="separator"]')).find(
+      (el) => el.getAttribute("aria-label") === label,
+    );
+    expect(sep).toBeTruthy();
+    act(() => {
+      sep!.dispatchEvent(
+        new MouseEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          clientX: 1000,
+          clientY: 100,
+        }),
+      );
+    });
+    act(() => {
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientX: 900, clientY: 100 }),
+      );
+    });
+    act(() => {
+      window.dispatchEvent(
+        new MouseEvent("pointerup", { bubbles: true, clientX: 900, clientY: 100 }),
+      );
+    });
+    // +100px of pair width, split 1:2 (200/400) — both columns grow and the
+    // chat column gives up the 100px.
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("233");
+    expect(localStorage.getItem("hzkcode.editorWidth")).toBe("467");
+    expect(panelRoot().style.width).toBe("233px");
+    expect(dockRoot().style.width).toBe("467px");
+  });
+
+  it("moves only the panel when the editor is hidden", async () => {
+    localStorage.setItem("hzkcode.panelWidth", "200");
+    localStorage.setItem("hzkcode.editorCollapsed", "1");
+    await mount();
+    measure(1600);
+    const label = i18n.t("chat.resizePanel");
+    const sep = Array.from(document.querySelectorAll<HTMLElement>('[role="separator"]')).find(
+      (el) => el.getAttribute("aria-label") === label,
+    );
+    expect(sep).toBeTruthy();
+    act(() => {
+      sep!.dispatchEvent(
+        new MouseEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          clientX: 1000,
+          clientY: 100,
+        }),
+      );
+    });
+    act(() => {
+      window.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientX: 900, clientY: 100 }),
+      );
+    });
+    act(() => {
+      window.dispatchEvent(
+        new MouseEvent("pointerup", { bubbles: true, clientX: 900, clientY: 100 }),
+      );
+    });
+    // Without the editor on screen the panel edge behaves as before.
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("300");
+    expect(localStorage.getItem("hzkcode.editorWidth")).toBeNull();
   });
 
   it("re-balances the file panel when the editor separator is dragged", async () => {
@@ -462,18 +690,18 @@ describe("ChatPage four-column layout", () => {
       });
     };
     // Narrowing the editor by 300px: the editor clamps at its 320px minimum,
-    // so the panel (at its 300px minimum) takes the 100px it can — the
-    // three|four border moves as one line instead of pushing the panel.
+    // so the pair settles at 250/320 — the border moves as one line, and the
+    // conversation column never moves.
     drag(1300);
     expect(localStorage.getItem("hzkcode.editorWidth")).toBe("320");
-    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("400");
-    expect(panelRoot().style.width).toBe("400px");
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("250");
+    expect(panelRoot().style.width).toBe("250px");
     expect(dockRoot().style.width).toBe("320px");
     // Widening the editor back by 100px hands exactly that much to the panel.
     drag(900);
     expect(localStorage.getItem("hzkcode.editorWidth")).toBe("420");
-    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("300");
-    expect(panelRoot().style.width).toBe("300px");
+    expect(localStorage.getItem("hzkcode.panelWidth")).toBe("150");
+    expect(panelRoot().style.width).toBe("150px");
   });
 
   it("keeps the editor drag self-contained while the file panel is collapsed", async () => {
