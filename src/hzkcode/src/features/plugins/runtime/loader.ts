@@ -56,7 +56,10 @@ export const ipcBackend: LoaderBackend = {
   readFile: (id, name) => ipc.pluginReadFile(id, name),
   quarantine: (id, error) => ipc.pluginQuarantine(id, error),
   setEnabled: (id, enabled) => ipc.pluginSetEnabled(id, enabled),
-  appVersion: async () => (await getAppVersion()) ?? "0.0.0",
+  // Plugins compare host versions with the SDK's numeric-triple helpers,
+  // which reject the app's four-segment marker (`3.0.0-1`, see CLAUDE.md):
+  // hand them the plain triple.
+  appVersion: async () => (await getAppVersion())?.split("-")[0] || "0.0.0",
   get: (id, key) => ipc.pluginStorageGet(id, key),
   set: (id, key, value) => ipc.pluginStorageSet(id, key, value),
   delete: (id, key) => ipc.pluginStorageDelete(id, key),

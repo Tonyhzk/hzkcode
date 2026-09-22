@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+
+// The host version carries the four-segment marker as a semver pre-release
+// (`3.0.0-1`, see CLAUDE.md); plugins must see the plain triple.
+vi.mock("@/lib/platform", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, getAppVersion: async () => "3.0.0-1" };
+});
+
 import {
   getPluginState,
+  ipcBackend,
   loadPlugin,
   reportPluginCrash,
   unloadPlugin,
@@ -54,6 +63,10 @@ function builtinManifest(id: string, permissions: string[] = []) {
 }
 
 describe("loader", () => {
+  it("hands plugins the plain triple of the four-segment host version", async () => {
+    expect(await ipcBackend.appVersion()).toBe("3.0.0");
+  });
+
   it("marks a plugin incompatible when its sdkVersion range excludes the host SDK", async () => {
     const backend = fakeBackend();
     let ran = false;

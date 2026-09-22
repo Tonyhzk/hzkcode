@@ -32,20 +32,12 @@ export function openExternal(url: string) {
   });
 }
 
-/** Storage form is `3.0.0-1` — the fourth segment rides the semver
- *  pre-release slot (see CLAUDE.md); the UI and plugins see `3.0.0.1`. */
-export function formatAppVersion(raw: string): string {
-  return raw.replace(/-(\d+)$/, ".$1");
-}
-
-/** App version: bundle metadata natively, bridge hello frame on web. */
+/** App version: bundle metadata natively, bridge hello frame on web. The
+ *  four-segment marker rides the semver pre-release slot (`3.0.0-1`, see
+ *  CLAUDE.md) and is shown as-is. */
 export function getAppVersion(): Promise<string | null> {
-  if (isWeb) {
-    return serverVersion().then((v) => (v ? formatAppVersion(v) : v));
-  }
-  return getVersion()
-    .then(formatAppVersion)
-    .catch(() => null);
+  if (isWeb) return serverVersion();
+  return getVersion().catch(() => null);
 }
 
 /**
