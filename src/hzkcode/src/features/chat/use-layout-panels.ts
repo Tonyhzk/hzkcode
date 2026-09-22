@@ -91,6 +91,13 @@ export function useLayoutPanels() {
   const widthAtDragStart = useRef(PANEL_DEFAULT_WIDTH);
   const dragStartX = useRef(0);
   const dragWidth = useRef(PANEL_DEFAULT_WIDTH);
+  // The editor drag also moves the file-list column (the three|four split
+  // trades width between them), so it snapshots both columns.
+  const panelWidthAtDragStart = useRef(PANEL_DEFAULT_WIDTH);
+  const dragPanelWidth = useRef(PANEL_DEFAULT_WIDTH);
+  /** The file-list column only joins the editor drag while it is on screen:
+   *  a collapsed panel (rendered at width 0) must not come along. */
+  const panelOnScreenAtDragStart = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
@@ -107,6 +114,10 @@ export function useLayoutPanels() {
             ? editorWidth
             : sidebarWidth;
       dragWidth.current = widthAtDragStart.current;
+      panelWidthAtDragStart.current = panelWidth;
+      dragPanelWidth.current = panelWidth;
+      panelOnScreenAtDragStart.current =
+        parseFloat(panelRef.current?.style.width ?? "0") > 0;
       dragStartX.current = e.clientX;
       setDragging(target);
     },
@@ -143,6 +154,20 @@ export function useLayoutPanels() {
       dragWidth.current = next;
       if (sized) sized.style.width = `${next}px`;
       if (resizer) resizer.style.left = `${next}px`;
+      // Dragging the editor's edge splits the space with the file-list column:
+      // the two trade width so the three|four border moves as one line instead
+      // of shifting the whole panel. Only overflow past either clamp falls
+      // through to the conversation column.
+      if (isEditor && panelOnScreenAtDragStart.current) {
+        dragPanelWidth.current = Math.min(
+          PANEL_MAX_WIDTH,
+          Math.max(
+            PANEL_MIN_WIDTH,
+            panelWidthAtDragStart.current - (next - widthAtDragStart.current),
+          ),
+        );
+        if (panelRef.current) panelRef.current.style.width = `${dragPanelWidth.current}px`;
+      }
     };
     const onUp = () => {
       setDragging(null);
@@ -153,6 +178,10 @@ export function useLayoutPanels() {
       } else if (isEditor) {
         setEditorWidth(dragWidth.current);
         writeStored(EDITOR_WIDTH_KEY, dragWidth.current);
+        if (panelOnScreenAtDragStart.current) {
+          setPanelWidth(dragPanelWidth.current);
+          writeStored(PANEL_WIDTH_KEY, dragPanelWidth.current);
+        }
       } else {
         setSidebarWidth(dragWidth.current);
         writeStored(SIDEBAR_WIDTH_KEY, dragWidth.current);

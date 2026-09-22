@@ -30,6 +30,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - **终端信息不再隐藏**：重试的具体原因、第二大脑提醒、记忆提示等直接显示在对话时间线上
 - **详细显示**（设置 → 通用）：开启后工具调用参数与结果默认展开，适合查看完整过程
 - **桌面级交互**：界面不再像网页那样随手扫选文字——拖拽标签、分隔条或空白区域不会留下蓝色选区，从外壳拖过正文也不会起选；聊天正文、代码块、工具输出与编辑器照常划词复制；编辑器标签拖动时有跟随鼠标的浮层卡片，拖出窗口也一路跟随，松手即消失、归位、重排或移到独立窗口
+- **编辑器分栏更自然**：拖动编辑器左侧的分隔线时，文件列表与编辑器此消彼长——分隔线跟着鼠标走，不再把文件列表整栏推着移动
 - **编辑器窗口头部适配**：拖出的编辑器窗口里，文件名不再压住 macOS 左上角的窗口按钮
 - **编辑器窗口更完整**：Windows 仿 mac 标题栏下，拖出的编辑器窗口带自绘窗口按钮；关闭该窗口时文件自动回到原来的窗口（标签还原，不再消失）`,
       en: `✨ Features
@@ -41,6 +42,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - **Terminal-only messages are no longer hidden**: retry reasons, second-brain notes and memory hints render in the conversation timeline
 - **Detailed display** (Settings → General): tool-call arguments and results expand by default
 - **Desktop-grade interaction**: the UI no longer sweeps a text selection like a web page — dragging tabs, dividers or empty space leaves no blue smear, and a drag that starts on chrome never catches the text it passes over; chat text, code blocks, tool output and the editor stay selectable. Editor tabs drag with a floating card that follows the pointer — even outside the window — and vanishes on release, settling back, reordering, or popping out into its own window
+- **Natural editor split**: dragging the editor's left divider now trades width with the file-list pane — the border follows the pointer instead of shoving the whole panel along
 - **Editor-window header inset**: in a popped-out editor window the file name no longer sits under the macOS traffic lights
 - **More complete editor windows**: in the Windows mac-style titlebar mode a popped-out editor window carries its own window buttons; closing it hands the file back to the window it came from (the tab returns instead of disappearing)`,
     },

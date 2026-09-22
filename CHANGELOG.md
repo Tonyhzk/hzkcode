@@ -66,6 +66,7 @@
 - 编辑器标签拖拽改用 HTML5 原生拖拽 + 跟随浮层卡片：`windows::build_window` 关闭 Tauri 的拖放接管（`disable_drag_drop_handler`，否则 WKWebView 不派发 HTML5 拖拽事件），应用不使用文件拖入故无副作用；系统拖拽图像用模块级预加载的 1×1 透明 GIF（WebKit 在拖拽图像未就绪时会直接中止拖拽——曾因 1×1 canvas 无法栅格化导致"拖不动"；Chromium 系如 VS Code 在取消拖拽时不播放回弹动画，WebKit 会且无开关，透明图像让动画不可见）；可见反馈为跟随卡片的双形态：指针在窗口内用 DOM 卡片（portal 到 body、按抓取偏移跟手、越界钳制贴边），指针离开窗口后由 Rust 原生浮层窗口接管（`drag_ghost.rs`：无边框透明置顶、点击穿透、不抢焦点，约 120Hz 轮询光标位置跟随，松手销毁），拖出窗口也能一路跟随鼠标；`dragend` 在窗口外松手也会在源标签触发，取代 pointer 拖拽的"贴边 6px 松手 + `buttons === 0` 兜底"判定；拖拽期间 document 级 `dragover` 计算插入位置与拖出提示，`dragleave`（relatedTarget 为空）标记离开/回到窗口并切换浮层形态
 - 拖出标签创建独立窗口时按松手位置摆放：前端在 `dragend` 取 `screenX`/`screenY` 一路传到 Rust（use-editor-tabs → EditorDock → ChatPage → ChatPageDialogs → open-in-window → window-actions → ipc），`windows::build_window` 新增 `position` 参数（build 前 `.position()`，`clamp_to_monitor` 按松手点所在显示器钳制）；`examples/window_smoke.rs` 同步补参数
 - 新增 `macos-private-api` 编译特性与 `tauri.conf.json` 的 `macOSPrivateApi`：透明浮层窗口在 macOS 上的必要条件（自分发不受影响）
+- 编辑器分隔线拖拽改为与文件列表联动：拖动编辑器左边缘的分隔线时两侧此消彼长（编辑器 320–720 与文件列表 300–560 在各自限值内互相让位），三|四分界跟随指针移动，不再经由弹性列把整个文件列表分区连同其左边界一起推动；编辑器到达自身限值时整体停住，文件列表到达限值时编辑器的继续变化才落到对话区；文件列表折叠（渲染宽度 0）时不参与联动（`use-layout-panels` 在拖拽开始时快照文件列表宽度与可见性）
 
 ## [0.1.0] - 2026-09-19
 
