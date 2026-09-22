@@ -157,7 +157,9 @@ pub(crate) fn validate_manifest(
                 manifest.id
             )
         })?;
-        let current = semver_triple(env!("CARGO_PKG_VERSION"))
+        // The app's own version carries the four-segment marker as a semver
+        // pre-release (`3.0.0-1`, see CLAUDE.md); compare on the plain triple.
+        let current = semver_triple(env!("CARGO_PKG_VERSION").split('-').next().unwrap_or_default())
             .ok_or_else(|| format!("unparseable app version {}", env!("CARGO_PKG_VERSION")))?;
         if required > current {
             return Err(format!(

@@ -52,7 +52,7 @@
 ## 版本记录与发布
 
 - 版本号四处保持一致：外层 `VERSION`、`src/hzkcode/package.json`、`src/hzkcode/src-tauri/Cargo.toml`、`src/hzkcode/src-tauri/tauri.conf.json`。
-- 版本号采用四段语义：前三段跟随内置 CLI 版本、第四段为本程序在该 CLI 版本下的自增序号（如内置 CLI 3.0.0、本程序第 1 版 → 展示为 `3.0.0.1`）。构建链只接受三段 semver（Cargo 拒绝四级写法），存储用 `3.0.0-1`（第四段放 pre-release 段，Tauri updater 的版本比较仍然有效），界面与文档展示为 `3.0.0.1`；CLI 升版时前三段跟随、第四段从 1 重新计数。切换前版本为 0.1.0，下次发布起采用本规则。
+- 版本号采用四段语义：前三段跟随内置 CLI 版本、第四段为本程序在该 CLI 版本下的自增序号（当前内置 CLI 3.0.0、本程序第 1 版 → `3.0.0.1`）。构建链只接受三段 semver（Cargo 拒绝四级写法），四处版本文件存 `3.0.0-1`（第四段放 pre-release 段），界面与插件读到的版本经 `lib/platform.ts` 的 `formatAppVersion` 转为 `3.0.0.1`（插件版本比较只接受数字点分）；CLI 升版时前三段跟随、第四段从 1 重新计数。注意 semver 里 `3.0.0-1` 低于同三段正式版（`3.0.0-1 < 3.0.0`），发布时必须实测 Tauri updater 对 `latest.json` 中该写法的比较与更新判断，避免新版本被判为更旧或触发稳定性过滤。
 - 外层 `CHANGELOG.md` 是真实完整的记录，包含内部改动与源码级细节；bug 修复的完整描述写在这里。
 - 应用内 `src/hzkcode/src/version/changelog.ts` 的 `CHANGELOG_DATA`（设置 → 社区与反馈 → 版本记录）面向用户，只写功能与修复等用户可感知的变化，不出现源码相关内容。
 - 发布手动维护（CI 自动发布 workflow 已移除）：本地构建 → 创建 `v<版本号>` 标签与 GitHub Release → 上传安装包与 updater 产物（`latest.json`、`.app.tar.gz` 及其 `.sig`）。

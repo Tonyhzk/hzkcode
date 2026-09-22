@@ -32,10 +32,20 @@ export function openExternal(url: string) {
   });
 }
 
+/** Storage form is `3.0.0-1` — the fourth segment rides the semver
+ *  pre-release slot (see CLAUDE.md); the UI and plugins see `3.0.0.1`. */
+export function formatAppVersion(raw: string): string {
+  return raw.replace(/-(\d+)$/, ".$1");
+}
+
 /** App version: bundle metadata natively, bridge hello frame on web. */
 export function getAppVersion(): Promise<string | null> {
-  if (isWeb) return serverVersion();
-  return getVersion().catch(() => null);
+  if (isWeb) {
+    return serverVersion().then((v) => (v ? formatAppVersion(v) : v));
+  }
+  return getVersion()
+    .then(formatAppVersion)
+    .catch(() => null);
 }
 
 /**
