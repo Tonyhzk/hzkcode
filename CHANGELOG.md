@@ -79,6 +79,7 @@
 - 媒体预览的图片加载路径不变的部分：`MarkdownPreview` 的本地图片同样经 `fileUrl` 走媒体服务（工作区内可达，超出范围显示为破图，与旧行为一致）
 - `read_file` 对超过 5MB 的图片不再报错（返回 `kind: "image"` + 空 `dataUrl`）：聊天缩略图无内联副本时降级为文件名 chip，编辑器照常经媒体服务显示全图
 - 冒烟示例 `window_smoke` 新增 `raw <页面>` 模式：加载开发服务器上的任意页面（本次用于媒体探针定位 WKWebView 的 scheme 限制）
+- 开发构建体积优化：依赖包改用行号级调试信息（`[profile.dev.package."*"] debug = "line-tables-only"`，工作区 crate 保留完整调试信息），重建后 `target/debug` 由 27 GiB 降至约 4 GiB
 
 ## [0.1.0] - 2026-09-19
 

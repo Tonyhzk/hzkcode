@@ -83,3 +83,8 @@ codegen-units = 1
 lto = "thin"
 opt-level = "z"
 strip = true
+
+# Dependencies: line-tables-only debug info (much smaller target/debug).
+# Workspace crates keep the default full debug info for local debugging.
+[profile.dev.package."*"]
+debug = "line-tables-only"
