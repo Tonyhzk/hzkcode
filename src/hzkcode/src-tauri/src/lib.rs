@@ -275,6 +275,7 @@ pub fn run() {
             engine::send_message,
             engine::interrupt_session,
             engine::answer_question,
+            engine::answer_permission,
             engine::list_engines,
             engine::models::list_engine_models,
             engine::images::save_pasted_image,

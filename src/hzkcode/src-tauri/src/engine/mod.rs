@@ -38,8 +38,10 @@ pub struct SendRequest {
     /// Reasoning effort ("low" | "medium" | "high" | "xhigh" | "max" | "ultra"); engines without an
     /// effort knob ignore it, engines with a narrower knob clamp.
     pub effort: Option<String>,
-    /// Permission mode ("auto" | "manual" | "plan" | "bypass"); each engine
-    /// resolves it against the modes it can actually honor at spawn (see
+    /// Permission mode (client ids map to the CLI's machine values:
+    /// "autoContinue" | "default" | "acceptEdits" | "plan" | "readonly" |
+    /// "readonlyAsk" | "auto" | "bypass"); each engine resolves it against
+    /// the modes it can actually honor at spawn (see
     /// `Engine::resolve_permission`).
     pub permission: Option<String>,
     /// User-granted extra directories (db `granted_roots`); claude launches
@@ -143,12 +145,16 @@ pub enum EngineEvent {
     /// A parked question no longer needs an answer (the CLI cancelled it or
     /// the run settled): the UI resolves the card without a choice.
     QuestionSettled { request_id: String },
-    /// A control-protocol permission ask for any other tool. This client has
-    /// no approval UI, so the runner denies it in place — the same net
-    /// behavior as before the control protocol (headless cannot prompt).
-    ControlPermissionDeny {
+    /// A control-protocol permission ask for any non-question tool. The
+    /// client surfaces it as an approval card and the CLI parks until
+    /// `answer_permission` replies, mirroring the AskUserQuestion flow.
+    PermissionAsk {
         request_id: String,
         tool_name: String,
+        tool_use_id: Option<String>,
+        title: Option<String>,
+        description: Option<String>,
+        input: Value,
     },
     /// Turn finished successfully.
     Done {
@@ -417,12 +423,13 @@ pub trait Engine: Send + Sync {
     fn parse_line(&self, line: &str, out: &mut Vec<EngineEvent>);
     /// Whether this engine accepts image attachments.
     fn supports_images(&self) -> bool;
-    /// Permission modes this engine can honor at spawn ("auto" | "manual" |
-    /// "plan" | "bypass"). These are one-shot headless launches that cannot
-    /// ask mid-turn, so most engines support only a subset; the UI greys out
-    /// the rest rather than promising a mode the CLI would silently ignore.
+    /// Permission modes this engine can honor at spawn, in the CLI's
+    /// machine values ("autoContinue" | "default" | …); the first entry is
+    /// the fallback when the requested mode is unsupported. Most engines
+    /// support only a subset, so the UI greys out the rest rather than
+    /// promising a mode the CLI would silently ignore.
     fn supported_permissions(&self) -> &'static [&'static str] {
-        &["auto"]
+        &["autoContinue"]
     }
     /// Effective mode for one send: the requested mode when this engine
     /// supports it, otherwise the engine's first supported mode.
@@ -566,7 +573,8 @@ impl ProcessRegistry {
         });
     }
 
-    /// Drain and return the request ids of a run's pending questions.
+    /// Drain and return the request ids of a run's parked control asks
+    /// (AskUserQuestion inputs and tool-permission inputs).
     fn take_questions(&self, key: &str) -> Vec<String> {
         let Some(entry) = self.get(key) else {
             return Vec::new();
@@ -1525,34 +1533,35 @@ impl TurnCore {
                     serde_json::json!({ "requestId": request_id }),
                 );
             }
-            EngineEvent::ControlPermissionDeny {
+            EngineEvent::PermissionAsk {
                 request_id,
                 tool_name,
+                tool_use_id,
+                title,
+                description,
+                input,
             } => {
-                // No approval UI in this client: deny in place so the CLI is
-                // not left parked until its deadline. Net behavior matches
-                // the pre-control-protocol headless run (ask -> denial, the
-                // model works around it). Best effort: if the pipe is gone
-                // the CLI is already dead and its own deadline settles.
-                let registry = Arc::clone(&self.registry);
-                let run_id = self.run_id.clone();
-                let line = serde_json::json!({
-                    "type": "control_response",
-                    "response": {
-                        "subtype": "success",
-                        "request_id": request_id,
-                        "response": {
-                            "behavior": "deny",
-                            "message": format!(
-                                "This client cannot show tool-permission prompts; the {tool_name} call was denied. Work around it, or tell the user what you would have run so they can approve it another way."
-                            ),
-                        },
-                    },
-                })
-                .to_string();
-                tokio::spawn(async move {
-                    let _ = registry.write_line(&run_id, line).await;
-                });
+                // Park like a question: `answer_permission` rebuilds the
+                // allow response from this exact input.
+                if let Some(entry) = self.registry.get(&self.run_id) {
+                    if let Ok(mut questions) = entry.questions.lock() {
+                        questions.insert(request_id.clone(), input.clone());
+                    }
+                }
+                state.push(
+                    &self.sink,
+                    &self.run_id,
+                    &self.engine_id,
+                    "permission",
+                    serde_json::json!({
+                        "requestId": request_id,
+                        "toolName": tool_name,
+                        "toolUseId": tool_use_id,
+                        "title": title,
+                        "description": description,
+                        "input": input,
+                    }),
+                );
             }
             EngineEvent::Model(model) => {
                 state.push(
@@ -2179,6 +2188,54 @@ pub async fn answer_question(
     Ok(())
 }
 
+/// Answer a pending tool-permission ask (claude control protocol).
+/// `behavior` is "allow" (the parked input is replayed as `updatedInput`)
+/// or "deny" (the model is told the user declined). Accepts either the run
+/// id or the conversation session id, like `answer_question`.
+#[tauri::command]
+pub async fn answer_permission(
+    state: tauri::State<'_, crate::AppState>,
+    session_id: String,
+    request_id: String,
+    behavior: String,
+) -> Result<(), String> {
+    let entry = state
+        .processes
+        .get(&session_id)
+        .ok_or_else(|| "no running session for this answer".to_string())?;
+    // Peek, don't remove: a failed write leaves the ask parked for a retry.
+    let input = entry
+        .questions
+        .lock()
+        .map_err(|_| "permission state is poisoned".to_string())?
+        .get(&request_id)
+        .cloned()
+        .ok_or_else(|| "permission ask is no longer pending".to_string())?;
+    let response = match behavior.as_str() {
+        "allow" => serde_json::json!({ "behavior": "allow", "updatedInput": input }),
+        "deny" => serde_json::json!({
+            "behavior": "deny",
+            "message": "The user declined this tool call. Do not retry it; continue with work that does not need it, or explain what you need.",
+        }),
+        other => return Err(format!("unknown permission answer: {other}")),
+    };
+    let line = serde_json::json!({
+        "type": "control_response",
+        "response": {
+            "subtype": "success",
+            "request_id": request_id,
+            "response": response,
+        },
+    })
+    .to_string();
+    state.processes.write_line(&session_id, line).await?;
+    // Delivered: drop the parked copy so the EOF drain skips it.
+    if let Ok(mut questions) = entry.questions.lock() {
+        questions.remove(&request_id);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod permission_tests {
     use super::*;
@@ -2214,23 +2271,34 @@ mod permission_tests {
             .collect()
     }
 
+    fn has_pair(args: &[String], key: &str, value: &str) -> bool {
+        args.windows(2).any(|w| w[0] == key && w[1] == value)
+    }
+
     #[test]
-    fn claude_maps_modes_to_permission_flags() {
+    fn claude_passes_permission_modes_through() {
         let e = claude::ClaudeEngine::new();
-        let auto = argv(&e, &req(Some("auto")));
-        assert!(auto.contains(&"--permission-mode".to_string()));
-        assert!(auto.contains(&"acceptEdits".to_string()));
-        assert!(!auto.contains(&"--dangerously-skip-permissions".to_string()));
-        // Headless cannot prompt: auto pre-approves the read-only network
-        // tools acceptEdits does not cover, or every web call is denied.
-        assert!(auto.windows(3).any(|w| w == ["--allowedTools", "WebSearch", "WebFetch"]));
+        for mode in [
+            "autoContinue",
+            "default",
+            "acceptEdits",
+            "plan",
+            "readonly",
+            "readonlyAsk",
+            "auto",
+        ] {
+            let args = argv(&e, &req(Some(mode)));
+            assert!(has_pair(&args, "--permission-mode", mode), "{mode}: {args:?}");
+            assert!(!args.contains(&"--dangerously-skip-permissions".to_string()));
+            assert!(!args.contains(&"--allowedTools".to_string()));
+        }
 
-        let manual = argv(&e, &req(Some("manual")));
-        assert!(manual.contains(&"default".to_string()));
-        assert!(!manual.contains(&"--allowedTools".to_string()));
-
-        let plan = argv(&e, &req(Some("plan")));
-        assert!(plan.contains(&"plan".to_string()));
+        // Legacy ids ("manual" from the four-mode era) and absent values
+        // resolve to the engine's fallback default.
+        let legacy = argv(&e, &req(Some("manual")));
+        assert!(has_pair(&legacy, "--permission-mode", "autoContinue"));
+        let none = argv(&e, &req(None));
+        assert!(has_pair(&none, "--permission-mode", "autoContinue"));
 
         let bypass = argv(&e, &req(Some("bypass")));
         assert!(bypass.contains(&"--dangerously-skip-permissions".to_string()));

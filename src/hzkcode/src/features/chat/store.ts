@@ -57,6 +57,7 @@ import {
   patchGrantBySeq,
   rememberModelForRun,
   rememberEffortForRun,
+  patchPermissionByRequestId,
   patchQuestionByRequestId,
   rememberProviderForRun,
   settleOrphanedRuns,
@@ -1377,6 +1378,30 @@ export const useChatStore = create<ChatStore>((set, get) => {
           ...cur,
           status: answers ? ("answered" as const) : ("dismissed" as const),
           ...(answers ? { answers } : {}),
+        }));
+      } catch (error) {
+        // The answer never reached the process (the run is gone): surface it;
+        // a later question_settled event resolves the still-pending card.
+        patchSession(set, key, { error: errorText(error) });
+      }
+    },
+
+    respondToPermission: async (key, seq, behavior) => {
+      const message = get().bySession[key]?.messages.find((m) => m.seq === seq);
+      const permission = message?.permission;
+      if (
+        !message ||
+        message.role !== "permission" ||
+        !permission ||
+        permission.status !== "pending"
+      ) {
+        return;
+      }
+      try {
+        await ipc.answerPermission(permission.runId, permission.requestId, behavior);
+        patchPermissionByRequestId(set, key, permission.requestId, (cur) => ({
+          ...cur,
+          status: behavior === "allow" ? ("allowed" as const) : ("denied" as const),
         }));
       } catch (error) {
         // The answer never reached the process (the run is gone): surface it;

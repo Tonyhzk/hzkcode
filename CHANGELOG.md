@@ -82,6 +82,8 @@
 - 开发构建体积优化：依赖包改用行号级调试信息（`[profile.dev.package."*"] debug = "line-tables-only"`，工作区 crate 保留完整调试信息），重建后 `target/debug` 由 27 GiB 降至约 4 GiB
 - 功能开关新增三组：「接口与连接」（Responses WebSocket 长连接、CLI 会话代理地址与开关）、「多模态读取」（读图 / 读视频 / 读音频工具的模型、接口地址、API Key 与接口格式，及三者通用的读取模型）、「行为与工作流」（Task 工具集、模型主动进入 Plan 模式、父级 / 嵌套 CLAUDE.md 与 Skills 加载；工作状态汇报移入本组）
 - 功能开关扩充：「用户记忆」补整理渠道、思考预算、整理超时、守护轮询与空闲退出；「第二大脑」「自动模式」补流式请求开关；「联网搜索」补 Perplexity 专用代理；原「其他」组拆分并入新组（CLI 代理地址 → 接口与连接）
+- 权限模式对齐 CLI 全档位：composer 权限菜单从四档（自动 / 手动 / 计划 / 跳过）改为 CLI 的八档（默认 / 自动接受编辑 / 计划 / 只读 / 只读询问 / 自动询问 / 自动继续 / 全部跳过，即 Shift+Tab 循环顺序），模式 id 即 CLI 机器值、`--permission-mode` 原样直传；默认档改为 CLI 默认的 Auto Continue，旧偏好经 `hzkcode.permissionPref:v2` 键一次性迁移（manual → default、auto → autoContinue）；删除 acceptEdits 模拟映射与 WebSearch / WebFetch 预授权 hack（分类器模式自行裁决网络工具）
+- 工具权限确认卡片：CLI 的 `can_use_tool` 询问（非 AskUserQuestion）不再被直接拒绝，改为在对话区弹出「允许一次 / 拒绝」卡片并接管输入区（复用 AskUserQuestion 的 control protocol 应答链路，新增 `answer_permission` 命令：允许按停放的原输入回放 `updatedInput`，拒绝回传 `deny` 与说明）；卡片结论保留在时间线，运行结束时未作答的请求自动标记失效
 
 ## [0.1.0] - 2026-09-19
 

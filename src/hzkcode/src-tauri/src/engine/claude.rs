@@ -41,8 +41,19 @@ impl Engine for ClaudeEngine {
     fn supports_images(&self) -> bool {
         true
     }
+    /// Every CLI permission mode; the first entry is the fallback default
+    /// (the CLI's own default is Auto Continue).
     fn supported_permissions(&self) -> &'static [&'static str] {
-        &["auto", "manual", "plan", "bypass"]
+        &[
+            "autoContinue",
+            "default",
+            "acceptEdits",
+            "plan",
+            "readonly",
+            "readonlyAsk",
+            "auto",
+            "bypass",
+        ]
     }
 
     fn build_command(&self, req: &SendRequest, bin: &str) -> Result<BuiltCommand, String> {
@@ -60,29 +71,17 @@ impl Engine for ClaudeEngine {
         // every ask as terminal and never mounts AskUserQuestion at all.
         cmd.arg("--permission-prompt-tool");
         cmd.arg("stdio");
-        // Headless -p cannot prompt mid-turn: "manual" maps onto claude's
-        // default mode, where approval-needing tools are denied and the
-        // agent is told to work around them (honest degrade, no fake ask).
+        // The client's mode ids are the CLI's machine values (bypass rides
+        // the skip-permissions flag). Asks the CLI can resolve itself
+        // (classifier modes) never reach this client; a mode the CLI would
+        // have to prompt for is passed through unchanged.
         match self.resolve_permission(req.permission.as_deref()) {
             "bypass" => {
                 cmd.arg("--dangerously-skip-permissions");
             }
             mode => {
                 cmd.arg("--permission-mode");
-                cmd.arg(match mode {
-                    "manual" => "default",
-                    "plan" => "plan",
-                    _ => "acceptEdits",
-                });
-                if mode == "auto" {
-                    // acceptEdits pre-approves file edits only; WebSearch and
-                    // WebFetch still ask, and headless -p cannot prompt, so
-                    // the CLI would deny every web call outright. Pre-approve
-                    // the two read-only network tools in auto mode.
-                    cmd.arg("--allowedTools");
-                    cmd.arg("WebSearch");
-                    cmd.arg("WebFetch");
-                }
+                cmd.arg(mode);
             }
         }
         if let Some(model) = req.model.as_deref() {
@@ -318,9 +317,9 @@ impl Engine for ClaudeEngine {
                 }
             }
             "control_request" => {
-                // SDK control protocol asks. AskUserQuestion surfaces to the
-                // UI; every other ask is denied in place (this client has no
-                // approval card), preserving the old headless behavior.
+                // SDK control protocol asks. AskUserQuestion and every other
+                // tool ask surface to the UI as cards; the answer commands
+                // reply over the same pipe.
                 let request = value.get("request");
                 let subtype = request
                     .and_then(|r| r.get("subtype"))
@@ -352,9 +351,25 @@ impl Engine for ClaudeEngine {
                                 .unwrap_or(Value::Null),
                         });
                     } else {
-                        out.push(EngineEvent::ControlPermissionDeny {
+                        out.push(EngineEvent::PermissionAsk {
                             request_id: request_id.to_string(),
                             tool_name,
+                            tool_use_id: request
+                                .and_then(|r| r.get("tool_use_id"))
+                                .and_then(Value::as_str)
+                                .map(str::to_string),
+                            title: request
+                                .and_then(|r| r.get("title").or_else(|| r.get("display_name")))
+                                .and_then(Value::as_str)
+                                .map(str::to_string),
+                            description: request
+                                .and_then(|r| r.get("description"))
+                                .and_then(Value::as_str)
+                                .map(str::to_string),
+                            input: request
+                                .and_then(|r| r.get("input"))
+                                .cloned()
+                                .unwrap_or(Value::Null),
                         });
                     }
                 }
@@ -707,24 +722,37 @@ mod tests {
     }
 
     #[test]
-    fn other_control_asks_are_denied_in_place() {
+    fn other_control_asks_surface_as_permission_asks() {
         let line = serde_json::json!({
             "type": "control_request",
             "request_id": "req-2",
-            "request": { "subtype": "can_use_tool", "tool_name": "Bash", "input": {} }
+            "request": {
+                "subtype": "can_use_tool",
+                "tool_name": "Bash",
+                "tool_use_id": "call_9",
+                "title": "运行命令",
+                "input": { "command": "ls" }
+            }
         })
         .to_string();
         let mut out = Vec::new();
         ClaudeEngine::new().parse_line(&line, &mut out);
         match &out[..] {
-            [EngineEvent::ControlPermissionDeny {
+            [EngineEvent::PermissionAsk {
                 request_id,
                 tool_name,
+                tool_use_id,
+                title,
+                input,
+                ..
             }] => {
                 assert_eq!(request_id, "req-2");
                 assert_eq!(tool_name, "Bash");
+                assert_eq!(tool_use_id.as_deref(), Some("call_9"));
+                assert_eq!(title.as_deref(), Some("运行命令"));
+                assert_eq!(input["command"], "ls");
             }
-            other => panic!("expected control deny event, got {other:?}"),
+            other => panic!("expected permission ask, got {other:?}"),
         }
     }
 

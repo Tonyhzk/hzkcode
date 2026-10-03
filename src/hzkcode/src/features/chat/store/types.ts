@@ -17,9 +17,10 @@ export interface ChatStore {
   /** Open conversation tabs, in display order. Persisted in localStorage. */
   openTabs: ActiveSession[];
   activeEngine: string;
-  /** Composer permission mode ("auto" | "manual" | "plan" | "bypass"),
-   * persisted in localStorage; engines resolve unsupported modes to their
-   * first supported one at send time (and the picker greys them out). */
+  /** Composer permission mode (the CLI's machine values; "bypass" is this
+   * client's shorthand), persisted in localStorage; engines resolve
+   * unsupported modes to their first supported one at send time (and the
+   * picker greys them out). */
   permission: ComposerPermission;
   /** Per-engine reasoning effort ("low" | … | "max"), persisted in app settings. */
   efforts: Record<string, EffortLevel>;
@@ -158,6 +159,13 @@ export interface ChatStore {
     key: string,
     seq: number,
     answers: Record<string, string | string[]> | null,
+  ) => Promise<void>;
+  /** Answer a pending tool-permission card: approve (the exact parked input
+   * is replayed) or deny through the control protocol. */
+  respondToPermission: (
+    key: string,
+    seq: number,
+    behavior: "allow" | "deny",
   ) => Promise<void>;
   /** Re-send the session's last user message (grant card's one-click retry
    * after a directory grant takes effect on the next launch). */

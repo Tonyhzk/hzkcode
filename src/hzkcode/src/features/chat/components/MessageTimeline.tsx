@@ -19,6 +19,7 @@ import { useCopied } from "@/hooks/use-copied";
 import { MessageImages } from "./MessageImages";
 import { GrantCard } from "./GrantCard";
 import { QuestionRecord } from "./QuestionCard";
+import { PermissionRecord } from "./PermissionCard";
 import { MESSAGE_ANCHOR_RAIL_BAND_CLASS, MessageAnchorRail } from "./MessageAnchorRail";
 import { createAnchorRowsBuilder } from "./timeline-anchors";
 import { buildRows, collectToolKeys, rowKey, type TimelineRow } from "./timeline-rows";
@@ -310,6 +311,10 @@ export const MessageRow = memo(function MessageRow({
     // The interaction lives in the dock above the composer; the timeline
     // keeps only the placeholder / settled history row.
     return <QuestionRecord message={message} />;
+  }
+  if (message.role === "permission") {
+    // Same treatment as a question: actionable in the dock, recorded here.
+    return <PermissionRecord message={message} />;
   }
   if (message.role === "user") {
     return <UserMessageRow message={message} />;

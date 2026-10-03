@@ -699,6 +699,28 @@ export function patchQuestionByRequestId(
   });
 }
 
+/** Patch a permission-ask card by its control-protocol request id (the
+ * settled event carries the request id, not the row seq). */
+export function patchPermissionByRequestId(
+  set: (fn: (s: ChatStore) => Partial<ChatStore>) => void,
+  key: string,
+  requestId: string,
+  patch: (permission: NonNullable<Message["permission"]>) => NonNullable<Message["permission"]>,
+) {
+  set((s) => {
+    const cur = s.bySession[key];
+    if (!cur) return {};
+    let changed = false;
+    const messages = cur.messages.map((m) => {
+      if (m.role !== "permission" || m.permission?.requestId !== requestId) return m;
+      changed = true;
+      return { ...m, permission: patch(m.permission) };
+    });
+    if (!changed) return {};
+    return { bySession: { ...s.bySession, [key]: { ...cur, messages } } };
+  });
+}
+
 /** A permission denial arrives mid-turn (tool_result) and again in the
  * final result's permission_denials; one card per denied path. The card is
  * the actionable surface: grant → next launch gets --add-dir. */
@@ -826,6 +848,71 @@ function onQuestion(
   });
 }
 
+/** The CLI parked a non-question tool permission ask: append one approval
+ * card; the user answers it through the control protocol. */
+function onPermissionAsk(
+  event: EngineEventPayload,
+  key: string,
+  deps: EngineEventDeps,
+) {
+  const data = event.data as {
+    requestId?: string;
+    toolName?: string;
+    toolUseId?: string | null;
+    title?: string | null;
+    description?: string | null;
+    input?: unknown;
+  };
+  const requestId = data.requestId?.trim();
+  if (!requestId) return;
+  // Fold unflushed chunks first so the card lands after the streamed text.
+  const pending = drainPending(key);
+  deps.set((s) => {
+    const cur = s.bySession[key] ?? EMPTY_SESSION;
+    const base = pending
+      ? applyStreamParts(
+          cur.messages,
+          pending.parts,
+          pending.model ?? (deps.get().models[event.engine] || null),
+        )
+      : cur.messages;
+    const messages = settleLiveRows(base);
+    // A replayed frame (initialize re-arm) must not double-render the card.
+    const dup = messages.some(
+      (m) => m.role === "permission" && m.permission?.requestId === requestId,
+    );
+    if (dup) return {};
+    const seq = messages.length ? messages[messages.length - 1].seq + 1 : 1;
+    return {
+      bySession: {
+        ...s.bySession,
+        [key]: {
+          ...cur,
+          messages: [
+            ...messages,
+            {
+              role: "permission",
+              text: data.title?.trim() || data.toolName?.trim() || "",
+              ts: new Date().toISOString(),
+              seq,
+              permission: {
+                requestId,
+                runId: event.runId,
+                toolName: data.toolName?.trim() || "tool",
+                toolUseId: data.toolUseId ?? null,
+                title: data.title ?? null,
+                description: data.description ?? null,
+                input: data.input,
+                status: "pending" as const,
+              },
+            },
+          ],
+        },
+      },
+    };
+  });
+}
+
 function onQuestionSettled(
   event: EngineEventPayload,
   key: string,
@@ -835,6 +922,11 @@ function onQuestionSettled(
   if (!requestId) return;
   patchQuestionByRequestId(deps.set, key, requestId, (question) =>
     question.status === "pending" ? { ...question, status: "cancelled" as const } : question,
+  );
+  patchPermissionByRequestId(deps.set, key, requestId, (permission) =>
+    permission.status === "pending"
+      ? { ...permission, status: "cancelled" as const }
+      : permission,
   );
 }
 
@@ -1192,6 +1284,9 @@ export function handleEngineEvents(
         break;
       case "question":
         onQuestion(event, key, deps);
+        break;
+      case "permission":
+        onPermissionAsk(event, key, deps);
         break;
       case "question_settled":
         onQuestionSettled(event, key, deps);

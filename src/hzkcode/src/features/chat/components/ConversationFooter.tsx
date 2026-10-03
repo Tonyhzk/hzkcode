@@ -12,7 +12,7 @@ import type { ActiveSession, QueuedMessage } from "../store";
 import { useChatStore } from "../store";
 import { ImageLightbox } from "./MessageImages";
 import { RunStatusStrip } from "./RunStatusStrip";
-import { QuestionDock, usePendingQuestion } from "./QuestionDock";
+import { QuestionDock, usePendingPermission, usePendingQuestion } from "./QuestionDock";
 import { ErrorBanner } from "./ErrorBanner";
 import { sessionKey } from "../store";
 import { ComposerSlotExtras } from "@/features/plugins/boundary/composer-slot-extras";
@@ -367,9 +367,11 @@ export function ConversationFooter({
 }) {
   /** Composer attachment chip lightbox: preview URL + display name. */
   const [zoomImage, setZoomImage] = useState<ZoomImage>(null);
-  // While the CLI waits on an AskUserQuestion the panel takes the composer's
-  // place — it covers the input box instead of floating beside it.
+  // While the CLI waits on the control protocol (an AskUserQuestion or a
+  // tool-permission ask) the panel takes the composer's place — it covers
+  // the input box instead of floating beside it.
   const pendingQuestion = usePendingQuestion();
+  const pendingPermission = usePendingPermission();
 
   // The draft prop is the store's per-session value, so watching it covers
   // every change source at once: typing, submit-clear, and session switches
@@ -393,7 +395,7 @@ export function ConversationFooter({
           onZoomImage={setZoomImage}
         />
         <ActiveRunStatus active={active} />
-        {pendingQuestion ? (
+        {pendingQuestion || pendingPermission ? (
           <QuestionDock />
         ) : (
           <FooterComposer

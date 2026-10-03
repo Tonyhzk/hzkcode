@@ -18,6 +18,7 @@ export interface EngineEventPayload {
     | "notice"
     | "permission_denied"
     | "question"
+    | "permission"
     | "question_settled"
     | "done"
     | "model";

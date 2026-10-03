@@ -53,7 +53,10 @@ const ACTIVE_SESSION_KEY = "hzkcode.activeSession:v1" + WINDOW_SUFFIX;
 const LEGACY_OPEN_TABS_KEY = "hzkcode.openTabs";
 const LEGACY_ACTIVE_SESSION_KEY = "hzkcode.activeSession";
 export const ENGINE_PREF_KEY = "hzkcode.enginePref";
-export const PERMISSION_PREF_KEY = "hzkcode.permissionPref";
+/** Current permission preference (the CLI's machine values + "bypass"). */
+export const PERMISSION_PREF_KEY = "hzkcode.permissionPref:v2";
+/** Pre-alignment four-mode key; migrated once by readPermissionPref. */
+export const LEGACY_PERMISSION_PREF_KEY = "hzkcode.permissionPref";
 
 export function sameTab(
   tab: ActiveSession,

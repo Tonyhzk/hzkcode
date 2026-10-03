@@ -101,6 +101,21 @@ export interface Message {
     status: "pending" | "answered" | "dismissed" | "cancelled";
     answers?: Record<string, string | string[]>;
   };
+  /** Tool-permission ask card (role "permission"): the CLI parked a
+   *  can_use_tool ask on the control protocol; `pending` until the user
+   *  approves or denies. `runId`/`requestId` route the answer; `input` is
+   *  the exact tool input replayed on approve. Ephemeral UI — not part of
+   *  the CLI's session history. */
+  permission?: {
+    requestId: string;
+    runId: string;
+    toolName: string;
+    toolUseId?: string | null;
+    title?: string | null;
+    description?: string | null;
+    input?: unknown;
+    status: "pending" | "allowed" | "denied" | "cancelled";
+  };
   /** Image attachments: data URLs render directly, absolute paths load via readFile. */
   images?: string[];
 }
@@ -133,8 +148,10 @@ export interface EngineInfo {
    * picker and history lists; running sessions are unaffected. */
   enabled: boolean;
   supportsImages: boolean;
-  /** Permission modes the engine honors at spawn ("auto" | "manual" |
-   * "plan" | "bypass"); the composer picker greys out the rest. */
+  /** Permission modes the engine honors at spawn (CLI machine values:
+   * "autoContinue" | "default" | "acceptEdits" | "plan" | "readonly" |
+   * "readonlyAsk" | "auto" | "bypass"); the composer picker greys out the
+   * rest. */
   permissions: string[];
 }
 /** One entry of an engine's model catalog (`--list-models` probe). */
@@ -887,6 +904,14 @@ export const ipc = {
     requestId: string,
     answers: Record<string, string | string[]> | null,
   ) => invoke<void>("answer_question", { sessionId, requestId, answers }),
+  /** Answer a pending tool-permission ask (claude control protocol):
+   * "allow" replays the parked input; "deny" tells the model the user
+   * declined. Routed by run id (falls back to session id). */
+  answerPermission: (
+    sessionId: string,
+    requestId: string,
+    behavior: "allow" | "deny",
+  ) => invoke<void>("answer_permission", { sessionId, requestId, behavior }),
   revokeGrantedRoot: (path: string) => invoke<void>("revoke_granted_root", { path }),
   // git
   gitStatus: (path: string) => invoke<GitStatus>("git_status", { path }),
