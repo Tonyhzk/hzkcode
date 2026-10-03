@@ -20,19 +20,16 @@ export function sortedWorkspaceGroups(
   });
 }
 
-/** History lists hide sessions of CLIs the user disabled in settings. An
- * empty engines list means listEngines failed — keep sessions rather than
- * blanking the sidebar. */
+/** History lists hide sessions of engines the app no longer knows (e.g. a
+ * removed engine). An empty engines list means listEngines failed — keep
+ * sessions rather than blanking the sidebar. */
 export function visibleSessions(
   sessions: SessionMeta[],
   engines: EngineInfo[],
 ): SessionMeta[] {
   if (engines.length === 0) return sessions;
-  const enabled = new Set<string>();
-  for (const e of engines) {
-    if (e.enabled) enabled.add(e.id);
-  }
-  return sessions.filter((s) => enabled.has(s.engine));
+  const known = new Set(engines.map((e) => e.id));
+  return sessions.filter((s) => known.has(s.engine));
 }
 
 /** Merge plugin-sourced external sessions under the local scan: local wins

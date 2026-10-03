@@ -903,9 +903,6 @@ pub struct SendResult {
 pub struct EngineInfo {
     pub id: String,
     pub available: bool,
-    /// False when the user disabled this CLI in settings; the UI hides it
-    /// from pickers and history lists rather than erroring on launch.
-    pub enabled: bool,
     pub supports_images: bool,
     /// Permission modes the engine honors at spawn; drives the composer
     /// picker's disabled options.
@@ -933,7 +930,6 @@ pub(crate) fn engine_bin(settings: &crate::settings::AppSettings, engine_id: &st
 #[tauri::command]
 pub fn list_engines() -> Vec<EngineInfo> {
     let settings = crate::settings::read_settings().unwrap_or_default();
-    let config = crate::config::read_config().unwrap_or_default();
     crate::config::ENGINES
         .iter()
         .map(|id| {
@@ -947,8 +943,6 @@ pub fn list_engines() -> Vec<EngineInfo> {
             EngineInfo {
                 id: id.to_string(),
                 available,
-                enabled: config.section(id).and_then(|s| s.current.as_deref())
-                    != Some(crate::config::DISABLED_PROVIDER_ID),
                 supports_images: engine.supports_images(),
                 permissions: engine
                     .supported_permissions()
@@ -997,9 +991,8 @@ fn prepare_launch(
     agents_json: Option<String>,
 ) -> Result<Launch, String> {
     let engine_impl = engine_by_id(engine).ok_or_else(|| format!("unknown engine: {engine}"))?;
-    // 停用 still gates sending. Channel settings apply to this child below;
-    // native CLI files remain the official configuration.
-    crate::config::ensure_engine_enabled(engine)?;
+    // Channel settings apply to this child below; the program's own files
+    // remain the official configuration.
     let provider_id = provider_id.filter(|s| !s.trim().is_empty());
     let provider = crate::config::resolve_provider(engine, provider_id.as_deref())?;
     let channel_env = provider

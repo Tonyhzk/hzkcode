@@ -144,9 +144,6 @@ export interface Workspace {
 export interface EngineInfo {
   id: string;
   available: boolean;
-  /** False when the user disabled this CLI in settings — hidden from the
-   * picker and history lists; running sessions are unaffected. */
-  enabled: boolean;
   supportsImages: boolean;
   /** Permission modes the engine honors at spawn (CLI machine values:
    * "autoContinue" | "default" | "acceptEdits" | "plan" | "readonly" |
@@ -193,9 +190,6 @@ export interface SendResult {
 export interface ProviderSection {
   providers: Record<string, unknown>;
   current: string | null;
-  /** Provider parked when the engine was disabled (persisted by earlier
-   *  builds; kept so old config files round-trip). */
-  disabledFrom?: string | null;
 }
 /** Result of `fetch_provider_models`: model ids plus the candidate URL that
  *  answered (a derivation of the channel's base URL). */

@@ -131,7 +131,7 @@ function FooterComposer({
   sendShortcut,
   onStop,
   streaming,
-  noEnabledEngines,
+  noEngineOptions,
   images,
   composerInputRef,
   addMenu,
@@ -147,7 +147,7 @@ function FooterComposer({
   sendShortcut: string;
   onStop: () => void;
   streaming: boolean;
-  noEnabledEngines: boolean;
+  noEngineOptions: boolean;
   images: string[];
   composerInputRef: React.RefObject<ComposerInputHandle | null>;
   addMenu: ReactNode;
@@ -165,7 +165,7 @@ function FooterComposer({
       sendShortcut={sendShortcut === "cmdEnter" ? "cmdEnter" : "enter"}
       onStop={onStop}
       streaming={streaming}
-      disabled={!active || noEnabledEngines || (!draft.trim() && images.length === 0)}
+      disabled={!active || noEngineOptions || (!draft.trim() && images.length === 0)}
       inputRef={composerInputRef}
       addMenu={<>{addMenu}<ComposerSlotExtras slot="addMenu" /></>}
       cliMenu={<>{cliMenu}<ComposerSlotExtras slot="cliMenu" /></>}
@@ -316,7 +316,7 @@ export function ConversationFooter({
   sendShortcut,
   onStop,
   streaming,
-  noEnabledEngines,
+  noEngineOptions,
   composerInputRef,
   addMenu,
   cliMenu,
@@ -350,7 +350,7 @@ export function ConversationFooter({
   sendShortcut: string;
   onStop: () => void;
   streaming: boolean;
-  noEnabledEngines: boolean;
+  noEngineOptions: boolean;
   composerInputRef: React.RefObject<ComposerInputHandle | null>;
   addMenu: ReactNode;
   cliMenu: ReactNode;
@@ -406,7 +406,7 @@ export function ConversationFooter({
             sendShortcut={sendShortcut}
             onStop={onStop}
             streaming={streaming}
-            noEnabledEngines={noEnabledEngines}
+            noEngineOptions={noEngineOptions}
             images={images}
             composerInputRef={composerInputRef}
             addMenu={addMenu}

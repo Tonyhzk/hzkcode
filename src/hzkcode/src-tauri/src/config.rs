@@ -7,6 +7,9 @@ pub const LOCAL_PROVIDER_ID: &str = "__local_settings_json__";
 /// Legacy kimi marker from the imported v1 config: same "use the CLI's own
 /// config" semantics, different spelling.
 pub(crate) const LEGACY_LOCAL_CONFIG_TOML_ID: &str = "__local_config_toml__";
+/// Legacy marker from builds that could switch an engine off. Historical
+/// configs may still carry it as `current`; it resolves to the official
+/// config now, so those configs keep launching without special handling.
 pub const DISABLED_PROVIDER_ID: &str = "__disabled__";
 pub const ENGINES: [&str; 1] = ["claude"];
 
@@ -16,10 +19,6 @@ pub struct ProviderSection {
     pub providers: serde_json::Map<String, Value>,
     #[serde(default)]
     pub current: Option<String>,
-    /// Provider that was current when the engine was disabled via the
-    /// enable switch, restored on re-enable. Absent while enabled.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub disabled_from: Option<String>,
 }
 
 /// Per-engine config sections: the engine id doubles as the serialized key,
@@ -118,19 +117,6 @@ pub fn import_legacy_config_once() {
     let _ = write_config(&config);
 }
 
-/// Launch gate: the 停用 pseudo-provider refuses sends. Channel env is
-/// resolved at spawn (`resolve_provider_env`) and injected onto the child.
-pub fn ensure_engine_enabled(engine: &str) -> Result<(), String> {
-    let config = read_config()?;
-    let section = config
-        .section(engine)
-        .ok_or_else(|| format!("unknown engine: {engine}"))?;
-    if section.current.as_deref() == Some(DISABLED_PROVIDER_ID) {
-        return Err(format!("engine {engine} is disabled"));
-    }
-    Ok(())
-}
-
 fn is_official_provider(id: &str) -> bool {
     id.is_empty() || id == LOCAL_PROVIDER_ID || id == LEGACY_LOCAL_CONFIG_TOML_ID
 }
@@ -165,9 +151,7 @@ pub(crate) fn find_provider<'a>(
 }
 
 /// Env a spawn should inject for `provider_id` on `engine`. Official / empty
-/// / unknown-but-pseudo ids yield an empty map (the CLI's own files apply).
-/// `__disabled__` is a launch error. Claude is injected the same way as the
-/// other engines — unlike the old spawn path which skipped it.
+/// / legacy-disabled ids yield an empty map (the program's own files apply).
 pub fn resolve_provider_env(
     engine: &str,
     provider_id: Option<&str>,
@@ -189,10 +173,7 @@ pub(crate) fn resolve_provider(
     crate::provider_files::migrate_legacy(engine, section)?;
     let explicit = provider_id.map(str::trim).filter(|s| !s.is_empty());
     let id = explicit.unwrap_or_else(|| section.current.as_deref().unwrap_or("").trim());
-    if id == DISABLED_PROVIDER_ID {
-        return Err(format!("engine {engine} is disabled"));
-    }
-    if is_official_provider(id) {
+    if id == DISABLED_PROVIDER_ID || is_official_provider(id) {
         return Ok(None);
     }
 
@@ -216,9 +197,24 @@ pub(crate) fn resolve_provider(
 
 // ==================== Commands ====================
 
+/// Historical configs may still sit on the legacy 停用 marker; it means
+/// "official config" now. Normalize the view handed to the UI so it never
+/// shows a dead id (the stored file is rewritten on the next user edit).
+fn normalize_legacy_state(config: &mut CliConfig) {
+    for engine in ENGINES {
+        if let Some(section) = config.section_mut(engine) {
+            if section.current.as_deref() == Some(DISABLED_PROVIDER_ID) {
+                section.current = None;
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub fn get_cli_config() -> Result<CliConfig, String> {
-    read_config()
+    let mut config = read_config()?;
+    normalize_legacy_state(&mut config);
+    Ok(config)
 }
 
 /// Lock-free core of mutate_section: callers that already hold the
@@ -305,10 +301,7 @@ fn set_current_provider_inner(
     id: String,
 ) -> Result<(), String> {
     mutate_section(&store, &engine, |section| {
-        if id != LOCAL_PROVIDER_ID
-            && id != DISABLED_PROVIDER_ID
-            && id != LEGACY_LOCAL_CONFIG_TOML_ID
-        {
+        if id != LOCAL_PROVIDER_ID && id != LEGACY_LOCAL_CONFIG_TOML_ID {
             if let Some((matched_key, _)) = find_provider(section, &id)? {
                 section.current = Some(matched_key.to_string());
                 return Ok(());
@@ -465,10 +458,26 @@ mod tests {
     }
 
     #[test]
-    fn resolve_provider_env_disabled_errors() {
+    fn normalize_legacy_state_maps_disabled_current_to_official() {
+        let mut config = CliConfig::default();
+        let section = config.section_mut("claude").unwrap();
+        section.providers.insert("chan-a".into(), json!({}));
+        section.current = Some(DISABLED_PROVIDER_ID.into());
+        normalize_legacy_state(&mut config);
+        assert_eq!(config.section("claude").unwrap().current, None);
+    }
+
+    #[test]
+    fn resolve_provider_env_legacy_disabled_is_official() {
         let _scratch = Scratch::new();
         seed_channel("claude", "chan-a", Some(DISABLED_PROVIDER_ID), json!({}));
-        assert!(resolve_provider_env("claude", Some(DISABLED_PROVIDER_ID)).is_err());
+        // Historical configs still carrying the 停用 marker launch with the
+        // official config: nothing injected, no error.
+        let env = resolve_provider_env("claude", Some(DISABLED_PROVIDER_ID)).unwrap();
+        assert!(env.is_empty());
+        // Bare sends fall back to the stored current id, same result.
+        let bare = resolve_provider_env("claude", None).unwrap();
+        assert!(bare.is_empty());
     }
 
     #[test]

@@ -63,7 +63,7 @@ const SessionTimeline = memo(function SessionTimeline({
 });
 
 
-/** Composer menu slots (add / CLI / permission) plus the all-engines-disabled
+/** Composer menu slots (add / model / permission) plus the no-engine-options
  * state, memoized so per-keystroke draft updates don't rebuild the menus. */
 function useConversationMenus({
   engines,
@@ -108,16 +108,16 @@ function useConversationMenus({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  // Disabled-in-settings CLIs leave the picker entirely. 接管工作区下:
-  // 列表只留桥给的允许表,可用态按列表内与否而不是本机 `command -v` ——
-  // 否则本机没装的 CLI 在接管工作区里永远灰点。
+  // 接管工作区下: 列表只留桥给的允许表,可用态按列表内与否而不是本机
+  // `command -v` —— 否则本机没装的引擎在接管工作区里永远灰点。
   const cliOptions = useMemo(
     () => filterEngineOptions(engines, allowedEngines, t),
     [engines, allowedEngines, t],
   );
-  // Every CLI is switched off in settings: swap the picker for a placeholder
-  // that deep-links to the CLI config page.
-  const noEnabledEngines = engines.length > 0 && cliOptions.length === 0;
+  // No engine is left after the allow-list filter (a delegated workspace that
+  // permits none of them): swap the picker for a placeholder that deep-links
+  // to the model config page.
+  const noEngineOptions = engines.length > 0 && cliOptions.length === 0;
   const handleModelChange = useCallback(
     (engine: string, m: string) => void setModel(engine, m),
     [setModel],
@@ -142,13 +142,13 @@ function useConversationMenus({
   );
   const cliMenu = useMemo(
     () =>
-      noEnabledEngines ? (
+      noEngineOptions ? (
         <button
           type="button"
           onClick={() => navigate("/settings?page=cli:claude")}
           className="flex cursor-pointer items-center rounded-md px-1.5 py-1 text-body-2-medium whitespace-nowrap text-text-tertiary transition-colors duration-150 ease hover:text-text-primary"
         >
-          {t("chat.noEngineEnabled")}
+          {t("chat.noEngineOptions")}
         </button>
       ) : (
         <CliMenu
@@ -167,7 +167,7 @@ function useConversationMenus({
         />
       ),
     [
-      noEnabledEngines,
+      noEngineOptions,
       navigate,
       t,
       cliOptions,
@@ -195,7 +195,7 @@ function useConversationMenus({
     [engines, activeEngine, permission, setPermission, engineInfo],
   );
 
-  return { addMenu, cliMenu, permissionMenu, noEnabledEngines };
+  return { addMenu, cliMenu, permissionMenu, noEngineOptions };
 }
 
 /** Conversation column: timeline, message queue, composer, status bar. The
@@ -367,7 +367,7 @@ export const ChatConversation = memo(function ChatConversation({
     () => workspaceAllowedEngines(active?.workspacePath),
     [uiHooks, active?.workspacePath],
   );
-  const { addMenu, cliMenu, permissionMenu, noEnabledEngines } =
+  const { addMenu, cliMenu, permissionMenu, noEngineOptions } =
     useConversationMenus({
       engines,
       engineInfo,
@@ -432,7 +432,7 @@ export const ChatConversation = memo(function ChatConversation({
         sendShortcut={sendShortcut}
         onStop={handleStop}
         streaming={streaming}
-        noEnabledEngines={noEnabledEngines}
+        noEngineOptions={noEngineOptions}
         composerInputRef={composerInputRef}
         addMenu={addMenu}
         cliMenu={cliMenu}

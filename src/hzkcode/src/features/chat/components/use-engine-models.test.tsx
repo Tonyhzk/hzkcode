@@ -16,7 +16,7 @@ vi.mock("@/lib/ipc", () => ({
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-const ENGINE = { id: "omp", enabled: true, available: true } as EngineInfo;
+const ENGINE = { id: "omp", available: true } as EngineInfo;
 // 模块级稳定引用:与应用内 zustand 提供的 engines 同形。探针记录存在 ref
 // 里,数组身份抖动不再引发重复探测(见 use-engine-models 的探针 effect)。
 const ENGINES = [ENGINE];
@@ -31,7 +31,6 @@ let latest: EngineModelsState;
 const engineInfo = (id: string, available: boolean): EngineInfo => ({
   id,
   available,
-  enabled: true,
   supportsImages: false,
   permissions: [],
 });

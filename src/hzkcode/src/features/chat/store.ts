@@ -582,14 +582,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
     void sendPrompt(tab, head.text, head.images);
   }
 
-  /** Migrate the engine pref off a CLI that is gone or disabled in
-   * settings. All CLIs disabled: leave the pref alone — the composer shows
-   * the "no CLI enabled" placeholder instead of a misleading fallback. */
+  /** Migrate the engine pref off an entry that is gone (e.g. a removed
+   * engine). An empty list means listEngines failed — leave the pref alone
+   * rather than guessing. */
   function ensureUsableEngine(engines: EngineInfo[]) {
-    const usable = engines.filter((e) => e.enabled);
-    if (usable.length === 0 || usable.some((e) => e.id === get().activeEngine))
+    if (engines.length === 0 || engines.some((e) => e.id === get().activeEngine))
       return;
-    get().setActiveEngine(usable.find((e) => e.available)?.id ?? usable[0].id);
+    get().setActiveEngine(engines.find((e) => e.available)?.id ?? engines[0].id);
   }
 
   return {
@@ -638,8 +637,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           listenSessionsChanged(() => void get().refreshSessions()),
         ),
       );
-      // Settings' CLI enable switch / channel edits: re-filter history and
-      // picker options without a restart.
+      // Settings' channel edits: re-filter picker options without a restart.
       const onCliConfigChanged = () => void get().refreshEngines();
       window.addEventListener(CLI_CONFIG_CHANGED_EVENT, onCliConfigChanged);
       eventTeardowns.push(() =>

@@ -177,7 +177,7 @@ const RASTER_ICONS: Partial<Record<EngineIconId, { src: string; alt: string }>> 
   cohere: { src: cohereIcon, alt: "Cohere" },
   perplexity: { src: perplexityIcon, alt: "Perplexity" },
   dsh: { src: deepseekIcon, alt: "DeepSeek Harness" },
-  agy: { src: geminiIcon, alt: "Antigravity CLI" },
+  agy: { src: geminiIcon, alt: "Antigravity" },
 };
 
 /** Monochrome glyphs drawn from path data, following `currentColor`. */

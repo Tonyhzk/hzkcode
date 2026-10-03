@@ -10,9 +10,8 @@ export const ENGINE_DOCS_URLS: Record<EngineId, string> = {
 };
 
 export const PSEUDO_LOCAL = "__local_settings_json__";
-export const PSEUDO_DISABLED = "__disabled__";
 /** Pseudo providers pinned at the top of every engine's list. */
-export const PSEUDO_PROVIDER_IDS = [PSEUDO_LOCAL, PSEUDO_DISABLED] as const;
+export const PSEUDO_PROVIDER_IDS = [PSEUDO_LOCAL] as const;
 export type PseudoProviderId = (typeof PSEUDO_PROVIDER_IDS)[number];
 
 export const isPseudoProvider = (id: string): id is PseudoProviderId =>
@@ -173,7 +172,7 @@ export function engineCurrents(
   const out: Record<string, string> = {};
   for (const id of ENGINE_IDS) {
     const current = config[id]?.current?.trim();
-    out[id] = current && current !== PSEUDO_DISABLED ? current : PSEUDO_LOCAL;
+    out[id] = current || PSEUDO_LOCAL;
   }
   return out;
 }

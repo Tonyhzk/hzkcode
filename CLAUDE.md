@@ -46,6 +46,7 @@
 - 应用显示名统一为 **HZK CODE**（窗口标题、关于页、安装包名、README 文案）。
 - 品牌图标为蓝色方块 H（#478CF0）：设计源 `assets/hzkcode-icon.svg`；应用图标由源图 `src/hzkcode/src-tauri/icons/app-icon.png`（深灰圆角底板 + H）经 `pnpm tauri icon` 生成全套；侧边栏 logo 与 favicon 使用 `src/hzkcode/public/app-icon.png`（同一源图）；界面内引擎与模型图标使用透明底 H 标 `src/hzkcode/src/assets/brand/hzkcode-mark.svg`。
 - 界面不出现 Claude Code 品牌：引擎显示名统一为 HZK CODE（`CLI_DISPLAY_NAMES` 与 i18n `engines`），CLI 版本状态只显示版本号（Rust `display_version` 剥离引擎品牌后缀）。
+- 界面文案不出现「CLI」字样：内置终端程序是应用自身组成部分，用户可见处的表述统一用「程序 / 引擎 / 版本」，引擎固定可用、无启用开关。
 - 内部标识统一为 **hzkcode**：npm 包名、Rust crate（`hzkcode` / `hzkcode_lib`）、事件名、localStorage 键、插件 SDK 包名（`@hzkcode/plugin-sdk`）、CSS 层名（`hzkcode-plugins`）、环境变量前缀（`HZKCODE_`）。
 - bundle identifier：`com.hzkcode.app`。
 - 应用数据目录：`~/.hzkcode/gui/`；工作区提示词目录：`<项目>/.hzkcode/prompts`。

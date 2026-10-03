@@ -3,21 +3,12 @@ import { filterEngineOptions } from "./engine-options";
 import type { EngineInfo } from "@/lib/ipc";
 
 function engine(id: string, over: Partial<EngineInfo> = {}): EngineInfo {
-  return { id, enabled: true, available: true, ...over } as EngineInfo;
+  return { id, available: true, ...over } as EngineInfo;
 }
 
 const t = (key: string) => key;
 
 describe("filterEngineOptions", () => {
-  it("drops disabled engines entirely", () => {
-    const out = filterEngineOptions(
-      [engine("omp"), engine("claude", { enabled: false })],
-      null,
-      t,
-    );
-    expect(out.map((o) => o.id)).toEqual(["omp"]);
-  });
-
   it("keeps availability from the local binary probe when not a WSL workspace", () => {
     const out = filterEngineOptions(
       [engine("omp", { available: false }), engine("claude")],

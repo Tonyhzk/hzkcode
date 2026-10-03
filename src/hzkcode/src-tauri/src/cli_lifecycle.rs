@@ -127,7 +127,7 @@ fn update_kind(engine: &str, bin: &str) -> Option<&'static str> {
 /// engine never had one.
 fn unsupported_update_message(engine: &str, bin: &str) -> String {
     if resolve::is_bundled_cli_path(Path::new(bin)) {
-        format!("{engine} 使用的是应用内置 CLI，随应用一起更新。")
+        format!("{engine} 使用的是应用内置版本，随应用一起更新。")
     } else {
         format!("{engine} 不支持一键安装/更新。")
     }

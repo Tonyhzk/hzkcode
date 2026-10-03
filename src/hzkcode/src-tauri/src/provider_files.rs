@@ -22,7 +22,7 @@ use crate::config::{DISABLED_PROVIDER_ID, LEGACY_LOCAL_CONFIG_TOML_ID, LOCAL_PRO
 #[cfg(test)]
 fn apply(engine: &str, id: &str, provider: Option<&Value>) -> Result<(), String> {
     if id == DISABLED_PROVIDER_ID {
-        // 停用 gates sending only; the CLI's files stay as they are.
+        // The legacy 停用 marker wrote no file.
         return Ok(());
     }
     let targets = targets(engine);
@@ -137,14 +137,16 @@ fn migrate_targets(
                     break;
                 }
             }
-            let current = if section.current.as_deref() == Some(DISABLED_PROVIDER_ID) {
-                section.disabled_from.as_deref()
-            } else {
-                section.current.as_deref()
-            };
+            // The legacy 停用 marker counts as official: nothing was ever
+            // injected for it, so a foreign live file stays untouched instead
+            // of failing the migration with a conflict.
+            let current = section.current.as_deref();
             let official = matches!(
                 current,
-                None | Some("") | Some(LOCAL_PROVIDER_ID) | Some(LEGACY_LOCAL_CONFIG_TOML_ID)
+                None | Some("")
+                    | Some(DISABLED_PROVIDER_ID)
+                    | Some(LOCAL_PROVIDER_ID)
+                    | Some(LEGACY_LOCAL_CONFIG_TOML_ID)
             );
             if !restore_original && !official {
                 return Err(format!(
@@ -637,7 +639,6 @@ mod tests {
         crate::config::ProviderSection {
             providers: serde_json::Map::from_iter([("channel".into(), provider)]),
             current: Some("channel".into()),
-            disabled_from: None,
         }
     }
 
@@ -666,17 +667,32 @@ mod tests {
     }
 
     #[test]
-    fn legacy_migration_handles_absent_original_and_disabled_channel() {
+    fn legacy_migration_handles_absent_original_and_disabled_current() {
         let (dir, target) = fixture("migration-absent", "settings.json");
         let provider = serde_json::json!({"apiKey":"test-key"});
         apply_claude(&target, &provider).unwrap();
         let mut section = legacy_section(provider);
         section.current = Some(DISABLED_PROVIDER_ID.into());
-        section.disabled_from = Some("channel".into());
         migrate_targets("claude", &section, std::slice::from_ref(&target)).unwrap();
         assert!(!target.path.exists());
         assert!(absent_marker(&target.backup).exists());
         assert!(target.backup.with_extension("pre-migration").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn legacy_migration_disabled_current_leaves_foreign_file_alone() {
+        let (dir, target) = fixture("migration-disabled-foreign", "settings.json");
+        std::fs::create_dir_all(target.backup.parent().unwrap()).unwrap();
+        std::fs::write(&target.path, r#"{"user":"own"}"#).unwrap();
+        std::fs::write(absent_marker(&target.backup), "").unwrap();
+        let mut section = legacy_section(serde_json::json!({"apiKey":"test-key"}));
+        section.current = Some(DISABLED_PROVIDER_ID.into());
+        migrate_targets("claude", &section, std::slice::from_ref(&target)).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&target.path).unwrap(),
+            r#"{"user":"own"}"#
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 

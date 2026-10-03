@@ -1,7 +1,6 @@
-/** composer CLI 菜单选项过滤(纯函数便于单测):
- *  - 关闭的引擎不出现;
- *  - 接管工作区(allowedEngines 非 null,由 workspace-ui 桥提供)只留列表内
- *    的 CLI,且可用态按列表内与否,不按本机 `command -v`。 */
+/** composer 引擎菜单选项过滤(纯函数便于单测):
+ *  接管工作区(allowedEngines 非 null,由 workspace-ui 桥提供)只留列表内的
+ *  引擎,且可用态按列表内与否,不按本机 `command -v`。 */
 import type { EngineInfo } from "@/lib/ipc";
 
 export interface EngineOption {
@@ -19,7 +18,6 @@ export function filterEngineOptions(
 ): EngineOption[] {
   const allowed = allowedEngines === null ? null : new Set(allowedEngines);
   return engines.flatMap((e) => {
-    if (!e.enabled) return [];
     if (allowed && !allowed.has(e.id)) return [];
     const delegated = allowed !== null;
     return [

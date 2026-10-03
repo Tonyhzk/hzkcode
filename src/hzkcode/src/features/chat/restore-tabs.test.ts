@@ -7,7 +7,7 @@ vi.mock("@/lib/ipc", () => ({
     ]),
     listSessions: vi.fn(async () => []),
     listEngines: vi.fn(async () => [
-      { id: "claude", available: true, enabled: true, supportsImages: true, permissions: ["auto"] },
+      { id: "claude", available: true, supportsImages: true, permissions: ["auto"] },
     ]),
     getAppSettings: vi.fn(async () => ({})),
     getCliConfig: vi.fn(async () => ({ claude: { providers: {}, current: null } })),
