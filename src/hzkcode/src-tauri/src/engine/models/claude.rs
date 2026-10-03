@@ -105,15 +105,17 @@ fn embedded_registry(bin: &std::path::Path) -> Option<EmbeddedRegistry> {
     registry
 }
 
-/// Selectors `--model` accepts out of the box, in menu order. "default" is
-/// this app's own row (it sends no flag and lets the CLI pick); the CLI's
-/// alias set is sonnet/opus/haiku/best — the catalog is advisory, an
-/// unresolvable pick fails at launch with the CLI's own error.
+/// Selectors `--model` accepts out of the box, in menu order, carrying the
+/// app's display names: "default" is this app's own row (it sends no flag
+/// and lets the CLI pick), and the three capability aliases surface as the
+/// tier names the app uses everywhere (High/Mid/Low), never the CLI's family
+/// spells. The catalog is advisory: an unresolvable pick fails at launch
+/// with the CLI's own error.
 const CLI_ALIASES: &[(&str, &str)] = &[
     ("default", "Default"),
-    ("opus", "Opus"),
-    ("sonnet", "Sonnet"),
-    ("haiku", "Haiku"),
+    ("opus", "High"),
+    ("sonnet", "Mid"),
+    ("haiku", "Low"),
 ];
 
 /// The CLI's config root: `$HZKCODE_CONFIG_DIR` when set, else `~/.hzkcode`
@@ -492,6 +494,22 @@ mod tests {
         // No registry entry (sonnet/haiku absent from the fake) → no
         // description, same as a CLI too old to embed one.
         assert_eq!(by_id("sonnet").description, None);
+    }
+
+    #[test]
+    fn catalog_names_tiers_by_app_language_not_cli_aliases() {
+        let models = claude_models_from(CliModelConfig::default(), None);
+        let name = |id: &str| {
+            models
+                .iter()
+                .find(|m| m.id == id)
+                .unwrap()
+                .name
+                .clone()
+        };
+        assert_eq!(name("opus").as_deref(), Some("High"));
+        assert_eq!(name("sonnet").as_deref(), Some("Mid"));
+        assert_eq!(name("haiku").as_deref(), Some("Low"));
     }
 
     #[test]
