@@ -237,12 +237,6 @@ export const CLI_FEATURE_GROUPS: readonly {
     titleKey: "settings.cliFeatureInterface",
     fields: [
       {
-        envKey: "HZKCODE_RESPONSES_WEBSOCKET",
-        kind: "toggle",
-        labelKey: "settings.cliEnvResponsesWebsocket",
-        hintKey: "settings.cliEnvResponsesWebsocketHint",
-      },
-      {
         envKey: "HZKCODE_PROXY_URL",
         kind: "text",
         labelKey: "settings.cliEnvProxyUrl",

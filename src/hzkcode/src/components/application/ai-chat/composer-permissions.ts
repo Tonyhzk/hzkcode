@@ -8,9 +8,9 @@ import Shield from "lucide-react/dist/esm/icons/shield";
 import ShieldOff from "lucide-react/dist/esm/icons/shield-off";
 import type { ComposerPermissionOption } from "./permission-menu";
 
-/** The CLI's permission modes in its Shift+Tab cycle order; Auto Continue is
- *  the CLI default and the composer's starting mode. Ids are the CLI's
- *  machine values ("bypass" is this client's shorthand for the
+/** The CLI's permission modes in its Shift+Tab cycle order; Auto Ask is the
+ *  built-in CLI's default and the composer's starting mode. Ids are the
+ *  CLI's machine values ("bypass" is this client's shorthand for the
  *  skip-permissions launch flag). */
 export const COMPOSER_PERMISSIONS: ComposerPermissionOption[] = [
   {

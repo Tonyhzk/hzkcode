@@ -21,7 +21,7 @@ import { COMPOSER_PERMISSIONS } from "./composer-permissions";
  *
  * A pill trigger that only paints its surface on hover, press, or while its
  * menu is open, and a 323px panel with the CLI's permission modes in cycle
- * order that opens upward like the add and model menus. Auto Continue is the
+ * order that opens upward like the add and model menus. Auto Ask is the
  * default. Text is localized (chat.permission*); selection is component-local
  * until a backend permission concept exists — the host can already
  * observe/control it via the props.
@@ -79,7 +79,7 @@ export interface PermissionMenuProps {
 
 export function PermissionMenu({
   value,
-  defaultValue = "autoContinue",
+  defaultValue = "auto",
   onChange,
   learnMoreHref,
   onLearnMore,

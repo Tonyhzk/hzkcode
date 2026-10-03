@@ -107,7 +107,6 @@ const BUILTIN_COMMAND_DESCRIPTIONS: Record<string, string> = {
   "proxy-daemon": "chat.builtinCmdProxyDaemon",
   peers: "chat.builtinCmdPeers",
   "release-notes": "chat.builtinCmdReleaseNotes",
-  "responses-ws": "chat.builtinCmdResponsesWs",
   summary: "chat.builtinCmdSummary",
   version: "chat.builtinCmdVersion",
 };
