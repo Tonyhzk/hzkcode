@@ -667,7 +667,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn claude_synthetic_assistant_keeps_command_output() {
         let line: Value = serde_json::json!({
             "type": "assistant",
@@ -698,6 +697,7 @@ mod tests {
         assert_eq!(rows[0].text, "Compacted Context: ~8 → ~52 tokens");
     }
 
+    #[test]
     fn claude_informational_line_becomes_a_levelled_notice() {
         let line: Value = serde_json::json!({
             "type": "system",
