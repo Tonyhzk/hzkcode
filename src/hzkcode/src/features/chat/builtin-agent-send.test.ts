@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ipc, type AgentConfig } from "@/lib/ipc";
 
 /**
- * Built-in agent picks (`source: "builtIn"`) store no prompt: sendPrompt
- * resolves the current catalog prompt via ipc.resolveEnabledBuiltInAgent,
- * and a failed resolve (disabled/removed entry) drops the pin, flags the
- * session error banner, and still sends the bare text.
+ * A pinned agent becomes the session's CLI main-thread agent: sendPrompt
+ * launches with `--agents` (the definition) + `--agent` (its name). Built-in
+ * picks (`source: "builtIn"`) store no prompt and resolve the current catalog
+ * prompt at send time; a failed resolve (disabled/removed entry) drops the
+ * pin, flags the session error banner, and sends without an agent.
  */
 
 vi.mock("@/lib/ipc", () => ({
@@ -56,7 +57,17 @@ const { getSelectedAgent, selectSelectedAgent } = await import(
   "@/features/agents/selected-agent"
 );
 const { sessionKey } = await import("./store/persistence");
-describe("sendPrompt with a built-in agent pinned", () => {
+
+interface SentArgs {
+  prompt: string;
+  agentName: string | null;
+  agentsJson: string | null;
+}
+
+const sentArgs = (): SentArgs =>
+  vi.mocked(ipc.sendMessage).mock.calls[0]?.[0] as unknown as SentArgs;
+
+describe("sendPrompt with an agent pinned", () => {
   beforeEach(() => {
     vi.mocked(ipc.sendMessage).mockClear();
     vi.mocked(ipc.resolveEnabledBuiltInAgent).mockClear();
@@ -76,23 +87,45 @@ describe("sendPrompt with a built-in agent pinned", () => {
     selectSelectedAgent(WS, null, BUILT_IN_PICK);
   });
 
-  it("resolves the catalog prompt at send time and appends the block", async () => {
+  it("resolves the catalog prompt and launches with --agents/--agent", async () => {
     useChatStore.getState().startNewChat(WS);
     await useChatStore.getState().send("hi", []);
 
     expect(vi.mocked(ipc.resolveEnabledBuiltInAgent)).toHaveBeenCalledWith(
       BUILT_IN_PICK.id,
     );
-    const sent = vi.mocked(ipc.sendMessage).mock.calls[0]?.[0] as {
-      prompt: string;
-    };
-    expect(sent.prompt).toContain("hi");
-    expect(sent.prompt).toContain("## Agent Role and Instructions");
-    expect(sent.prompt).toContain("Agent Name: UI 设计师");
-    expect(sent.prompt).toContain("你是 UI 设计师。");
+    const sent = sentArgs();
+    expect(sent.prompt).toBe("hi");
+    expect(sent.agentName).toBe("UI 设计师");
+    const defs = JSON.parse(sent.agentsJson ?? "{}") as Record<
+      string,
+      { description: string; prompt: string }
+    >;
+    expect(defs["UI 设计师"]?.prompt).toBe("你是 UI 设计师。");
+    expect(defs["UI 设计师"]?.description).toBeTruthy();
   });
 
-  it("a failed resolve clears the pin, flags the session error, and sends bare text", async () => {
+  it("a custom agent rides the launch flags without a catalog resolve", async () => {
+    selectSelectedAgent(WS, null, {
+      id: "a1",
+      name: "审查员",
+      prompt: "严格审查。",
+      icon: "🧐",
+    });
+    useChatStore.getState().startNewChat(WS);
+    await useChatStore.getState().send("hi", []);
+
+    expect(vi.mocked(ipc.resolveEnabledBuiltInAgent)).not.toHaveBeenCalled();
+    const sent = sentArgs();
+    expect(sent.agentName).toBe("审查员");
+    const defs = JSON.parse(sent.agentsJson ?? "{}") as Record<
+      string,
+      { prompt: string }
+    >;
+    expect(defs["审查员"]?.prompt).toBe("严格审查。");
+  });
+
+  it("a failed resolve clears the pin, flags the session error, and sends without an agent", async () => {
     vi.mocked(ipc.resolveEnabledBuiltInAgent).mockRejectedValueOnce(
       new Error("agent disabled"),
     );
@@ -110,10 +143,10 @@ describe("sendPrompt with a built-in agent pinned", () => {
       expect(vi.mocked(ipc.sendMessage)).toHaveBeenCalled();
     });
 
-    const sent = vi.mocked(ipc.sendMessage).mock.calls[0]?.[0] as {
-      prompt: string;
-    };
+    const sent = sentArgs();
     expect(sent.prompt).toBe("hi");
+    expect(sent.agentName).toBeNull();
+    expect(sent.agentsJson).toBeNull();
     expect(getSelectedAgent(WS, null)).toBeNull();
     const key = sessionKey("claude", null, WS);
     expect(useChatStore.getState().bySession[key]?.error).toBeTruthy();

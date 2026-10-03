@@ -338,8 +338,9 @@ mod tests {
     use std::fs;
 
     // Tests steer paths::home_dir through HOME (its cfg(test) branch), which
-    // is process-global — serialize every test that touches it.
-    static ENV_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+    // is process-global — the lock is shared across modules (test_support)
+    // so tests from different files cannot race on the same variables.
+    use crate::test_support::HOME_ENV_LOCK as ENV_LOCK;
 
     struct ScratchHome {
         dir: PathBuf,

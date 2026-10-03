@@ -90,22 +90,33 @@ impl Engine for ClaudeEngine {
             // reading native settings here would remap independent channels.
             cmd.arg(model);
         }
-        // The CLI has no effort flag; the thinking budget env var is the
-        // effort knob. "low" stays at the CLI default (no forced thinking).
-        match req.effort.as_deref() {
-            Some("medium") => {
-                cmd.env("HZKCODE_MAX_THINKING_TOKENS", "16384");
-            }
-            Some("high") => {
-                cmd.env("HZKCODE_MAX_THINKING_TOKENS", "65536");
-            }
-            Some("xhigh") => {
-                cmd.env("HZKCODE_MAX_THINKING_TOKENS", "131072");
-            }
-            Some("max") => {
-                cmd.env("HZKCODE_MAX_THINKING_TOKENS", "262144");
-            }
-            _ => {}
+        // Session agent selection: `--agents` carries the definition (the
+        // CLI's flagSettings source), `--agent` runs one as this session's
+        // main-thread agent (headless sessions apply its system prompt).
+        if let Some(agents_json) = req
+            .agents_json
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            cmd.arg("--agents");
+            cmd.arg(agents_json);
+        }
+        if let Some(agent_name) = req
+            .agent_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            cmd.arg("--agent");
+            cmd.arg(agent_name);
+        }
+        // Effort rides the CLI's own flag so its model-aware resolution
+        // applies (off/none handling, per-model support, the persisted
+        // effortLevel chain) instead of a faked thinking budget.
+        if let Some(effort) = req.effort.as_deref().map(str::trim).filter(|e| !e.is_empty()) {
+            cmd.arg("--effort");
+            cmd.arg(effort);
         }
         // Granted directories ride every launch: the CLI cannot expand its
         // allowed-dirs mid-process, and each send is a fresh process anyway,
@@ -201,6 +212,16 @@ impl Engine for ClaudeEngine {
                         out.push(EngineEvent::Notice {
                             level: level.to_string(),
                             text: text.to_string(),
+                        });
+                    }
+                } else if subtype == Some("task_notification") {
+                    // Background-task bookend (the SDK's task_notification):
+                    // surface it as a timeline notice row; the task's own
+                    // tool row already carried the start.
+                    if let Some(text) = format_task_notification(&value) {
+                        out.push(EngineEvent::Notice {
+                            level: "info".to_string(),
+                            text,
                         });
                     }
                 }
@@ -598,6 +619,31 @@ fn local_command_stdout_text(content: &str) -> Option<String> {
     (!inner.is_empty()).then(|| inner.to_string())
 }
 
+/// Timeline text for a `system/task_notification` event (background-task
+/// bookend): status label plus the CLI's summary.
+fn format_task_notification(value: &Value) -> Option<String> {
+    let status = value.get("status").and_then(Value::as_str).unwrap_or("");
+    let summary = value
+        .get("summary")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    if summary.is_empty() && status.is_empty() {
+        return None;
+    }
+    let label = match status {
+        "completed" => "后台任务完成",
+        "failed" => "后台任务失败",
+        "stopped" => "后台任务已停止",
+        _ => "后台任务状态更新",
+    };
+    Some(if summary.is_empty() {
+        label.to_string()
+    } else {
+        format!("{label}：{summary}")
+    })
+}
+
 /// Human-readable line for a `system/api_retry` event.
 fn format_api_retry(value: &Value) -> String {
     let attempt = value.get("attempt").and_then(Value::as_u64).unwrap_or(0);
@@ -871,6 +917,27 @@ mod tests {
             |event| matches!(event, EngineEvent::CommandOutput(text)
                 if text == "Compacted Context: ~8 → ~52 tokens")
         ));
+    }
+
+    #[test]
+    fn task_notification_becomes_a_notice() {
+        let line = serde_json::json!({
+            "type": "system",
+            "subtype": "task_notification",
+            "task_id": "t1",
+            "status": "completed",
+            "summary": "修完了 3 个文件"
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        match &out[..] {
+            [EngineEvent::Notice { level, text }] => {
+                assert_eq!(level, "info");
+                assert!(text.contains("修完了 3 个文件"));
+            }
+            other => panic!("expected notice, got {other:?}"),
+        }
     }
 
     #[test]

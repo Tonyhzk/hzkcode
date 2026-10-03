@@ -24,6 +24,8 @@ pub mod settings;
 pub mod usage;
 pub mod slash_commands;
 pub mod terminal;
+#[cfg(test)]
+mod test_support;
 pub mod relay;
 pub mod web;
 pub mod windows;

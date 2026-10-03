@@ -975,6 +975,8 @@ struct SendMessageArgs {
     effort: Option<String>,
     permission: Option<String>,
     provider_id: Option<String>,
+    agent_name: Option<String>,
+    agents_json: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1369,6 +1371,8 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
                 a.effort,
                 a.permission,
                 a.provider_id,
+                a.agent_name,
+                a.agents_json,
                 a.run_id,
             )
             .await)

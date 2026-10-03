@@ -561,8 +561,9 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     // HOME is process-global and paths::home_dir reads it under cfg(test);
-    // serialize the one test that steers it (same pattern agents.rs uses).
-    static ENV_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+    // the lock is shared across modules (test_support) so concurrent tests
+    // from other files cannot race on the same variables.
+    use crate::test_support::HOME_ENV_LOCK as ENV_LOCK;
 
     struct ScratchHome {
         dir: PathBuf,

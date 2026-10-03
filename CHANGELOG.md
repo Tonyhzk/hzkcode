@@ -86,6 +86,10 @@
 - 工具权限确认卡片：CLI 的 `can_use_tool` 询问（非 AskUserQuestion）不再被直接拒绝，改为在对话区弹出「允许一次 / 拒绝」卡片并接管输入区（复用 AskUserQuestion 的 control protocol 应答链路，新增 `answer_permission` 命令：允许按停放的原输入回放 `updatedInput`，拒绝回传 `deny` 与说明）；卡片结论保留在时间线，运行结束时未作答的请求自动标记失效
 - 对话输入框 `/` 菜单新增「CLI 指令」分组：命令清单来自 CLI 无头初始化消息自报的 `slash_commands`（随会话动态刷新，3.0.0 已支持），菜单顶部展示并随会话变化，选中后原样发送由 CLI 执行；常见命令配中文说明（`maxtokens`、`proxy` 等仅在本次运行生效的已注明），同名自定义命令优先、内置自动去重；本地命令的输出（`/cost`、`/context` 结果与 `/compact` 的 `<local-command-stdout>` 确认行）在时间线以助手行显示——synthetic 助手快照此前被丢弃、其 `<synthetic>` 模型名还会污染模型显示，一并修复
 - 按内置 CLI 3.0.0 源码快照重审已提交改动：移除内置版本不支持的「Responses WebSocket 长连接」开关（3.0 之后新增的变量）；权限默认档由 Auto Continue 改回内置版本默认的 Auto Ask，旧偏好迁移收敛为 manual → default；清理 3.0 不存在的 `responses-ws` 指令说明项
+- 推理强度对齐：改为直传 CLI 的 `--effort` 档位（low / medium / high / xhigh / max），不再用 `HZKCODE_MAX_THINKING_TOKENS` 伪造思考预算，由 CLI 按其模型感知规则解析
+- CLI 会话 Agent：选中智能体后以 `--agents`（定义 JSON）+ `--agent`（会话主线程）启动，无头会话应用其系统提示词、恢复会话自动还原；移除旧的「智能体文本块内联」机制（旧会话历史中的块仍按原样剥离显示）
+- 后台任务完成通知与输出历史：`system/task_notification` 在时间线显示为通知行；本地命令输出（synthetic 助手快照与 `<local-command-stdout>` 行）在历史重载后保留，与实时显示一致
+- 测试基础设施：Rust 测试中操控进程级环境变量（HOME 等）的各模块锁合并为一个进程级共享锁（`test_support`），消除 `cargo test` 并行运行时的偶发相互干扰
 
 ## [0.1.0] - 2026-09-19
 

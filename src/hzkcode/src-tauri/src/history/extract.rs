@@ -415,6 +415,18 @@ fn claude_block_rows(
     }
 }
 
+/// Inner text of a `<local-command-stdout>…</local-command-stdout>` user
+/// message, when the content is exactly that wrapper (mirrors the engine's
+/// live parser).
+fn local_command_stdout_text(content: &str) -> Option<String> {
+    let inner = content
+        .trim()
+        .strip_prefix("<local-command-stdout>")?
+        .strip_suffix("</local-command-stdout>")?
+        .trim();
+    (!inner.is_empty()).then(|| inner.to_string())
+}
+
 fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
     let line_type = type_str(value);
     if line_type == "system" {
@@ -481,6 +493,27 @@ fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
         .and_then(Value::as_str)
         .map(str::to_string);
     let content = message.get("content");
+    // Synthetic assistant snapshots carry local command output (/cost,
+    // /context): mirror the live path — keep their text as an assistant row.
+    if line_type == "assistant"
+        && model.as_deref().map(|m| m.starts_with('<')).unwrap_or(false)
+    {
+        let text = content_text(content);
+        return if text.trim().is_empty() {
+            Vec::new()
+        } else {
+            vec![LineRow::new("assistant", text, ts)]
+        };
+    }
+    // Local command confirmations (`<local-command-stdout>…</local-command-stdout>`
+    // user rows): the live renderer shows them as assistant rows; match that.
+    if line_type == "user" {
+        if let Some(Value::String(raw)) = content {
+            if let Some(inner) = local_command_stdout_text(raw) {
+                return vec![LineRow::new("assistant", inner, ts)];
+            }
+        }
+    }
     let mut out = Vec::new();
     match content {
         Some(Value::Array(blocks)) => {
@@ -634,6 +667,37 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn claude_synthetic_assistant_keeps_command_output() {
+        let line: Value = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "model": "<synthetic>",
+                "content": [{ "type": "text", "text": "Total cost: $0.0000" }]
+            }
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "assistant");
+        assert_eq!(rows[0].text, "Total cost: $0.0000");
+    }
+
+    #[test]
+    fn claude_local_command_stdout_row_becomes_an_assistant_row() {
+        let line: Value = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": "<local-command-stdout>Compacted Context: ~8 → ~52 tokens</local-command-stdout>"
+            }
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "assistant");
+        assert_eq!(rows[0].text, "Compacted Context: ~8 → ~52 tokens");
+    }
+
     fn claude_informational_line_becomes_a_levelled_notice() {
         let line: Value = serde_json::json!({
             "type": "system",

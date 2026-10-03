@@ -52,6 +52,13 @@ pub struct SendRequest {
     /// Session-scoped channel id. Official / empty injects nothing; spawn
     /// falls back to the engine's `current` when this is None.
     pub provider_id: Option<String>,
+    /// Main-thread agent for this send (`--agent`): a name defined in the
+    /// agent tree or in `agents_json`. The CLI applies the agent's system
+    /// prompt to headless sessions and re-derives it on resume.
+    pub agent_name: Option<String>,
+    /// Session agent definitions (`--agents <json>`, the CLI's flagSettings
+    /// source): a record of name -> definition.
+    pub agents_json: Option<String>,
 }
 
 pub struct BuiltCommand {
@@ -980,6 +987,8 @@ fn prepare_launch(
     permission: Option<String>,
     additional_dirs: Vec<String>,
     provider_id: Option<String>,
+    agent_name: Option<String>,
+    agents_json: Option<String>,
 ) -> Result<Launch, String> {
     let engine_impl = engine_by_id(engine).ok_or_else(|| format!("unknown engine: {engine}"))?;
     // 停用 still gates sending. Channel settings apply to this child below;
@@ -1023,6 +1032,8 @@ fn prepare_launch(
             .take(32)
             .collect(),
         provider_id,
+        agent_name: agent_name.filter(|s| !s.trim().is_empty()),
+        agents_json: agents_json.filter(|s| !s.trim().is_empty()),
     };
     let bin = engine_bin(&settings, engine);
     let mut built = engine_impl.build_command(&req, &bin)?;
@@ -1852,6 +1863,8 @@ pub async fn send_message(
     effort: Option<String>,
     permission: Option<String>,
     provider_id: Option<String>,
+    agent_name: Option<String>,
+    agents_json: Option<String>,
     run_id: Option<String>,
 ) -> Result<SendResult, String> {
     send_message_inner(
@@ -1865,6 +1878,8 @@ pub async fn send_message(
         effort,
         permission,
         provider_id,
+        agent_name,
+        agents_json,
         run_id,
     )
     .await
@@ -1885,6 +1900,8 @@ pub async fn send_message_inner(
     effort: Option<String>,
     permission: Option<String>,
     provider_id: Option<String>,
+    agent_name: Option<String>,
+    agents_json: Option<String>,
     run_id: Option<String>,
 ) -> Result<SendResult, String> {
     let run_id = run_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
@@ -1938,6 +1955,8 @@ pub async fn send_message_inner(
         effort,
         permission,
         provider_id,
+        agent_name,
+        agents_json,
         run_id,
         killed,
         reader_abort,
@@ -1965,6 +1984,8 @@ async fn send_reserved(
     effort: Option<String>,
     permission: Option<String>,
     provider_id: Option<String>,
+    agent_name: Option<String>,
+    agents_json: Option<String>,
     run_id: String,
     killed: Arc<std::sync::atomic::AtomicBool>,
     reader_abort: Arc<std::sync::OnceLock<tokio::task::AbortHandle>>,
@@ -1983,6 +2004,8 @@ async fn send_reserved(
         // (each send is a fresh process).
         state.db.granted_roots().unwrap_or_default(),
         provider_id,
+        agent_name,
+        agents_json,
     )?;
 
     // WSL 远程工作区:引擎进程经 ssh 在发行版内执行(见 wsl_transport)。
@@ -2282,6 +2305,8 @@ mod permission_tests {
             permission: permission.map(str::to_string),
             additional_dirs: Vec::new(),
             provider_id: None,
+            agent_name: None,
+            agents_json: None,
         }
     }
 
@@ -2327,6 +2352,54 @@ mod permission_tests {
         let bypass = argv(&e, &req(Some("bypass")));
         assert!(bypass.contains(&"--dangerously-skip-permissions".to_string()));
         assert!(!bypass.contains(&"--permission-mode".to_string()));
+    }
+
+    #[test]
+    fn claude_passes_effort_levels_through() {
+        let e = claude::ClaudeEngine::new();
+        for level in ["low", "medium", "high", "xhigh", "max"] {
+            let mut r = req(Some("autoContinue"));
+            r.effort = Some(level.to_string());
+            let built = e.build_command(&r, "fake-bin").unwrap();
+            let args: Vec<String> = built
+                .command
+                .as_std()
+                .get_args()
+                .map(|a| a.to_string_lossy().to_string())
+                .collect();
+            assert!(has_pair(&args, "--effort", level), "{level}: {args:?}");
+            assert!(
+                !built
+                    .command
+                    .as_std()
+                    .get_envs()
+                    .any(|(k, _)| k == "HZKCODE_MAX_THINKING_TOKENS"),
+                "{level} must not fake a thinking budget"
+            );
+        }
+        // No effort selected: the flag stays off and the CLI's own default
+        // (settings effortLevel / model default) applies.
+        let plain = argv(&e, &req(Some("autoContinue")));
+        assert!(!plain.contains(&"--effort".to_string()));
+    }
+
+    #[test]
+    fn claude_passes_agent_selection_through() {
+        let e = claude::ClaudeEngine::new();
+        let mut r = req(Some("autoContinue"));
+        r.agent_name = Some("审查员".to_string());
+        r.agents_json = Some(r#"{"审查员":{"description":"d","prompt":"p"}}"#.to_string());
+        let args = argv(&e, &r);
+        assert!(has_pair(&args, "--agent", "审查员"));
+        assert!(has_pair(
+            &args,
+            "--agents",
+            r#"{"审查员":{"description":"d","prompt":"p"}}"#
+        ));
+        // No selection: neither flag reaches the launch.
+        let plain = argv(&e, &req(Some("autoContinue")));
+        assert!(!plain.contains(&"--agent".to_string()));
+        assert!(!plain.contains(&"--agents".to_string()));
     }
 
     #[test]

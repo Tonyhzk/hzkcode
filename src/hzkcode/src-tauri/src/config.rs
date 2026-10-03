@@ -353,18 +353,20 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // Process-global env is steered by tests in several modules; the lock
+    // is shared across all of them (test_support) to keep them serialized.
+    use crate::test_support::HOME_ENV_LOCK as ENV_LOCK;
 
     struct Scratch {
         dir: std::path::PathBuf,
         prev_home: Option<std::ffi::OsString>,
         prev_profile: Option<std::ffi::OsString>,
         engine_homes: Vec<(&'static str, Option<std::ffi::OsString>)>,
-        _lock: std::sync::MutexGuard<'static, ()>,
+        _lock: parking_lot::MutexGuard<'static, ()>,
     }
     impl Scratch {
         fn new() -> Self {
-            let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let lock = ENV_LOCK.lock();
             let dir = std::env::temp_dir()
                 .join(format!("hzkcode-config-test-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&dir).unwrap();

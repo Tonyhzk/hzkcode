@@ -1,22 +1,18 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildAgentBlock,
-  hasAgentBlock,
-  stripAgentBlock,
-} from "./agent-block";
+import { stripAgentBlock } from "./agent-block";
+
+/** The legacy block shape old prompts carried (kept only for display). */
+const block = (name: string, icon: string | null, prompt: string) =>
+  `\n\n## Agent Role and Instructions\n\nAgent Name: ${name}\n\nAgent Icon: ${icon ?? ""}\n\n${prompt}`;
 
 describe("stripAgentBlock", () => {
   it("leaves text without an agent block untouched", () => {
     const text = "hello world\n\nsecond paragraph";
     expect(stripAgentBlock(text)).toEqual({ text });
-    expect(hasAgentBlock(text)).toBe(false);
   });
 
   it("strips a tail block and parses name and icon", () => {
-    const text =
-      "fix the bug" +
-      buildAgentBlock({ name: "Reviewer", icon: "🧐", prompt: "Be strict." });
-    expect(hasAgentBlock(text)).toBe(true);
+    const text = "fix the bug" + block("Reviewer", "🧐", "Be strict.");
     expect(stripAgentBlock(text)).toEqual({
       text: "fix the bug",
       agentName: "Reviewer",
@@ -25,8 +21,7 @@ describe("stripAgentBlock", () => {
   });
 
   it("omits icon when the icon line is empty", () => {
-    const text =
-      "hi" + buildAgentBlock({ name: "Solo", prompt: "Do things." });
+    const text = "hi" + block("Solo", null, "Do things.");
     expect(stripAgentBlock(text)).toEqual({
       text: "hi",
       agentName: "Solo",
@@ -42,11 +37,7 @@ describe("stripAgentBlock", () => {
   });
 
   it("shows an empty body when the message opens with the block", () => {
-    const text = buildAgentBlock({
-      name: "Opener",
-      icon: "🚀",
-      prompt: "Lead.",
-    }).trimStart();
+    const text = block("Opener", "🚀", "Lead.").trimStart();
     const stripped = stripAgentBlock(text);
     expect(stripped.text).toBe("");
     expect(stripped.agentName).toBe("Opener");

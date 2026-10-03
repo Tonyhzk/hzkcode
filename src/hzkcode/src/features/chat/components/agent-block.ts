@@ -1,14 +1,10 @@
 /**
- * The agent-role block sendPrompt appends to an outgoing prompt when a
- * selected agent carries instructions. It is part of the committed history
- * (so the transcript the CLI sees matches ours), but the user bubble strips
- * it and shows a small badge instead.
+ * Legacy display helper: older sessions carried the selected agent as a
+ * `## Agent Role and Instructions` tail block on the user message (the
+ * transcript kept it, the bubble strips it back out and shows a badge).
+ * Agent selection now rides the launch flags (`--agents` / `--agent`), so
+ * only the strip side remains, for reading old histories.
  */
-export const AGENT_BLOCK_HEADER = "## Agent Role and Instructions";
-
-/** Tail block: two blank-line separated `## Agent Role and Instructions`
- *  through end of text, or the same header opening the whole message. The
- *  `[\s\S]*$` body also matches a streaming half-block that has no end yet. */
 const AGENT_BLOCK_TAIL_REGEX =
   /(?:\r?\n\r?\n|^)##\s*Agent Role and Instructions\s*(?:\r?\n)+([\s\S]*)$/;
 const AGENT_NAME_LINE_REGEX = /^Agent Name:[ \t]*(.+)$/m;
@@ -19,21 +15,6 @@ export interface StrippedAgentBlock {
   text: string;
   agentName?: string;
   agentIcon?: string;
-}
-
-/** True when the prompt already ends with an injected agent block, so a
- *  re-send of a committed user message (grant retry) never double-injects. */
-export function hasAgentBlock(text: string): boolean {
-  return AGENT_BLOCK_TAIL_REGEX.test(text);
-}
-
-/** Build the block sendPrompt appends after the user's prompt. */
-export function buildAgentBlock(input: {
-  name: string;
-  icon?: string;
-  prompt: string;
-}): string {
-  return `\n\n${AGENT_BLOCK_HEADER}\n\nAgent Name: ${input.name}\n\nAgent Icon: ${input.icon ?? ""}\n\n${input.prompt}`;
 }
 
 export function stripAgentBlock(text: string): StrippedAgentBlock {

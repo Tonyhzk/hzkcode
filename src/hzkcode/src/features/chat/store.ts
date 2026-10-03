@@ -64,10 +64,6 @@ import {
   upsertSessionMetaInto,
 } from "./store/engine-events";
 import { effectivePermission, readPermissionPref } from "./store/permissions";
-import {
-  buildAgentBlock,
-  hasAgentBlock,
-} from "./components/agent-block";
 import i18n from "@/lib/i18n";
 import {
   clearSelectedAgent,
@@ -89,7 +85,6 @@ export type { ActiveSession } from "./store/persistence";
 export type { QueuedMessage, SessionState } from "./store/stream";
 export type { ChatStore } from "./store/types";
 export { effectivePermission } from "./store/permissions";
-export { AGENT_BLOCK_HEADER } from "./components/agent-block";
 export { sortedWorkspaceGroups } from "./store/session-utils";
 
 /** Unlisteners for the module-scope event subscriptions set up in init. */
@@ -243,6 +238,18 @@ export const useChatStore = create<ChatStore>((set, get) => {
     }
   }
 
+  /** The CLI requires a non-empty agent description in `--agents` JSON; the
+   *  GUI stores no separate field, so derive one from the prompt's first
+   *  non-empty line. */
+  function agentDescription(name: string, prompt: string): string {
+    const line = prompt
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0);
+    const base = line ?? name;
+    return base.length > 120 ? `${base.slice(0, 117)}…` : base;
+  }
+
   /**
    * Send a prompt to a specific tab. Unlike the public `send` action this is
    * not bound to the active session, so the queue can drain on a background
@@ -254,36 +261,42 @@ export const useChatStore = create<ChatStore>((set, get) => {
     images: string[],
   ) {
     if (!prompt.trim() && images.length === 0) return;
-    // A pinned agent's instructions ride along as a tail block the
-    // transcript keeps (the bubble strips it back out for display). Slash
-    // prompts ("/compact") never get it, and a re-sent committed message
-    // already carries its block, so re-injecting would duplicate it.
+    // A pinned agent becomes this session's CLI main-thread agent: the
+    // launch carries its definition as `--agents` JSON and selects it with
+    // `--agent`, so headless sessions run under the agent's system prompt
+    // and the CLI re-derives it on resume.
     const selectedAgent = getSelectedAgent(tab.workspacePath, tab.sessionId);
     // Built-in resolve failures are re-flagged after the optimistic-turn
     // patch below (which resets `error` for the new turn).
     let agentResolveError: string | null = null;
-    if (selectedAgent && !prompt.startsWith("/") && !hasAgentBlock(prompt)) {
-      // Built-in picks store no prompt: resolve the current catalog prompt
-      // at send time. A since-disabled catalog entry fails the resolve —
-      // drop the stale pin, surface the session error banner, and still
-      // send the bare text.
+    let agentName: string | null = null;
+    let agentsJson: string | null = null;
+    if (selectedAgent) {
+      let resolvedName = selectedAgent.name;
+      let resolvedPrompt: string | null = null;
       if (selectedAgent.source === "builtIn") {
+        // Built-in picks store no prompt: resolve the current catalog prompt
+        // at send time. A since-disabled catalog entry fails the resolve —
+        // drop the stale pin, surface the session error banner, and still
+        // send without an agent.
         try {
           const resolved = await ipc.resolveEnabledBuiltInAgent(selectedAgent.id);
-          prompt += buildAgentBlock({
-            name: resolved.name,
-            icon: resolved.icon ?? undefined,
-            prompt: resolved.prompt,
-          });
+          resolvedName = resolved.name;
+          resolvedPrompt = resolved.prompt ?? null;
         } catch {
           clearSelectedAgent(tab.workspacePath, tab.sessionId);
           agentResolveError = i18n.t("chat.agentUnavailable");
         }
-      } else if (selectedAgent.prompt) {
-        prompt += buildAgentBlock({
-          name: selectedAgent.name,
-          icon: selectedAgent.icon,
-          prompt: selectedAgent.prompt,
+      } else {
+        resolvedPrompt = selectedAgent.prompt ?? null;
+      }
+      if (resolvedPrompt) {
+        agentName = resolvedName;
+        agentsJson = JSON.stringify({
+          [resolvedName]: {
+            description: agentDescription(resolvedName, resolvedPrompt),
+            prompt: resolvedPrompt,
+          },
         });
       }
     }
@@ -391,6 +404,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
           get().permission,
         ),
         providerId: provider,
+        agentName,
+        agentsJson,
       });
       // Older backends choose their own id. Retire the provisional route.
       if (result.runId !== requestedRunId) {

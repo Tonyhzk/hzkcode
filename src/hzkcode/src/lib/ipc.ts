@@ -713,6 +713,8 @@ export const ipc = {
     effort: string | null;
     permission: string | null;
     providerId: string | null;
+    agentName: string | null;
+    agentsJson: string | null;
   }) => invoke<SendResult>("send_message", args),
   interruptSession: (sessionId: string) =>
     invoke<boolean>("interrupt_session", { sessionId }),
