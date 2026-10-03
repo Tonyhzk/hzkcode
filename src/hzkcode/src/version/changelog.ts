@@ -25,7 +25,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - **全新四分区界面**：对话列表 ｜ 对话 ｜ 文件列表 ｜ 文件编辑器。文件编辑器独立在最右侧，支持多标签、拖拽调宽与折叠；对话区只属于对话，切换会话走左侧列表，变更（diff）也在编辑器区查看
 - **多窗口**：会话列表右键「在新窗口打开」，对话在独立窗口打开；文件编辑器标签拖到窗口边缘即可拖出成单独编辑窗口
 - **模型显示更直观**：模型选择器只保留三个档位，固定按 High / Mid / Low 顺序排列，并显示为「[档位]模型名」——直接看到每个档位实际运行的模型（如 [High]deepseek-v4-pro[1m]）；渠道编辑的每个模型字段新增「1M 上下文」开关，一键为模型名加上 [1m] 后缀
-- **推理强度五档**：low / medium / high / xhigh / max，与 CLI 完全对齐
+- **推理强度五档**：low / medium / high / xhigh / max，与内置引擎完全对齐
 - **推理强度火焰动画**：强度滑杆的每个档位都有火箭尾焰动画——火焰从滑块处喷出，长度随档位变化（最弱档是一枚短火苗、越往上越长，最高档铺满整条轨道）；星空与背景跟随已点燃的区间，且随档位越流越快；档位切换时火焰即时跟随、无延迟，颜色从最弱档的黄色渐变到最高档的蓝色尾焰
 - **终端信息不再隐藏**：重试的具体原因、第二大脑提醒、记忆提示等直接显示在对话时间线上
 - **详细显示**（设置 → 通用）：开启后工具调用参数与结果默认展开，适合查看完整过程
@@ -38,7 +38,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - **New four-pane layout**: sessions | conversation | files | file editor. The editor lives in its own right-most pane with tabs, drag-resize and collapse; the conversation column is just the conversation — switch sessions from the sidebar, and diffs open in the editor pane too
 - **Multi-window**: right-click a session to "Open in new window"; drag an editor tab to the window edge to pop it into a standalone editor window
 - **Clearer model display**: the picker now offers exactly three tiers, always ordered High / Mid / Low, and shows "[tier]model" — the real model each tier runs (e.g. [High]deepseek-v4-pro[1m]); every model field in the channel editor gains a "1M context" switch that appends the [1m] suffix
-- **Five reasoning levels**: low / medium / high / xhigh / max, matching the CLI exactly
+- **Five reasoning levels**: low / medium / high / xhigh / max, matching the engine exactly
 - **Reasoning-effort flame**: every stop on the effort slider burns — the flame fires from the thumb and its length follows the level (a stubby lick at the gentlest stop, longer with each step, filling the whole track at max); the starfield and backdrop follow the burnt stretch and stream faster with the level; switching is instant, with the color running from yellow at the gentlest stop up to the blue rocket exhaust at max
 - **Terminal-only messages are no longer hidden**: retry reasons, second-brain notes and memory hints render in the conversation timeline
 - **Detailed display** (Settings → General): tool-call arguments and results expand by default
@@ -97,7 +97,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - 上下文窗口显示：/compact 后不再回落到默认值；新会话记住实际窗口大小；回合结束自动更新真实占用，无需手动「刷新用量」
 - claude auto 模式下 WebSearch / WebFetch 被拦截
 - 修复模型目录加载死循环；DSH 客户端访问本机地址时不走代理
-- codex 旧版本 CLI 会提示升级；运行错误信息缺失时仍有错误提示
+- codex 旧版本会提示升级；运行错误信息缺失时仍有错误提示
 - 修复远程会话删除后重新出现的问题`,
       en: `✨ Features
 - Windows can switch to a **macOS-style custom title bar**
@@ -109,7 +109,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - Context window display: the denominator no longer falls back after /compact; new sessions remember the actual window size; usage updates automatically when a turn ends — no manual "refresh usage" needed
 - WebSearch / WebFetch were blocked in claude auto mode
 - Model catalog loading could loop forever; the DSH client no longer routes local addresses through the proxy
-- Older codex CLIs now get an actionable upgrade hint; the error banner still works when no error output is available
+- Older codex builds now get an actionable upgrade hint; the error banner still works when no error output is available
 - Deleted remote sessions no longer reappear`,
     },
   },
@@ -126,7 +126,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 🐛 修复
 - 新会话不再被刷新冲掉：侧栏即时显示，无需手动同步
 - Windows 检测不到新装 / 非 npm 渠道安装的 codex 与 claude
-- claude 上下文窗口改为显示 CLI 上报的实际值
+- claude 上下文窗口改为显示引擎上报的实际值
 - 修复 Windows 上本地资源加载异常
 - 移动端设置导航分组溢出重叠
 - WSL 接入安全加固：收紧权限并增加远程调用超时
@@ -140,7 +140,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 🐛 Fixes
 - New sessions no longer get wiped by refreshes — the sidebar shows them immediately, no manual sync
 - Windows now detects freshly installed or non-npm codex and claude builds
-- claude context window shows the actual value reported by the CLI
+- claude context window shows the actual value reported by the engine
 - Fixed local asset loading on Windows
 - Mobile settings navigation groups no longer overflow and overlap
 - WSL integration security hardening: tightened permissions and a timeout for remote calls
