@@ -33,6 +33,7 @@
 
 - 应用内置 CLI 二进制：源码槽位 `src/hzkcode/src-tauri/binaries/`，打包后位于 `HZK CODE.app/Contents/Resources/binaries/`（Windows 为安装目录下的 `binaries\`）；文件名 `hzkcode`（Windows `hzkcode.exe`），也可放上游构建产物 `claude`，两者都在时优先 `hzkcode`。
 - 当前内置 CLI 版本：**3.0.0**（槽位二进制 `--version` 自报）；替换槽位二进制时必须同步更新本行。
+- 3.0.0 源码快照：外层 `0_Reference/hzk-code-agent-3.0.0-670ee535`（fork 仓库 tag `v3.0.0`、commit `670ee535`，不进 Git）；替换二进制前的接口检查可对照该快照。
 - 替换内置二进制前必须做接口检查：在 fork 仓库（`hzk-code-agent`）对旧版与新版的提交/标签对比有无影响 GUI 交互的接口变化——核对 GUI 注入的环境变量（`provider_files.rs` 的 `env_names` / `is_provider_env_key` 清单：`HZKCODE_BASE_URL` / `HZKCODE_API_KEY` / `HZKCODE_MODEL` / `HZKCODE_DEFAULT_HIGH|MID|LOW_MODEL` / `HZKCODE_API_MODE` / `HZKCODE_AUTH_MODE` / `HZKCODE_PROVIDER` / `HZKCODE_CONFIG_DIR` / `HZKCODE_PROVIDER_MANAGED_BY_HOST` 等）、无头 stream-json 会话协议与启动参数、配置与会话目录、系统通知输出；CLI 纯内部改动（记忆、第二大脑、提示词等）不算接口变化。方法：对两个提交分别 `git grep` 变量名与协议字段并对比，差异逐项确认无破坏或已在 GUI 侧适配后再替换。
 - 运行时解析顺序：设置页自定义路径 → 内置二进制 → 系统 PATH；命中内置时设置页版本行显示「内置」，且不提供 npm / 官方脚本的一键安装入口（随应用一起更新）。
 - 引擎配置根目录：`~/.hzkcode`（`HZKCODE_CONFIG_DIR` 可覆盖），与单独安装的 hzkcode CLI 共用同一份配置与会话数据，因此可以同时安装使用；GUI 不再读写 `~/.claude` 与 `CLAUDE_CONFIG_DIR`。
