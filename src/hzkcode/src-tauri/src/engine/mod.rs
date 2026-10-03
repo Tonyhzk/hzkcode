@@ -169,6 +169,12 @@ pub enum EngineEvent {
     /// Local command output (synthetic assistant snapshots and
     /// `local-command-stdout` rows): rendered as a settled assistant row.
     CommandOutput(String),
+    /// Background-task bookend (`system/task_notification`): raw status and
+    /// summary; the client localizes the label for its timeline row.
+    TaskNotification {
+        status: String,
+        summary: String,
+    },
     /// Turn finished successfully.
     Done {
         session_id: Option<String>,
@@ -1596,6 +1602,15 @@ impl TurnCore {
                     &self.engine_id,
                     "command_output",
                     serde_json::json!(text),
+                );
+            }
+            EngineEvent::TaskNotification { status, summary } => {
+                state.push(
+                    &self.sink,
+                    &self.run_id,
+                    &self.engine_id,
+                    "task_notification",
+                    serde_json::json!({ "status": status, "summary": summary }),
                 );
             }
             EngineEvent::Model(model) => {

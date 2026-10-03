@@ -105,4 +105,25 @@ describe("command catalog and output events", () => {
     );
     expect(useChatStore.getState().bySession[KEY]?.messages).toHaveLength(1);
   });
+
+  it("a task_notification event appends a localized notice row", () => {
+    handleEngineEvents(
+      [
+        {
+          runId: "run-1",
+          sessionId: "s-1",
+          engine: "claude",
+          seq: 1,
+          kind: "task_notification" as const,
+          data: { status: "completed", summary: "done" },
+        },
+      ],
+      deps(),
+    );
+    const messages = useChatStore.getState().bySession[KEY]?.messages ?? [];
+    const row = messages[messages.length - 1];
+    expect(row.role).toBe("notice");
+    expect(row.level).toBe("info");
+    expect(row.text.includes("done")).toBe(true);
+  });
 });

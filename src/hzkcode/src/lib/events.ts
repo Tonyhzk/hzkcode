@@ -21,6 +21,7 @@ export interface EngineEventPayload {
     | "permission"
     | "commands"
     | "command_output"
+    | "task_notification"
     | "question_settled"
     | "done"
     | "model";

@@ -88,7 +88,7 @@
 - 按内置 CLI 3.0.0 源码快照重审已提交改动：移除内置版本不支持的「Responses WebSocket 长连接」开关（3.0 之后新增的变量）；权限默认档由 Auto Continue 改回内置版本默认的 Auto Ask，旧偏好迁移收敛为 manual → default；清理 3.0 不存在的 `responses-ws` 指令说明项
 - 推理强度对齐：改为直传 CLI 的 `--effort` 档位（low / medium / high / xhigh / max），不再用 `HZKCODE_MAX_THINKING_TOKENS` 伪造思考预算，由 CLI 按其模型感知规则解析
 - CLI 会话 Agent：选中智能体后以 `--agents`（定义 JSON）+ `--agent`（会话主线程）启动，无头会话应用其系统提示词；恢复会话时按 CLI 规则在定义可用时还原（GUI 每次发送都会重新下发定义，因此照常生效）；移除旧的「智能体文本块内联」机制（旧会话历史中的块仍按原样剥离显示）
-- 后台任务完成通知与输出历史：`system/task_notification` 在时间线显示为通知行；本地命令输出（synthetic 助手快照与 `<local-command-stdout>` 行）在历史重载后保留，与实时显示一致
+- 后台任务完成通知与输出历史：`system/task_notification` 以结构化事件（status/summary）在时间线显示为通知行、标签随界面语言本地化（该事件只存在于实时流、不写入会话文件，与 CLI 行为一致）；本地命令输出（synthetic 助手快照与 `<local-command-stdout>` 行）在历史重载后保留，与实时显示一致
 - 测试基础设施：Rust 测试中操控进程级环境变量（HOME 等）的各模块锁合并为一个进程级共享锁（`test_support`），消除 `cargo test` 并行运行时的偶发相互干扰
 
 ## [0.1.0] - 2026-09-19

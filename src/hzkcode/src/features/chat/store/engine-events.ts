@@ -26,6 +26,7 @@ import type { ChatStore } from "../store";
 import { mergeUsage, parseUsage, reportedContextWindow, type ParsedUsage } from "../usage";
 import { usageTrackingEnabled } from "@/features/settings/usage-tracking";
 import { migrateSelectedAgent } from "@/features/agents/selected-agent";
+import i18n from "@/lib/i18n";
 
 /**
  * Engine-event handling: the main loop resolves each event's session key and
@@ -960,6 +961,56 @@ function onCommandOutput(event: EngineEventPayload, key: string, deps: EngineEve
   });
 }
 
+/** Background-task bookend (`system/task_notification`): a notice row whose
+ *  label is localized here — the event carries raw status/summary and the
+ *  CLI does not persist these rows to the transcript. */
+function onTaskNotification(
+  event: EngineEventPayload,
+  key: string,
+  deps: EngineEventDeps,
+) {
+  const data = (event.data ?? {}) as { status?: unknown; summary?: unknown };
+  const status = typeof data.status === "string" ? data.status.trim() : "";
+  const summary = typeof data.summary === "string" ? data.summary.trim() : "";
+  if (!status && !summary) return;
+  const labelKey =
+    status === "completed"
+      ? "chat.taskNotifyCompleted"
+      : status === "failed"
+        ? "chat.taskNotifyFailed"
+        : status === "stopped"
+          ? "chat.taskNotifyStopped"
+          : "chat.taskNotifyGeneric";
+  const label = i18n.t(labelKey);
+  const text = summary ? `${label}${i18n.t("chat.taskNotifyJoiner")}${summary}` : label;
+  const pending = drainPending(key);
+  deps.set((s) => {
+    const cur = s.bySession[key] ?? EMPTY_SESSION;
+    const messages = settleLiveRows(
+      pending
+        ? applyStreamParts(
+            cur.messages,
+            pending.parts,
+            pending.model ?? (deps.get().models[event.engine] || null),
+          )
+        : cur.messages,
+    );
+    const seq = messages.length ? messages[messages.length - 1].seq + 1 : 1;
+    return {
+      bySession: {
+        ...s.bySession,
+        [key]: {
+          ...cur,
+          messages: [
+            ...messages,
+            { role: "notice", level: "info", text, ts: new Date().toISOString(), seq },
+          ],
+        },
+      },
+    };
+  });
+}
+
 function onQuestionSettled(
   event: EngineEventPayload,
   key: string,
@@ -1337,6 +1388,9 @@ export function handleEngineEvents(
         break;
       case "commands":
         onCommands(event, key, deps);
+        break;
+      case "task_notification":
+        onTaskNotification(event, key, deps);
         break;
       case "command_output":
         onCommandOutput(event, key, deps);

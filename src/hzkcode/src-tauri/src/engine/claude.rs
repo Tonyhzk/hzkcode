@@ -216,13 +216,22 @@ impl Engine for ClaudeEngine {
                     }
                 } else if subtype == Some("task_notification") {
                     // Background-task bookend (the SDK's task_notification):
-                    // surface it as a timeline notice row; the task's own
-                    // tool row already carried the start.
-                    if let Some(text) = format_task_notification(&value) {
-                        out.push(EngineEvent::Notice {
-                            level: "info".to_string(),
-                            text,
-                        });
+                    // carried as structured fields — the client localizes the
+                    // label; the task's own tool row already said start.
+                    let status = value
+                        .get("status")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    let summary = value
+                        .get("summary")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    if !status.is_empty() || !summary.is_empty() {
+                        out.push(EngineEvent::TaskNotification { status, summary });
                     }
                 }
             }
@@ -619,31 +628,6 @@ fn local_command_stdout_text(content: &str) -> Option<String> {
     (!inner.is_empty()).then(|| inner.to_string())
 }
 
-/// Timeline text for a `system/task_notification` event (background-task
-/// bookend): status label plus the CLI's summary.
-fn format_task_notification(value: &Value) -> Option<String> {
-    let status = value.get("status").and_then(Value::as_str).unwrap_or("");
-    let summary = value
-        .get("summary")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .unwrap_or("");
-    if summary.is_empty() && status.is_empty() {
-        return None;
-    }
-    let label = match status {
-        "completed" => "后台任务完成",
-        "failed" => "后台任务失败",
-        "stopped" => "后台任务已停止",
-        _ => "后台任务状态更新",
-    };
-    Some(if summary.is_empty() {
-        label.to_string()
-    } else {
-        format!("{label}：{summary}")
-    })
-}
-
 /// Human-readable line for a `system/api_retry` event.
 fn format_api_retry(value: &Value) -> String {
     let attempt = value.get("attempt").and_then(Value::as_u64).unwrap_or(0);
@@ -920,7 +904,7 @@ mod tests {
     }
 
     #[test]
-    fn task_notification_becomes_a_notice() {
+    fn task_notification_carries_status_and_summary() {
         let line = serde_json::json!({
             "type": "system",
             "subtype": "task_notification",
@@ -932,11 +916,11 @@ mod tests {
         let mut out = Vec::new();
         ClaudeEngine::new().parse_line(&line, &mut out);
         match &out[..] {
-            [EngineEvent::Notice { level, text }] => {
-                assert_eq!(level, "info");
-                assert!(text.contains("修完了 3 个文件"));
+            [EngineEvent::TaskNotification { status, summary }] => {
+                assert_eq!(status, "completed");
+                assert_eq!(summary, "修完了 3 个文件");
             }
-            other => panic!("expected notice, got {other:?}"),
+            other => panic!("expected task notification, got {other:?}"),
         }
     }
 
