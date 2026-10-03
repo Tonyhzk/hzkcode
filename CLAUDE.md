@@ -80,6 +80,8 @@
 - `pnpm build`：前端类型检查与构建
 - `pnpm test`：运行 Vitest 测试
 
+验证口径（Rust）：涉及公共签名变更（`SendRequest` 字段、tauri 命令参数、`EngineEvent` 变体等）时，以 `cargo test --no-run`（编译 lib / tests / examples 全目标）与 `cargo test --test send_path` 作为完成标准，不得只跑 `cargo test --lib`。
+
 ## UI 验证
 
 - 截图只截应用窗口本身（不截桌面、不激活窗口）：`1_Script/mac-window-shot list [过滤词]` 列窗口，`1_Script/mac-window-shot shot <匹配词> <输出.png>` 直接截取（去阴影，走系统 screencapture；源码 `1_Script/mac-window-shot.swift`，编译产物不入库）。
