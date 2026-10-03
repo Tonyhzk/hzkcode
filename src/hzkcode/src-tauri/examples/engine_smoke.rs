@@ -39,6 +39,8 @@ async fn run_one(engine_id: &str, workspace: &PathBuf) -> Result<(), String> {
         permission: None,
         additional_dirs: Vec::new(),
         provider_id: None,
+        agent_name: None,
+        agents_json: None,
     };
     let bin = which::which(engine_id)
         .map(|p| p.to_string_lossy().to_string())
@@ -138,8 +140,17 @@ async fn run_one(engine_id: &str, workspace: &PathBuf) -> Result<(), String> {
                 EngineEvent::QuestionSettled { request_id } => {
                     println!("  question settled: {request_id}")
                 }
-                EngineEvent::ControlPermissionDeny { tool_name, .. } => {
-                    println!("  control permission denied: {tool_name}")
+                EngineEvent::PermissionAsk { tool_name, .. } => {
+                    println!("  permission ask parked: {tool_name}")
+                }
+                EngineEvent::Commands(names) => {
+                    println!("  commands: {names:?}")
+                }
+                EngineEvent::CommandOutput(text) => {
+                    println!("  command output: {:.60}", text.replace('\n', " "))
+                }
+                EngineEvent::TaskNotification { status, summary } => {
+                    println!("  task notification [{status}]: {summary}")
                 }
                 EngineEvent::Done { usage, .. } => {
                     println!("  done (usage: {})", usage.is_some());

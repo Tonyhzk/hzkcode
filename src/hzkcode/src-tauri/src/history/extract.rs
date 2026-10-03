@@ -427,6 +427,18 @@ fn local_command_stdout_text(content: &str) -> Option<String> {
     (!inner.is_empty()).then(|| inner.to_string())
 }
 
+/// Summary of a `<task-notification>…</task-notification>` user row (the CLI
+/// delivers background-task bookends as XML user messages). None when the
+/// row carries no `<summary>` — there is nothing to show then.
+fn task_notification_summary(content: &str) -> Option<String> {
+    let inner = content.trim().strip_prefix("<task-notification>")?;
+    let start = inner.find("<summary>")? + "<summary>".len();
+    let rest = &inner[start..];
+    let end = rest.find("</summary>")?;
+    let text = rest[..end].trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
 fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
     let line_type = type_str(value);
     if line_type == "system" {
@@ -511,6 +523,22 @@ fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
         if let Some(Value::String(raw)) = content {
             if let Some(inner) = local_command_stdout_text(raw) {
                 return vec![LineRow::new("assistant", inner, ts)];
+            }
+        }
+    }
+    // Background-task bookends arrive as `<task-notification>` XML user rows
+    // (Claude Code: they look like user messages but are not). Surface the
+    // summary as a notice row instead of leaking raw XML into the view.
+    if line_type == "user" {
+        if let Some(Value::String(raw)) = content {
+            if raw.trim_start().starts_with("<task-notification>") {
+                return match task_notification_summary(raw) {
+                    Some(summary) => vec![LineRow {
+                        level: Some("info".to_string()),
+                        ..LineRow::new("notice", summary, ts)
+                    }],
+                    None => Vec::new(),
+                };
             }
         }
     }
@@ -695,6 +723,33 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].role, "assistant");
         assert_eq!(rows[0].text, "Compacted Context: ~8 → ~52 tokens");
+    }
+
+    #[test]
+    fn claude_task_notification_row_becomes_a_notice() {
+        let line: Value = serde_json::json!({
+            "type": "user",
+            "isSidechain": false,
+            "message": {
+                "role": "user",
+                "content": "<task-notification>\n<task-id>t1</task-id>\n<status>completed</status>\n<summary>修完了 3 个文件</summary>\n</task-notification>"
+            }
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "notice");
+        assert_eq!(rows[0].level.as_deref(), Some("info"));
+        assert_eq!(rows[0].text, "修完了 3 个文件");
+
+        // Without a summary there is nothing to show — the row is dropped.
+        let bare: Value = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": "<task-notification>\n<task-id>t2</task-id>\n<status>completed</status>\n</task-notification>"
+            }
+        });
+        assert!(extract_claude_line(&bare, ImageMode::Collect).is_empty());
     }
 
     #[test]
