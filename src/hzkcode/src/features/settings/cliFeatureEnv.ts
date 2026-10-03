@@ -9,6 +9,10 @@ import type { EnvField } from "./providerPresets";
 const THINKING_LEVELS = ["", "none", "low", "medium", "high", "xhigh", "max"] as const;
 /** Chat protocols a side query may pick; "" follows the main channel. */
 const API_CHANNELS = ["", "anthropic", "responses", "chat_completions"] as const;
+/** Read-tool API formats; "" follows the CLI default (gemini). */
+const READ_API_FORMATS = ["", "gemini", "openai"] as const;
+/** Tri-state behaviour switches: "" follows the CLI default, "1" on, "0" off. */
+const SWITCH_OPTIONS = ["", "1", "0"] as const;
 const URL_PLACEHOLDER = "settings.cliEnvUrlPlaceholder";
 
 export const CLI_FEATURE_GROUPS: readonly {
@@ -40,6 +44,12 @@ export const CLI_FEATURE_GROUPS: readonly {
         envKey: "HZKCODE_PERPLEXITY_API_KEY",
         kind: "text",
         labelKey: "settings.cliEnvPerplexityKey",
+      },
+      {
+        envKey: "HZKCODE_PERPLEXITY_PROXY_URL",
+        kind: "text",
+        labelKey: "settings.cliEnvPerplexityProxy",
+        placeholderKey: URL_PLACEHOLDER,
       },
     ],
   },
@@ -110,6 +120,32 @@ export const CLI_FEATURE_GROUPS: readonly {
         options: THINKING_LEVELS,
         labelKey: "settings.cliEnvThinkingLevel",
       },
+      {
+        envKey: "HZKCODE_MEMORY_CHANNEL",
+        kind: "select",
+        options: API_CHANNELS,
+        labelKey: "settings.cliEnvApiChannel",
+      },
+      {
+        envKey: "HZKCODE_MEMORY_THINKING_BUDGET",
+        kind: "number",
+        labelKey: "settings.cliEnvMemoryBudget",
+      },
+      {
+        envKey: "HZKCODE_MEMORY_TIMEOUT_MS",
+        kind: "number",
+        labelKey: "settings.cliEnvMemoryTimeout",
+      },
+      {
+        envKey: "HZKCODE_MEMORY_POLL_MS",
+        kind: "number",
+        labelKey: "settings.cliEnvMemoryPoll",
+      },
+      {
+        envKey: "HZKCODE_MEMORY_IDLE_EXIT_MS",
+        kind: "number",
+        labelKey: "settings.cliEnvMemoryIdleExit",
+      },
     ],
   },
   {
@@ -159,6 +195,12 @@ export const CLI_FEATURE_GROUPS: readonly {
         kind: "number",
         labelKey: "settings.cliEnvSecondBrainBudget",
       },
+      {
+        envKey: "HZKCODE_SECOND_BRAIN_STREAM",
+        kind: "toggle",
+        labelKey: "settings.cliEnvStreamRequest",
+        hintKey: "settings.cliEnvStreamRequestHint",
+      },
     ],
   },
   {
@@ -183,10 +225,93 @@ export const CLI_FEATURE_GROUPS: readonly {
         options: ["", "tools", "xml"],
         labelKey: "settings.cliEnvAutoModeProtocol",
       },
+      {
+        envKey: "HZKCODE_AUTO_MODE_STREAM",
+        kind: "toggle",
+        labelKey: "settings.cliEnvStreamRequest",
+        hintKey: "settings.cliEnvStreamRequestHint",
+      },
     ],
   },
   {
-    titleKey: "settings.cliFeatureMisc",
+    titleKey: "settings.cliFeatureInterface",
+    fields: [
+      {
+        envKey: "HZKCODE_RESPONSES_WEBSOCKET",
+        kind: "toggle",
+        labelKey: "settings.cliEnvResponsesWebsocket",
+        hintKey: "settings.cliEnvResponsesWebsocketHint",
+      },
+      {
+        envKey: "HZKCODE_PROXY_URL",
+        kind: "text",
+        labelKey: "settings.cliEnvProxyUrl",
+        placeholderKey: URL_PLACEHOLDER,
+      },
+      {
+        envKey: "HZKCODE_PROXY_ENABLED",
+        kind: "select",
+        options: SWITCH_OPTIONS,
+        labelKey: "settings.cliEnvProxyEnabled",
+        hintKey: "settings.cliEnvProxyEnabledHint",
+      },
+    ],
+  },
+  {
+    titleKey: "settings.cliFeatureMediaRead",
+    fields: [
+      {
+        envKey: "HZKCODE_READ_MODEL",
+        kind: "text",
+        labelKey: "settings.cliEnvReadModel",
+        hintKey: "settings.cliEnvReadModelHint",
+      },
+      { envKey: "HZKCODE_READ_IMAGE_MODEL", kind: "text", labelKey: "settings.cliEnvReadImageModel" },
+      {
+        envKey: "HZKCODE_READ_IMAGE_API_FORMAT",
+        kind: "select",
+        options: READ_API_FORMATS,
+        labelKey: "settings.cliEnvReadImageFormat",
+      },
+      {
+        envKey: "HZKCODE_READ_IMAGE_API_URL",
+        kind: "text",
+        labelKey: "settings.cliEnvReadImageUrl",
+        placeholderKey: URL_PLACEHOLDER,
+      },
+      { envKey: "HZKCODE_READ_IMAGE_API_KEY", kind: "text", labelKey: "settings.cliEnvReadImageKey" },
+      { envKey: "HZKCODE_READ_VIDEO_MODEL", kind: "text", labelKey: "settings.cliEnvReadVideoModel" },
+      {
+        envKey: "HZKCODE_READ_VIDEO_API_FORMAT",
+        kind: "select",
+        options: READ_API_FORMATS,
+        labelKey: "settings.cliEnvReadVideoFormat",
+      },
+      {
+        envKey: "HZKCODE_READ_VIDEO_API_URL",
+        kind: "text",
+        labelKey: "settings.cliEnvReadVideoUrl",
+        placeholderKey: URL_PLACEHOLDER,
+      },
+      { envKey: "HZKCODE_READ_VIDEO_API_KEY", kind: "text", labelKey: "settings.cliEnvReadVideoKey" },
+      { envKey: "HZKCODE_READ_AUDIO_MODEL", kind: "text", labelKey: "settings.cliEnvReadAudioModel" },
+      {
+        envKey: "HZKCODE_READ_AUDIO_API_FORMAT",
+        kind: "select",
+        options: READ_API_FORMATS,
+        labelKey: "settings.cliEnvReadAudioFormat",
+      },
+      {
+        envKey: "HZKCODE_READ_AUDIO_API_URL",
+        kind: "text",
+        labelKey: "settings.cliEnvReadAudioUrl",
+        placeholderKey: URL_PLACEHOLDER,
+      },
+      { envKey: "HZKCODE_READ_AUDIO_API_KEY", kind: "text", labelKey: "settings.cliEnvReadAudioKey" },
+    ],
+  },
+  {
+    titleKey: "settings.cliFeatureBehavior",
     fields: [
       {
         envKey: "HZKCODE_REPORT_WORK_STATUS",
@@ -196,10 +321,44 @@ export const CLI_FEATURE_GROUPS: readonly {
         hintKey: "settings.cliEnvWorkStatusHint",
       },
       {
-        envKey: "HZKCODE_PROXY_URL",
-        kind: "text",
-        labelKey: "settings.cliEnvProxyUrl",
-        placeholderKey: URL_PLACEHOLDER,
+        envKey: "HZKCODE_ENABLE_TASKS",
+        kind: "toggle",
+        labelKey: "settings.cliEnvEnableTasks",
+        hintKey: "settings.cliEnvEnableTasksHint",
+      },
+      {
+        envKey: "HZKCODE_ENABLE_PLAN_MODE",
+        kind: "toggle",
+        labelKey: "settings.cliEnvEnablePlanMode",
+        hintKey: "settings.cliEnvEnablePlanModeHint",
+      },
+      {
+        envKey: "HZKCODE_LOAD_PARENT_CLAUDE_MD",
+        kind: "select",
+        options: SWITCH_OPTIONS,
+        labelKey: "settings.cliEnvLoadParentClaudeMd",
+        hintKey: "settings.cliEnvTriStateHint",
+      },
+      {
+        envKey: "HZKCODE_LOAD_NESTED_CLAUDE_MD",
+        kind: "select",
+        options: SWITCH_OPTIONS,
+        labelKey: "settings.cliEnvLoadNestedClaudeMd",
+        hintKey: "settings.cliEnvTriStateHint",
+      },
+      {
+        envKey: "HZKCODE_LOAD_PARENT_SKILLS",
+        kind: "select",
+        options: SWITCH_OPTIONS,
+        labelKey: "settings.cliEnvLoadParentSkills",
+        hintKey: "settings.cliEnvTriStateHint",
+      },
+      {
+        envKey: "HZKCODE_LOAD_NESTED_SKILLS",
+        kind: "select",
+        options: SWITCH_OPTIONS,
+        labelKey: "settings.cliEnvLoadNestedSkills",
+        hintKey: "settings.cliEnvTriStateHint",
       },
     ],
   },
