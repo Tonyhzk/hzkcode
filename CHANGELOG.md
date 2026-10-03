@@ -84,6 +84,7 @@
 - 功能开关扩充：「用户记忆」补整理渠道、思考预算、整理超时、守护轮询与空闲退出；「第二大脑」「自动模式」补流式请求开关；「联网搜索」补 Perplexity 专用代理；原「其他」组拆分并入新组（CLI 代理地址 → 接口与连接）
 - 权限模式对齐 CLI 全档位：composer 权限菜单从四档（自动 / 手动 / 计划 / 跳过）改为 CLI 的八档（默认 / 自动接受编辑 / 计划 / 只读 / 只读询问 / 自动询问 / 自动继续 / 全部跳过，即 Shift+Tab 循环顺序），模式 id 即 CLI 机器值、`--permission-mode` 原样直传；默认档改为 CLI 默认的 Auto Continue，旧偏好经 `hzkcode.permissionPref:v2` 键一次性迁移（manual → default、auto → autoContinue）；删除 acceptEdits 模拟映射与 WebSearch / WebFetch 预授权 hack（分类器模式自行裁决网络工具）
 - 工具权限确认卡片：CLI 的 `can_use_tool` 询问（非 AskUserQuestion）不再被直接拒绝，改为在对话区弹出「允许一次 / 拒绝」卡片并接管输入区（复用 AskUserQuestion 的 control protocol 应答链路，新增 `answer_permission` 命令：允许按停放的原输入回放 `updatedInput`，拒绝回传 `deny` 与说明）；卡片结论保留在时间线，运行结束时未作答的请求自动标记失效
+- 对话输入框 `/` 菜单新增「CLI 指令」分组：命令清单来自 CLI 无头初始化消息自报的 `slash_commands`（随会话动态刷新，3.0.0 已支持），菜单顶部展示并随会话变化，选中后原样发送由 CLI 执行；常见命令配中文说明（`maxtokens`、`proxy` 等仅在本次运行生效的已注明），同名自定义命令优先、内置自动去重；本地命令的输出（`/cost`、`/context` 结果与 `/compact` 的 `<local-command-stdout>` 确认行）在时间线以助手行显示——synthetic 助手快照此前被丢弃、其 `<synthetic>` 模型名还会污染模型显示，一并修复
 
 ## [0.1.0] - 2026-09-19
 

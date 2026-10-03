@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import Terminal from "lucide-react/dist/esm/icons/terminal";
+import SquareTerminal from "lucide-react/dist/esm/icons/square-terminal";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles";
 import {
   ComposerPickerMenu,
@@ -15,17 +16,23 @@ import {
   type ComposerPickerMenuHandle,
 } from "@/components/application/ai-chat/composer-picker-menu";
 import {
+  builtinSlashCommands,
   matchSlashCommands,
+  mergeSlashCommands,
   useSlashCommandStore,
 } from "./slash-commands";
 import { type SlashCommandEntry } from "@/lib/ipc";
+import { sessionKey, useChatStore } from "@/features/chat/store";
+
+/** Stable empty list so the store selector keeps referential equality. */
+const EMPTY_COMMANDS: string[] = [];
 
 /**
  * `/` picker, rendered above the composer while a `/` trigger is active.
- * Lists two distinct entry kinds — slash commands and skills — grouped by
- * kind with per-kind icons/badges. Same interaction model as
- * FileMentionMenu (both are thin shells over ComposerPickerMenu): the
- * contentEditable keeps focus and owns the keyboard; the menu is
+ * Lists three distinct entry kinds — built-in CLI commands, slash commands
+ * and skills — grouped by kind with per-kind icons/badges. Same interaction
+ * model as FileMentionMenu (both are thin shells over ComposerPickerMenu):
+ * the contentEditable keeps focus and owns the keyboard; the menu is
  * deliberately NOT a react-aria popover (those steal focus / manage their
  * own trigger) — the composer forwards keys through `menuRef` instead.
  */
@@ -56,7 +63,8 @@ const Row = memo(function Row({
   onHover: (index: number) => void;
 }) {
   const description = entry.description ?? "";
-  const Icon = entry.kind === "skill" ? Sparkles : Terminal;
+  const Icon =
+    entry.kind === "skill" ? Sparkles : entry.kind === "builtin" ? SquareTerminal : Terminal;
   return (
     <PickerOption
       active={active}
@@ -105,9 +113,19 @@ export function SlashCommandMenu({
   }, [root]);
 
   const entries = catalog?.entries;
+  const sessionCommands = useChatStore((s) => {
+    const active = s.active;
+    if (!active) return EMPTY_COMMANDS;
+    const key = sessionKey(active.engine, active.sessionId, active.workspacePath);
+    return s.bySession[key]?.availableCommands ?? EMPTY_COMMANDS;
+  });
+  const builtins = useMemo(
+    () => builtinSlashCommands(t, sessionCommands),
+    [t, sessionCommands],
+  );
   const items = useMemo(
-    () => matchSlashCommands(entries ?? [], query),
-    [entries, query],
+    () => matchSlashCommands(mergeSlashCommands(builtins, entries ?? []), query),
+    [builtins, entries, query],
   );
 
   return (
@@ -125,13 +143,15 @@ export function SlashCommandMenu({
       onClose={onClose}
       menuRef={menuRef}
       groupHeaderAt={(entry, i) =>
-        // Group header at each kind boundary (the catalog arrives
-        // commands-then-skills, so at most one boundary renders).
+        // Group header at each kind boundary (built-ins first, then the
+        // catalog's commands-then-skills, so at most two boundaries render).
         i === 0 || items[i - 1].kind !== entry.kind ? (
           <div className={GROUP_HEADER}>
             {entry.kind === "skill"
               ? t("chat.slashGroupSkills")
-              : t("chat.slashGroupCommands")}
+              : entry.kind === "builtin"
+                ? t("chat.slashBuiltinGroup")
+                : t("chat.slashGroupCommands")}
           </div>
         ) : null
       }
@@ -143,7 +163,9 @@ export function SlashCommandMenu({
           kindLabel={
             entry.kind === "skill"
               ? t("chat.slashKindSkill")
-              : t("chat.slashKindCommand")
+              : entry.kind === "builtin"
+                ? t("chat.slashKindBuiltin")
+                : t("chat.slashKindCommand")
           }
           onSelect={onSelect}
           onHover={onHover}

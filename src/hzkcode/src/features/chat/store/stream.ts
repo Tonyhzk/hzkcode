@@ -28,6 +28,9 @@ export interface SessionState {
   activeEffort?: string | null;
   /** In-app channel this session runs; spawn injects its env. */
   activeProvider?: string | null;
+  /** Slash commands the CLI announced for this session (the headless init
+   *  message's `slash_commands`); the composer's built-in group reads them. */
+  availableCommands?: string[];
   /** Newest single report: the context meter reads occupancy from it. */
   usage: unknown;
   /** Running total of the reply in flight (sum of its reports), so the tail
@@ -58,6 +61,7 @@ export const EMPTY_SESSION: SessionState = {
   activeModel: null,
   activeEffort: null,
   activeProvider: null,
+  availableCommands: [],
   usage: null,
   turnUsage: null,
   error: null,

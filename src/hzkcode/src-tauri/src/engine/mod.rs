@@ -156,6 +156,12 @@ pub enum EngineEvent {
         description: Option<String>,
         input: Value,
     },
+    /// The headless init message's `slash_commands`: the commands this
+    /// session can run itself (the composer's built-in group).
+    Commands(Vec<String>),
+    /// Local command output (synthetic assistant snapshots and
+    /// `local-command-stdout` rows): rendered as a settled assistant row.
+    CommandOutput(String),
     /// Turn finished successfully.
     Done {
         session_id: Option<String>,
@@ -1561,6 +1567,24 @@ impl TurnCore {
                         "description": description,
                         "input": input,
                     }),
+                );
+            }
+            EngineEvent::Commands(commands) => {
+                state.push(
+                    &self.sink,
+                    &self.run_id,
+                    &self.engine_id,
+                    "commands",
+                    serde_json::json!({ "commands": commands }),
+                );
+            }
+            EngineEvent::CommandOutput(text) => {
+                state.push(
+                    &self.sink,
+                    &self.run_id,
+                    &self.engine_id,
+                    "command_output",
+                    serde_json::json!(text),
                 );
             }
             EngineEvent::Model(model) => {

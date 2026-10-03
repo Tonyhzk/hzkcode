@@ -141,6 +141,20 @@ impl Engine for ClaudeEngine {
         match event_type {
             "system" => {
                 push_session_id(&value, "session_id", out);
+                // Headless init announces the commands this session runs
+                // itself; the composer lists them as the built-in group.
+                if let Some(commands) = value.get("slash_commands").and_then(Value::as_array) {
+                    let names: Vec<String> = commands
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::trim)
+                        .filter(|name| !name.is_empty())
+                        .map(str::to_string)
+                        .collect();
+                    if !names.is_empty() {
+                        out.push(EngineEvent::Commands(names));
+                    }
+                }
                 let subtype = value.get("subtype").and_then(Value::as_str);
                 if subtype == Some("api_retry") {
                     // Live progress, not an error: the CLI backs off for
@@ -195,20 +209,38 @@ impl Engine for ClaudeEngine {
                 parse_stream_event(&self.pending_tool_json, &self.tool_names, &value, out)
             }
             "assistant" => {
-                // Full message snapshot; used as session-id and actual model source.
+                // Full message snapshot. Synthetic messages carry local
+                // command output (model "<synthetic>"); everything else
+                // updates the session id / actual model.
                 push_session_id(&value, "session_id", out);
-                if let Some(model) = value
+                let model = value
                     .get("message")
                     .and_then(|m| m.get("model"))
                     .or_else(|| value.get("model"))
                     .and_then(Value::as_str)
                     .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                {
-                    out.push(EngineEvent::Model(model.to_string()));
+                    .filter(|s| !s.is_empty());
+                if let Some(model) = model {
+                    if model.starts_with('<') {
+                        if let Some(text) = assistant_text(&value) {
+                            out.push(EngineEvent::CommandOutput(text));
+                        }
+                    } else {
+                        out.push(EngineEvent::Model(model.to_string()));
+                    }
                 }
             }
             "user" => {
+                // Local command confirmations ride plain-string user
+                // messages (`<local-command-stdout>…</local-command-stdout>`).
+                if let Some(text) = value
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(Value::as_str)
+                    .and_then(local_command_stdout_text)
+                {
+                    out.push(EngineEvent::CommandOutput(text));
+                }
                 // tool_result blocks carry permission denials as is_error
                 // text (headless cannot prompt). Surface them so the UI can
                 // offer a directory grant instead of letting the model
@@ -537,6 +569,35 @@ fn tool_result_error_texts(value: &Value) -> Vec<String> {
     out
 }
 
+/// Text of an assistant snapshot (string content or joined text blocks);
+/// used for synthetic messages that carry local command output.
+fn assistant_text(value: &Value) -> Option<String> {
+    let content = value.get("message")?.get("content")?;
+    let text = match content {
+        Value::String(s) => s.clone(),
+        Value::Array(blocks) => blocks
+            .iter()
+            .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
+            .filter_map(|b| b.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => return None,
+    };
+    let trimmed = text.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+/// Inner text of a `<local-command-stdout>…</local-command-stdout>` user
+/// message, when the content is exactly that wrapper.
+fn local_command_stdout_text(content: &str) -> Option<String> {
+    let inner = content
+        .trim()
+        .strip_prefix("<local-command-stdout>")?
+        .strip_suffix("</local-command-stdout>")?
+        .trim();
+    (!inner.is_empty()).then(|| inner.to_string())
+}
+
 /// Human-readable line for a `system/api_retry` event.
 fn format_api_retry(value: &Value) -> String {
     let attempt = value.get("attempt").and_then(Value::as_u64).unwrap_or(0);
@@ -754,6 +815,62 @@ mod tests {
             }
             other => panic!("expected permission ask, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn system_init_announces_slash_commands() {
+        let line = serde_json::json!({
+            "type": "system",
+            "subtype": "init",
+            "session_id": "s-1",
+            "slash_commands": ["compact", "cost", "", "  "]
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(out.iter().any(
+            |event| matches!(event, EngineEvent::Commands(names)
+                if names == &vec!["compact".to_string(), "cost".to_string()])
+        ));
+    }
+
+    #[test]
+    fn synthetic_assistant_messages_carry_command_output() {
+        let line = serde_json::json!({
+            "type": "assistant",
+            "session_id": "s-1",
+            "message": {
+                "model": "<synthetic>",
+                "role": "assistant",
+                "content": [{ "type": "text", "text": "Total cost: $0.0000" }]
+            }
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(out.iter().any(
+            |event| matches!(event, EngineEvent::CommandOutput(text)
+                if text == "Total cost: $0.0000")
+        ));
+        assert!(!out.iter().any(|event| matches!(event, EngineEvent::Model(_))));
+    }
+
+    #[test]
+    fn local_command_stdout_user_messages_emit_output() {
+        let line = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": "<local-command-stdout>Compacted Context: ~8 → ~52 tokens</local-command-stdout>"
+            }
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(out.iter().any(
+            |event| matches!(event, EngineEvent::CommandOutput(text)
+                if text == "Compacted Context: ~8 → ~52 tokens")
+        ));
     }
 
     #[test]

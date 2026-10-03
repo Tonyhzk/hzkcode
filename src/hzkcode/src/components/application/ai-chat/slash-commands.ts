@@ -15,7 +15,9 @@ import {
  * `entry.kind`; this store caches the catalog per workspace root with the
  * same stale-while-revalidate model as the @-mention file index
  * (createRootCacheStore) — one IPC per TTL window, matching is pure JS per
- * keystroke.
+ * keystroke. The menu also merges in the CLI's announced built-in commands
+ * (`kind: "builtin"`, from the session's `slash_commands`), sent verbatim
+ * like any typed command.
  */
 
 /** An active `/query` trigger at the caret: `start` is the offset of the
@@ -87,4 +89,73 @@ export function matchSlashCommands(
     }
   }
   return out;
+}
+
+/**
+ * Descriptions for the built-in headless commands the CLI may announce in a
+ * session (`slash_commands`); commands without an entry render without a
+ * description. Keys are lowercase command names.
+ */
+const BUILTIN_COMMAND_DESCRIPTIONS: Record<string, string> = {
+  compact: "chat.builtinCmdCompact",
+  context: "chat.builtinCmdContext",
+  cost: "chat.builtinCmdCost",
+  files: "chat.builtinCmdFiles",
+  maxtokens: "chat.builtinCmdMaxtokens",
+  provider: "chat.builtinCmdProvider",
+  proxy: "chat.builtinCmdProxy",
+  "proxy-daemon": "chat.builtinCmdProxyDaemon",
+  peers: "chat.builtinCmdPeers",
+  "release-notes": "chat.builtinCmdReleaseNotes",
+  "responses-ws": "chat.builtinCmdResponsesWs",
+  summary: "chat.builtinCmdSummary",
+  version: "chat.builtinCmdVersion",
+};
+
+/**
+ * Built-in entries for one session, built from the CLI's announced command
+ * names (deduped, sorted for a stable menu; unknown names render without a
+ * description). Selecting one sends the command verbatim, exactly as if
+ * typed by hand.
+ */
+export function builtinSlashCommands(
+  translate: (key: string) => string,
+  names: readonly string[],
+): SlashCommandEntry[] {
+  const seen = new Set<string>();
+  return names
+    .map((name) => name.trim())
+    .filter((name) => {
+      const key = name.toLowerCase();
+      if (name === "" || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => {
+      const key = BUILTIN_COMMAND_DESCRIPTIONS[name.toLowerCase()];
+      return {
+        name,
+        description: key ? translate(key) : null,
+        argumentHint: null,
+        source: "builtin",
+        kind: "builtin" as const,
+      };
+    });
+}
+
+/**
+ * Built-ins first, catalog after; a catalog entry with the same name wins
+ * (workspace/global custom commands shadow the built-in of that name, the
+ * same way they already shadow each other).
+ */
+export function mergeSlashCommands(
+  builtins: SlashCommandEntry[],
+  catalog: SlashCommandEntry[],
+): SlashCommandEntry[] {
+  const taken = new Set(catalog.map((entry) => entry.name.toLowerCase()));
+  return [
+    ...builtins.filter((entry) => !taken.has(entry.name.toLowerCase())),
+    ...catalog,
+  ];
 }

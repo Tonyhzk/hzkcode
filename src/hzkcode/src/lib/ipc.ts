@@ -321,7 +321,7 @@ export interface FileIndexEntry {
  *  skills (`.claude/skills/<name>/SKILL.md`) share the picker but stay
  *  distinct: the menu keys icons/badges/section grouping off this field,
  *  and per-kind merging lets a command and a skill share a name. */
-export type SlashEntryKind = "command" | "skill";
+export type SlashEntryKind = "command" | "skill" | "builtin";
 
 /** A `/` picker entry (`list_slash_commands`): workspace entries shadow
  *  global ones of the same name and kind. */

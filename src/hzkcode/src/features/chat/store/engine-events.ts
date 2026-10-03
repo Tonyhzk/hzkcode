@@ -913,6 +913,53 @@ function onPermissionAsk(
   });
 }
 
+/** The headless init announces the session's own commands; the composer's
+ *  built-in group reads them. Replaced wholesale — the list is
+ *  authoritative for this session. */
+function onCommands(event: EngineEventPayload, key: string, deps: EngineEventDeps) {
+  const data = event.data as { commands?: unknown };
+  const commands = Array.isArray(data.commands)
+    ? data.commands.filter(
+        (name): name is string => typeof name === "string" && name.trim() !== "",
+      )
+    : [];
+  if (commands.length === 0) return;
+  patchSession(deps.set, key, { availableCommands: commands });
+}
+
+/** Local command output the CLI carries on synthetic assistant snapshots
+ *  (/cost, /context) or `local-command-stdout` rows (/compact): appended as
+ *  a settled assistant row — there are no streaming deltas for it. */
+function onCommandOutput(event: EngineEventPayload, key: string, deps: EngineEventDeps) {
+  const text = typeof event.data === "string" ? event.data : "";
+  if (text.trim() === "") return;
+  const pending = drainPending(key);
+  deps.set((s) => {
+    const cur = s.bySession[key] ?? EMPTY_SESSION;
+    const base = pending
+      ? applyStreamParts(
+          cur.messages,
+          pending.parts,
+          pending.model ?? (deps.get().models[event.engine] || null),
+        )
+      : cur.messages;
+    const messages = settleLiveRows(base);
+    const seq = messages.length ? messages[messages.length - 1].seq + 1 : 1;
+    return {
+      bySession: {
+        ...s.bySession,
+        [key]: {
+          ...cur,
+          messages: [
+            ...messages,
+            { role: "assistant", text, ts: new Date().toISOString(), seq },
+          ],
+        },
+      },
+    };
+  });
+}
+
 function onQuestionSettled(
   event: EngineEventPayload,
   key: string,
@@ -1287,6 +1334,12 @@ export function handleEngineEvents(
         break;
       case "permission":
         onPermissionAsk(event, key, deps);
+        break;
+      case "commands":
+        onCommands(event, key, deps);
+        break;
+      case "command_output":
+        onCommandOutput(event, key, deps);
         break;
       case "question_settled":
         onQuestionSettled(event, key, deps);
