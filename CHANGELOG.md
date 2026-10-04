@@ -98,6 +98,7 @@
 - 消息操作栏新增「重试」：最下面一条消息（用户提问或 AI 回复）的复制按钮旁出现重试小图标，等于终端里单独输入 `//` 回车——重新回答上一条提问；复用权限流程的 `resendLastUser`（重发最后一条用户消息），流式进行中不显示
 - 会话分支（等价终端 `/branch`）：每条消息的操作栏新增分支图标，从该消息创建分支会话——在新文件里重建到该消息为止的主对话（助手消息含本条、用户提问到它之前为止，与 CLI 同语义），逐条改写 `sessionId`、重建 `parentUuid` 链并写入 `forkedFrom` 追溯、携带 content-replacement 记录；标题按 CLI 规则继承为「原名 (分支[ n])」（写 `custom-title` 条目并即时入库显示），创建后自动切到新分支；定位用 CLI 原始消息 uuid——历史解析（`extract`）与实时流（新增 `message_uuid` 事件 / `EngineEvent::MessageUuid`）都会带出，未入库或存错目录的会话也能按 id 兜底定位
 - 指令菜单适配完整内置指令表：`/` 菜单的内置分组改为镜像 CLI 3.0.0 的 `/help` 表（目录指令 94 + 单文件指令 21，中英双语说明取自 CLI 自身文案），带参数的指令显示终端同款灰字参数提示（如 `/proxy [on | <url> | off | restore]`、`/effort`、`/mcp`、`/maxtokens`、`/second-brain` 等）；选中即插入 `/名称 ` 到输入框、可继续补参数再发送（CLI 自行展开执行），`/proxy` 这类此前「不知道怎么用」的指令在对话里直接可用；旧的手写 12 条说明映射及其文案键删除
+- 会话开关进对话界面（不再只把指令文本塞进 `/` 菜单）：编辑器工具条新增「会话开关」菜单，逐会话控制——**会话代理**（等价终端 `/proxy on|off`：开启＝固定 `HZKCODE_PROXY_ENABLED=1` 走功能开关里配置的会话代理地址、关闭＝强制直连、跟随默认＝不动环境；未配置地址时「开启」置灰并给出「前往设置」入口）与**第二大脑**（等价 `/second-brain on|off`，固定 `HZKCODE_ENABLE_SECOND_BRAIN`）；选择随每次发送注入子进程、覆盖应用级默认（`SendRequest.proxy_enabled` / `second_brain_enabled`），`send_path` 集成测试实测断言注入值（proxy=0、brain=1 逐字命中）
 
 ## [0.1.0] - 2026-09-19
 

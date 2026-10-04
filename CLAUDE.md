@@ -38,6 +38,7 @@
 - 会话启动参数：推理强度档位以 `--effort` 直传（不再用 `HZKCODE_MAX_THINKING_TOKENS` 伪造预算）；选中的智能体以 `--agents`（定义 JSON：name → description/prompt）+ `--agent`（主线程名）下发，无头会话应用其系统提示词；恢复会话时 CLI 仅在定义可用时还原（GUI 每次发送都会重新下发定义）；GUI 侧已移除「智能体文本块内联」（`components/agent-block.ts` 仅保留旧历史的剥离显示）。派生会话进程时把 `HZKCODE_DEV_CALLER_CWD` 钉在会话工作区（CLI 用它决定会话落盘的工程目录，继承启动目录会把会话存错位置、扫描不到也删不掉）。
 - 会话删除（`delete_session`）不依赖数据库索引：先按记录路径、再按会话 id 在全部工程目录下定位 `.jsonl`（含子代理旁挂目录）删除，文件与记录缺一也幂等成功（侧栏的乐观行/过期行可以直接删掉）。
 - 会话分支（`branch_session`）复刻 CLI `/branch`：按消息 uuid 定位源会话（记录路径，缺失时按 id 全目录兜底），助手消息含本条、用户提问到其前为止；逐条改写 `sessionId`、重建 `parentUuid`、写入 `forkedFrom`，携带 content-replacement 记录；标题继承为「原名 (分支[ n])」写 `custom-title` 条目并即时入库。消息 uuid 由历史解析（`extract`）与实时流（`message_uuid` 事件）共同提供，前端消息行操作栏据此显示「分支」图标。
+- 会话开关（编辑器工具条的「会话开关」菜单）：按会话固定 `HZKCODE_PROXY_ENABLED`（等价 `/proxy on|off`）与 `HZKCODE_ENABLE_SECOND_BRAIN`（等价 `/second-brain on|off`），随每次发送注入子进程、覆盖应用级默认（`SendRequest.proxy_enabled` / `second_brain_enabled`，状态存 `SessionState.proxyEnabled` / `secondBrainEnabled`，null＝跟随）。新增同类「进程启动期读环境」的会话级开关沿用这一形态。
 - 替换内置二进制前必须做接口检查：在 fork 仓库（`hzk-code-agent`）对旧版与新版的提交/标签对比有无影响 GUI 交互的接口变化——核对 GUI 注入的环境变量（`provider_files.rs` 的 `env_names` / `is_provider_env_key` 清单：`HZKCODE_BASE_URL` / `HZKCODE_API_KEY` / `HZKCODE_MODEL` / `HZKCODE_DEFAULT_HIGH|MID|LOW_MODEL` / `HZKCODE_API_MODE` / `HZKCODE_AUTH_MODE` / `HZKCODE_PROVIDER` / `HZKCODE_CONFIG_DIR` / `HZKCODE_PROVIDER_MANAGED_BY_HOST` 等）、无头 stream-json 会话协议与启动参数、配置与会话目录、系统通知输出；CLI 纯内部改动（记忆、第二大脑、提示词等）不算接口变化。方法：对两个提交分别 `git grep` 变量名与协议字段并对比，差异逐项确认无破坏或已在 GUI 侧适配后再替换。
 - 运行时解析顺序：设置页自定义路径 → 内置二进制 → 系统 PATH；命中内置时设置页版本行显示「内置」，且不提供 npm / 官方脚本的一键安装入口（随应用一起更新）。
 - 引擎配置根目录：`~/.hzkcode`（`HZKCODE_CONFIG_DIR` 可覆盖），与单独安装的 hzkcode CLI 共用同一份配置与会话数据，因此可以同时安装使用；GUI 不再读写 `~/.claude` 与 `CLAUDE_CONFIG_DIR`。
@@ -82,6 +83,8 @@
 - `pnpm install`：安装依赖
 - `pnpm build`：前端类型检查与构建
 - `pnpm test`：运行 Vitest 测试
+
+开发实例开关约定（用户明确要求）：批量改代码期间不启动 `pnpm dev`，改动完成后统一启动一次供实测；`tauri dev` 会在每次 Rust 源码变更时自动重建重启应用窗口并抢焦点，会打断用户桌面工作。前端改动走 Vite 热更新、不会弹窗，但实例仍按上述约定统一启停。
 
 验证口径（Rust）：涉及公共签名变更（`SendRequest` 字段、tauri 命令参数、`EngineEvent` 变体等）时，以 `cargo test --no-run`（编译 lib / tests / examples 全目标）与 `cargo test --test send_path` 作为完成标准，不得只跑 `cargo test --lib`。
 

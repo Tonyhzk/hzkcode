@@ -173,6 +173,10 @@ export interface ChatStore {
   /** Fork the conversation at one message (the CLI's /branch): a new session
    *  file next to the source, title inherited, then opened in place. */
   branchFromMessage: (key: string, targetUuid: string) => Promise<void>;
+  /** Per-session proxy switch (null 跟随默认); injected on every send. */
+  setSessionProxy: (key: string, value: boolean | null) => void;
+  /** Per-session second-brain switch (null 跟随默认). */
+  setSessionSecondBrain: (key: string, value: boolean | null) => void;
   /** Enqueue a message on the active session while a turn streams. */
   queueMessage: (text: string, images: string[]) => void;
   /** Drop a queued message from the active session. */

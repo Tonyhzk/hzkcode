@@ -41,6 +41,8 @@ async fn run_one(engine_id: &str, workspace: &PathBuf) -> Result<(), String> {
         provider_id: None,
         agent_name: None,
         agents_json: None,
+        proxy_enabled: None,
+        second_brain_enabled: None,
     };
     let bin = which::which(engine_id)
         .map(|p| p.to_string_lossy().to_string())

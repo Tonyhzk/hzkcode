@@ -406,6 +406,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
         providerId: provider,
         agentName,
         agentsJson,
+        // Session proxy switch (the composer's 会话开关, the CLI's /proxy):
+        // null keeps the app/shell default for this send.
+        proxyEnabled: get().bySession[key]?.proxyEnabled ?? null,
+        // Session second-brain switch (the CLI's /second-brain).
+        secondBrainEnabled: get().bySession[key]?.secondBrainEnabled ?? null,
       });
       // Older backends choose their own id. Retire the provisional route.
       if (result.runId !== requestedRunId) {
@@ -1434,6 +1439,17 @@ export const useChatStore = create<ChatStore>((set, get) => {
           (t) => sessionKey(t.engine, t.sessionId, t.workspacePath) === key,
         ) ?? s.active;
       if (tab) await sendPrompt(tab, lastUser.text, lastUser.images ?? []);
+    },
+
+    /** Per-session proxy switch (the composer's 会话开关, the CLI's /proxy):
+     *  true = 开启, false = 关闭, null = 跟随默认。每次发送随进程注入。 */
+    setSessionProxy: (key, value) => {
+      patchSession(set, key, { proxyEnabled: value });
+    },
+
+    /** Per-session second-brain switch (the CLI's /second-brain on|off). */
+    setSessionSecondBrain: (key, value) => {
+      patchSession(set, key, { secondBrainEnabled: value });
     },
 
     /** Fork the conversation at one message (the CLI's /branch): the host

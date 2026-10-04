@@ -12,6 +12,8 @@ import {
 import { useTranslation } from "react-i18next";
 import GitMerge from "lucide-react/dist/esm/icons/git-merge";
 import Globe from "lucide-react/dist/esm/icons/globe";
+import SlidersHorizontal from "lucide-react/dist/esm/icons/sliders-horizontal";
+import { useNavigate } from "react-router-dom";
 import {
   Button as AriaButton,
   Dialog as AriaDialog,
@@ -47,6 +49,7 @@ import {
 } from "@/components/application/ai-chat/file-tags";
 import { ipc } from "@/lib/ipc";
 import { listenSettingsChanged } from "@/lib/events";
+import { sessionKey, useChatStore } from "@/features/chat/store";
 import { useTauriEvent } from "@/hooks/use-tauri-event";
 import { ASSUMED_CONTEXT_WINDOW } from "@/features/chat/usage";
 import {
@@ -433,6 +436,181 @@ function ProxyQuickToggle() {
   );
 }
 
+/**
+ * Per-session switches for the composer footer — the conversation-side
+ * adaptation of the CLI's session commands: 会话代理 (`/proxy`, pins
+ * HZKCODE_PROXY_ENABLED on the configured address) and 第二大脑
+ * (`/second-brain`, pins HZKCODE_ENABLE_SECOND_BRAIN). 跟随默认 keeps the
+ * app/shell default; every GUI send is its own process, so the choices ride
+ * each send of this session.
+ */
+function SessionToggles() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [isOpen, setIsOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLElement>(null);
+  useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef]);
+  const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
+
+  const active = useChatStore((s) => s.active);
+  const sessionKeyValue = useChatStore((s) => {
+    const a = s.active;
+    return a ? sessionKey(a.engine, a.sessionId, a.workspacePath) : null;
+  });
+  const proxyEnabled = useChatStore((s) => {
+    const a = s.active;
+    if (!a) return null;
+    const key = sessionKey(a.engine, a.sessionId, a.workspacePath);
+    return s.bySession[key]?.proxyEnabled ?? null;
+  });
+  const secondBrainEnabled = useChatStore((s) => {
+    const a = s.active;
+    if (!a) return null;
+    const key = sessionKey(a.engine, a.sessionId, a.workspacePath);
+    return s.bySession[key]?.secondBrainEnabled ?? null;
+  });
+  const setSessionProxy = useChatStore((s) => s.setSessionProxy);
+  const setSessionSecondBrain = useChatStore((s) => s.setSessionSecondBrain);
+
+  // The address the CLI reads for `HZKCODE_PROXY_ENABLED=1` (模型配置 → 功能
+  // 开关 → 会话代理地址 already writes this key).
+  const [address, setAddress] = useState<string | null>(null);
+  const read = useCallback(() => {
+    void ipc
+      .getAppSettings()
+      .then((s) => setAddress(s.cliEnv?.HZKCODE_PROXY_URL?.trim() || null))
+      .catch(() => {});
+  }, []);
+  useEffect(() => read(), [read]);
+  useTauriEvent(() => listenSettingsChanged(read));
+
+  if (!active || !sessionKeyValue) return null;
+
+  const selectProxy = (value: boolean | null) => {
+    setSessionProxy(sessionKeyValue, value);
+    setIsOpen(false);
+  };
+  const selectBrain = (value: boolean | null) => {
+    setSessionSecondBrain(sessionKeyValue, value);
+    setIsOpen(false);
+  };
+  const proxyOptions: { value: boolean | null; label: string; disabled?: boolean }[] = [
+    { value: null, label: t("chat.sessionProxyFollow") },
+    { value: true, label: t("chat.sessionProxyOn"), disabled: !address },
+    { value: false, label: t("chat.sessionProxyOff") },
+  ];
+  const brainOptions: { value: boolean | null; label: string; disabled?: boolean }[] = [
+    { value: null, label: t("chat.sessionProxyFollow") },
+    { value: true, label: t("chat.sessionProxyOn") },
+    { value: false, label: t("chat.sessionProxyOff") },
+  ];
+  const renderOptions = (
+    options: { value: boolean | null; label: string; disabled?: boolean }[],
+    current: boolean | null,
+    onSelect: (value: boolean | null) => void,
+  ) => (
+    <div role="radiogroup" className="flex flex-col gap-1">
+      {options.map((option) => {
+        const checked = current === option.value;
+        return (
+          <button
+            key={String(option.value)}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            aria-disabled={option.disabled || undefined}
+            onClick={() => !option.disabled && onSelect(option.value)}
+            className={cx(
+              "flex w-full items-center rounded-[14px] px-2 py-1.5 text-left outline-none transition-colors",
+              option.disabled
+                ? "cursor-not-allowed opacity-50"
+                : "cursor-pointer hover:bg-background-primary-hover focus-visible:bg-background-primary-hover",
+              checked && !option.disabled && "bg-background-primary-hover",
+            )}
+          >
+            <span className="truncate text-body-medium text-text-secondary">
+              {option.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <AriaDialogTrigger
+      isOpen={isOpen}
+      onOpenChange={(next) => allowOpenChange(next) && setIsOpen(next)}
+    >
+      <Tooltip>
+        <AriaButton
+          ref={triggerRef}
+          aria-label={t("chat.sessionToggles")}
+          className={cx(
+            "flex cursor-pointer items-center rounded-full p-1.5 outline-none transition-colors duration-150 ease focus-visible:ring-2 focus-visible:ring-border-focus-ring",
+            proxyEnabled === true || secondBrainEnabled === true
+              ? "text-notification-success-foreground"
+              : proxyEnabled === false || secondBrainEnabled === false
+                ? "text-foreground-icon-secondary"
+                : "text-foreground-icon-tertiary",
+          )}
+        >
+          <SlidersHorizontal className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
+        </AriaButton>
+        <TooltipContent>{t("chat.sessionToggles")}</TooltipContent>
+      </Tooltip>
+      <AriaPopover
+        ref={popoverRef}
+        isNonModal
+        placement="top end"
+        offset={8}
+        className={cx(
+          "w-[280px] max-w-[calc(100vw-32px)]",
+          "rounded-[20px] border border-border-button-default bg-background-primary-default p-1.5 shadow-dropdown",
+          "transition duration-150 ease-out",
+          "data-[entering]:opacity-0 data-[entering]:scale-95 data-[entering]:blur-[2px]",
+          "data-[exiting]:opacity-0 data-[exiting]:scale-95 data-[exiting]:blur-[2px]",
+        )}
+      >
+        <AriaDialog aria-label={t("chat.sessionToggles")} className="flex flex-col gap-1 outline-none">
+          <div className="flex items-center gap-2.5 px-2 pt-1 text-body-medium text-text-tertiary">
+            <span className="min-w-0 flex-1 truncate">{t("chat.sessionProxy")}</span>
+          </div>
+          {renderOptions(proxyOptions, proxyEnabled, selectProxy)}
+          <div className="flex items-center gap-2 border-t border-border-primary-default px-2 pt-1.5 pb-1">
+            {address ? (
+              <span className="min-w-0 flex-1 truncate text-caption-1-regular text-text-tertiary" title={address}>
+                {address}
+              </span>
+            ) : (
+              <>
+                <span className="min-w-0 flex-1 truncate text-caption-1-regular text-text-tertiary">
+                  {t("chat.sessionProxyNoAddress")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    navigate("/settings?page=cli:claude");
+                  }}
+                  className="shrink-0 cursor-pointer text-caption-1-medium text-text-link-default outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+                >
+                  {t("chat.sessionProxyGoSettings")}
+                </button>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2.5 border-t border-border-primary-default px-2 pt-1.5 text-body-medium text-text-tertiary">
+            <span className="min-w-0 flex-1 truncate">{t("chat.secondBrain")}</span>
+          </div>
+          {renderOptions(brainOptions, secondBrainEnabled, selectBrain)}
+        </AriaDialog>
+      </AriaPopover>
+    </AriaDialogTrigger>
+  );
+}
+
 /** 16px circular context meter at `pct` percent. */
 function ContextRing({ pct }: { pct: number }) {
   const r = 6;
@@ -567,6 +745,7 @@ export function StatusBar({
         })}
       </div>
       <div className="flex items-center gap-3">
+        <SessionToggles />
         <ProxyQuickToggle />
         {/* Context meter is always on: 0% until the first usage report. */}
         <AriaDialogTrigger

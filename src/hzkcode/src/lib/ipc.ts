@@ -713,6 +713,13 @@ export const ipc = {
     providerId: string | null;
     agentName: string | null;
     agentsJson: string | null;
+    /** Per-session proxy switch (the composer's 会话开关): true pins
+     *  HZKCODE_PROXY_ENABLED=1 (use the configured address), false forces a
+     *  direct connection, null keeps the app/shell default. */
+    proxyEnabled?: boolean | null;
+    /** Per-session second-brain switch (the CLI's /second-brain): pins
+     *  HZKCODE_ENABLE_SECOND_BRAIN; null keeps the default. */
+    secondBrainEnabled?: boolean | null;
   }) => invoke<SendResult>("send_message", args),
   interruptSession: (sessionId: string) =>
     invoke<boolean>("interrupt_session", { sessionId }),

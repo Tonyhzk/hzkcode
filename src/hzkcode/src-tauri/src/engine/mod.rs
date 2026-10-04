@@ -59,6 +59,16 @@ pub struct SendRequest {
     /// Session agent definitions (`--agents <json>`, the CLI's flagSettings
     /// source): a record of name -> definition.
     pub agents_json: Option<String>,
+    /// Per-session proxy switch (the composer's /proxy control): Some(true)
+    /// pins `HZKCODE_PROXY_ENABLED=1` (use the configured address),
+    /// Some(false) forces a direct connection, None keeps the app/shell
+    /// default. The CLI reads the switch at startup, and every GUI send is
+    /// its own process — so each send carries the session's choice.
+    pub proxy_enabled: Option<bool>,
+    /// Per-session second-brain switch (the CLI's `/second-brain on|off`):
+    /// the command writes the same `HZKCODE_ENABLE_SECOND_BRAIN` variable the
+    /// service reads at startup, so pinning it per send is the equivalent.
+    pub second_brain_enabled: Option<bool>,
 }
 
 pub struct BuiltCommand {
@@ -994,6 +1004,8 @@ fn prepare_launch(
     provider_id: Option<String>,
     agent_name: Option<String>,
     agents_json: Option<String>,
+    proxy_enabled: Option<bool>,
+    second_brain_enabled: Option<bool>,
 ) -> Result<Launch, String> {
     let engine_impl = engine_by_id(engine).ok_or_else(|| format!("unknown engine: {engine}"))?;
     // Channel settings apply to this child below; the program's own files
@@ -1038,6 +1050,8 @@ fn prepare_launch(
         provider_id,
         agent_name: agent_name.filter(|s| !s.trim().is_empty()),
         agents_json: agents_json.filter(|s| !s.trim().is_empty()),
+        proxy_enabled,
+        second_brain_enabled,
     };
     let bin = engine_bin(&settings, engine);
     let mut built = engine_impl.build_command(&req, &bin)?;
@@ -1059,6 +1073,22 @@ fn prepare_launch(
     // channel, whose endpoint/credential/model win over everything else.
     for (key, value) in crate::settings::feature_env(&settings) {
         built.command.env(key, value);
+    }
+    // Session proxy override (mirrors the CLI's /proxy on|off): wins over the
+    // app-level switch above, and decides per process — the GUI send is the
+    // process.
+    if let Some(enabled) = req.proxy_enabled {
+        built
+            .command
+            .env("HZKCODE_PROXY_ENABLED", if enabled { "1" } else { "0" });
+    }
+    // Session second-brain switch (the CLI's /second-brain on|off writes this
+    // same variable).
+    if let Some(enabled) = req.second_brain_enabled {
+        built.command.env(
+            "HZKCODE_ENABLE_SECOND_BRAIN",
+            if enabled { "1" } else { "0" },
+        );
     }
     for (key, value) in &channel_env {
         built.command.env(key, value);
@@ -1886,6 +1916,8 @@ pub async fn send_message(
     agent_name: Option<String>,
     agents_json: Option<String>,
     run_id: Option<String>,
+    proxy_enabled: Option<bool>,
+    second_brain_enabled: Option<bool>,
 ) -> Result<SendResult, String> {
     send_message_inner(
         &state,
@@ -1901,6 +1933,8 @@ pub async fn send_message(
         agent_name,
         agents_json,
         run_id,
+        proxy_enabled,
+        second_brain_enabled,
     )
     .await
 }
@@ -1923,6 +1957,8 @@ pub async fn send_message_inner(
     agent_name: Option<String>,
     agents_json: Option<String>,
     run_id: Option<String>,
+    proxy_enabled: Option<bool>,
+    second_brain_enabled: Option<bool>,
 ) -> Result<SendResult, String> {
     let run_id = run_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     if run_id.is_empty() || run_id.len() > 128
@@ -1978,6 +2014,8 @@ pub async fn send_message_inner(
         agent_name,
         agents_json,
         run_id,
+        proxy_enabled,
+        second_brain_enabled,
         killed,
         reader_abort,
     )
@@ -2007,6 +2045,8 @@ async fn send_reserved(
     agent_name: Option<String>,
     agents_json: Option<String>,
     run_id: String,
+    proxy_enabled: Option<bool>,
+    second_brain_enabled: Option<bool>,
     killed: Arc<std::sync::atomic::AtomicBool>,
     reader_abort: Arc<std::sync::OnceLock<tokio::task::AbortHandle>>,
 ) -> Result<SendResult, String> {
@@ -2026,6 +2066,8 @@ async fn send_reserved(
         provider_id,
         agent_name,
         agents_json,
+        proxy_enabled,
+        second_brain_enabled,
     )?;
 
     // WSL 远程工作区:引擎进程经 ssh 在发行版内执行(见 wsl_transport)。
@@ -2332,6 +2374,8 @@ mod permission_tests {
             provider_id: None,
             agent_name: None,
             agents_json: None,
+            proxy_enabled: None,
+            second_brain_enabled: None,
         }
     }
 

@@ -977,6 +977,11 @@ struct SendMessageArgs {
     provider_id: Option<String>,
     agent_name: Option<String>,
     agents_json: Option<String>,
+    /// Per-session proxy switch (see engine::SendRequest::proxy_enabled).
+    proxy_enabled: Option<bool>,
+    /// Per-session second-brain switch (see
+    /// engine::SendRequest::second_brain_enabled).
+    second_brain_enabled: Option<bool>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1374,6 +1379,8 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
                 a.agent_name,
                 a.agents_json,
                 a.run_id,
+                a.proxy_enabled,
+                a.second_brain_enabled,
             )
             .await)
         }

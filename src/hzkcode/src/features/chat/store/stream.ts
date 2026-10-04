@@ -28,6 +28,12 @@ export interface SessionState {
   activeEffort?: string | null;
   /** In-app channel this session runs; spawn injects its env. */
   activeProvider?: string | null;
+  /** Per-session proxy switch (the composer's 会话开关, the CLI's /proxy):
+   *  true pins HZKCODE_PROXY_ENABLED=1, false forces direct, null 跟随默认. */
+  proxyEnabled?: boolean | null;
+  /** Per-session second-brain switch (the CLI's /second-brain): pins
+   *  HZKCODE_ENABLE_SECOND_BRAIN per send; null 跟随功能开关的默认. */
+  secondBrainEnabled?: boolean | null;
   /** Slash commands the CLI announced for this session (the headless init
    *  message's `slash_commands`); the composer's built-in group reads them. */
   availableCommands?: string[];
@@ -61,6 +67,8 @@ export const EMPTY_SESSION: SessionState = {
   activeModel: null,
   activeEffort: null,
   activeProvider: null,
+  proxyEnabled: null,
+  secondBrainEnabled: null,
   availableCommands: [],
   usage: null,
   turnUsage: null,
