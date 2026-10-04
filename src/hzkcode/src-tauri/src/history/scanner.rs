@@ -1,4 +1,4 @@
-use super::{scan_summary_file, stat_signature, ScanSummary, SessionFile};
+use super::{scan_summary_file, session_stat_signature, ScanSummary, SessionFile};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -147,7 +147,9 @@ fn gather_candidates(workspaces: &[String]) -> Vec<Candidate> {
     candidates
 }
 
-/// Stat every candidate and fold (path, size, mtime) into one signature.
+/// Stat every candidate and fold (path, size, mtime) into one signature. The
+/// per-file signature also folds the segment manifest in (segmented sessions),
+/// so rotations invalidate caches even when the active file is untouched.
 fn stat_all(workspaces: &[String], candidates: &[Candidate]) -> (Vec<Option<(i64, i64)>>, String) {
     let mut signature_hasher = Sha256::new();
     signature_hasher.update(format!("v{}|", crate::db::CACHE_VERSION).as_bytes());
@@ -157,7 +159,7 @@ fn stat_all(workspaces: &[String], candidates: &[Candidate]) -> (Vec<Option<(i64
     }
     let mut stats: Vec<Option<(i64, i64)>> = Vec::with_capacity(candidates.len());
     for cand in candidates {
-        let sig = stat_signature(&cand.path);
+        let sig = session_stat_signature(cand.engine, &cand.path);
         if let Some((size, mtime_ms)) = sig {
             signature_hasher.update(cand.path.to_string_lossy().as_bytes());
             signature_hasher.update(size.to_le_bytes());

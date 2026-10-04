@@ -9,13 +9,24 @@ pub struct ParsedSession {
 }
 
 /// Parse a native session file into the minimal message list. Bad lines are
-/// skipped individually.
+/// skipped individually. A segmented (compacted) session is parsed as its
+/// whole root → active segment chain, so the full history stays visible the
+/// way the pre-segmentation single file carried it.
 pub fn parse_session_file(engine: &str, path: &Path) -> Result<ParsedSession, String> {
-    let reader = open_line_reader(path)?;
-    Ok(collect_session(
-        reader,
-        &extractor_for(engine, ImageMode::Collect),
-    ))
+    let files = super::segments::session_files_for_read(engine, path);
+    let extract = extractor_for(engine, ImageMode::Collect);
+    let mut rows: Vec<LineRow> = Vec::new();
+    for file in &files {
+        let reader = match open_line_reader(file) {
+            Ok(reader) => reader,
+            // The primary (active) file surfaces its real error; an unreadable
+            // archive segment only trims history and must not fail the parse.
+            Err(error) if file.as_path() == path => return Err(error),
+            Err(_) => continue,
+        };
+        walk_lines(reader, &extract, |row| rows.push(row));
+    }
+    Ok(fold_rows(rows))
 }
 
 /// Everything the sidebar needs from a scan: title/preview/timestamps/count.
@@ -33,16 +44,21 @@ pub struct ScanSummary {
 /// each row into a bounded accumulator instead of a Vec<Message>. Image-only
 /// user turns (whose data URLs are skipped here) fall out of the count —
 /// the sidebar counts text, and the reader path stays authoritative.
+/// Segmented sessions fold the whole root → active chain.
 pub fn scan_summary_file(engine: &str, path: &Path) -> Result<ScanSummary, String> {
-    let reader = open_line_reader(path)?;
+    let files = super::segments::session_files_for_read(engine, path);
+    let extract = extractor_for(engine, ImageMode::SkipDataUrls);
     let mut acc = ScanAcc::default();
-    walk_lines(
-        reader,
-        &extractor_for(engine, ImageMode::SkipDataUrls),
-        |row| {
+    for file in &files {
+        let reader = match open_line_reader(file) {
+            Ok(reader) => reader,
+            Err(error) if file.as_path() == path => return Err(error),
+            Err(_) => continue,
+        };
+        walk_lines(reader, &extract, |row| {
             acc.accept(row);
-        },
-    );
+        });
+    }
     Ok(acc.finish())
 }
 
@@ -85,12 +101,6 @@ fn walk_lines(reader: impl BufRead, extract: &LineExtractor<'_>, mut consume: im
             consume(row);
         }
     }
-}
-
-fn collect_session(reader: impl BufRead, extract: &LineExtractor<'_>) -> ParsedSession {
-    let mut rows = Vec::new();
-    walk_lines(reader, extract, |row| rows.push(row));
-    fold_rows(rows)
 }
 
 /// Shared fold over extracted rows (usage markers, tool-result pairing,
@@ -808,5 +818,47 @@ mod tests {
         let usage = rows[0].usage.as_ref().expect("usage object");
         assert_eq!(usage.get("input_tokens").and_then(Value::as_i64), Some(8038));
         assert_eq!(usage.get("total_tokens").and_then(Value::as_i64), Some(8038));
+    }
+
+    #[test]
+    fn parse_session_file_concatenates_segment_chain_root_to_active() {
+        let dir = std::env::temp_dir().join(format!(
+            "hzkcode-extract-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let session = dir.join("proj");
+        std::fs::create_dir_all(session.join("sess-1/segments")).unwrap();
+        let write = |rel: &str, content: &str| {
+            std::fs::write(session.join(rel), content).unwrap();
+        };
+        write(
+            "sess-1/segments/seg-1.jsonl",
+            concat!(
+                r#"{"type":"user","uuid":"u1","timestamp":"2026-10-05T01:00:00.000Z","message":{"role":"user","content":"第一条问题"}}"#,
+                "\n",
+                r#"{"type":"assistant","uuid":"a1","timestamp":"2026-10-05T01:00:01.000Z","message":{"role":"assistant","content":[{"type":"text","text":"第一条回答"}]}}"#,
+                "\n"
+            ),
+        );
+        write(
+            "sess-1.jsonl",
+            concat!(
+                r#"{"type":"user","uuid":"u2","timestamp":"2026-10-05T01:01:00.000Z","message":{"role":"user","content":"第二条问题"}}"#,
+                "\n"
+            ),
+        );
+        write(
+            "sess-1/segments.json",
+            r#"{"version":1,"sessionId":"sess-1","activeSegment":"seg-2","segments":[
+                {"id":"seg-1","seq":1,"file":"segments/seg-1.jsonl","kind":"root","parent":null},
+                {"id":"seg-2","seq":2,"file":"segments/seg-2.jsonl","kind":"compact","parent":"seg-1"}]}"#,
+        );
+        let parsed = parse_session_file("claude", &session.join("sess-1.jsonl")).unwrap();
+        let texts: Vec<String> = parsed.messages.iter().map(|m| m.text.clone()).collect();
+        let seqs: Vec<i64> = parsed.messages.iter().map(|m| m.seq).collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(texts, ["第一条问题", "第一条回答", "第二条问题"]);
+        // seq numbering is 1-based and stays continuous across files.
+        assert_eq!(seqs, [1, 2, 3]);
     }
 }

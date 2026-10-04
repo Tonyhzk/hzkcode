@@ -219,7 +219,7 @@ fn parsed_footprint(parsed: &ParsedSession) -> usize {
 }
 
 fn cached_session(engine: &str, path: &Path) -> Result<Arc<CachedSession>, String> {
-    let Some((size, mtime_ms)) = super::stat_signature(path) else {
+    let Some((size, mtime_ms)) = super::session_stat_signature(engine, path) else {
         // Unstattable file: let the parse produce the real error.
         let parsed = parse_session_file(engine, path)?;
         let fold = subagent_fold(&parsed.messages);
@@ -713,12 +713,27 @@ fn branch_session_blocking(
         .filter(|path| path.is_file())
         .or_else(|| session_files_by_id(engine, session_id).into_iter().next())
         .ok_or_else(|| "没有可创建分支的会话".to_string())?;
-    let content =
-        std::fs::read_to_string(&source).map_err(|e| format!("read {}: {e}", source.display()))?;
-    let entries: Vec<Value> = content
-        .lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
-        .collect();
+    // A segmented (compacted) session is read as its whole root → active
+    // chain, so a fork point may sit in an archived segment; the fork prefix
+    // then spans the chain exactly like a single-file prefix used to.
+    let files = super::segments::session_files_for_read(engine, &source);
+    let mut entries: Vec<Value> = Vec::new();
+    for file in &files {
+        let content = match std::fs::read_to_string(file) {
+            Ok(content) => content,
+            // The active file surfaces its real error; an unreadable archive
+            // segment only trims the forkable prefix.
+            Err(error) if file.as_path() == source.as_path() => {
+                return Err(format!("read {}: {error}", file.display()));
+            }
+            Err(_) => continue,
+        };
+        entries.extend(
+            content
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok()),
+        );
+    }
 
     let is_transcript_message = |entry: &Value| {
         matches!(

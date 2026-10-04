@@ -3,7 +3,7 @@ use rusqlite::{Connection, OptionalExtension};
 
 /// Folded into the scanner's stat signature so a schema/derivation change
 /// still invalidates cached parse results.
-pub const CACHE_VERSION: &str = "2";
+pub const CACHE_VERSION: &str = "3";
 
 pub struct Db(pub Mutex<Connection>);
 

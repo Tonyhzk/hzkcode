@@ -1,8 +1,10 @@
 mod extract;
 pub mod reader;
 pub mod scanner;
+mod segments;
 
 pub use extract::{parse_session_file, scan_summary_file, ParsedSession, ScanSummary};
+pub(crate) use segments::session_stat_signature;
 
 use crate::engine::TodosPayload;
 use serde::Serialize;
