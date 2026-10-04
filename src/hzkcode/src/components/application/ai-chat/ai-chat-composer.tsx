@@ -592,7 +592,8 @@ function SessionToggles() {
                   type="button"
                   onClick={() => {
                     setIsOpen(false);
-                    navigate("/settings?page=cli:claude");
+                    // The session proxy address lives on the 功能开关 page.
+                    navigate("/settings?page=features");
                   }}
                   className="shrink-0 cursor-pointer text-caption-1-medium text-text-link-default outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring"
                 >

@@ -24,7 +24,13 @@ type RailGroup = SettingsNavGroup & { order: number };
  *  after the known rails, so new groups render instead of silently
  *  vanishing (empty groups are filtered out as before). */
 const GROUP_META: Record<string, { labelKey: string; order: number }> = {
-  settings: { labelKey: "settings.title", order: 0 },
+  model: { labelKey: "settings.groupModel", order: 0 },
+  app: { labelKey: "settings.groupApp", order: 1 },
+  data: { labelKey: "settings.groupData", order: 2 },
+  misc: { labelKey: "settings.groupMisc", order: 3 },
+  // Plugin sections register under "settings" (runtime/context.ts) and get
+  // their own tail rail.
+  settings: { labelKey: "settings.groupPlugins", order: 4 },
 };
 const KNOWN_GROUP_COUNT = Object.keys(GROUP_META).length;
 

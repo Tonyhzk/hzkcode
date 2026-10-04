@@ -6,6 +6,7 @@ import Info from "lucide-react/dist/esm/icons/info";
 import Bot from "lucide-react/dist/esm/icons/bot";
 import Smartphone from "lucide-react/dist/esm/icons/smartphone";
 import ChartColumn from "lucide-react/dist/esm/icons/chart-column";
+import SlidersHorizontal from "lucide-react/dist/esm/icons/sliders-horizontal";
 import i18n from "@/lib/i18n";
 import type { SettingsNavItem } from "@/components/application/settings/settings-modal";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
@@ -16,6 +17,7 @@ import { ProxySection } from "./ProxySection";
 import { WorkspacesSection } from "./WorkspacesSection";
 import { AgentsPromptsSection } from "./agents-prompts/AgentsPromptsSection";
 import { CliConfigSection } from "./CliConfigSection";
+import { CliFeaturesSection } from "./CliFeaturesSection";
 import { AboutSection } from "./AboutSection";
 import { WebAccessSection } from "./WebAccessSection";
 import { UsageSection } from "./UsageSection";
@@ -27,6 +29,12 @@ import { ENGINE_IDS, type EngineId } from "./providers";
  * registry plugins use (plan §4.2 #1 — the settings page is the dogfood
  * surface). Module-scope side effect, imported once by SettingsPage; the
  * registry's upsert semantics make HMR re-runs harmless.
+ *
+ * Rail layout (see GROUP_META in SettingsPage): 模型与能力 keeps what the
+ * engine runs (channels + the global feature switches), 应用 is the local
+ * app's own settings, 数据与连接 covers agents/remote access/usage, and the
+ * tail holds about. Feature switches live on their own page — the 模型配置
+ * page stays channels + model answers only.
  */
 
 /** Nav-rail mark for one CLI engine: the rail colors every icon
@@ -40,12 +48,34 @@ const engineNavIcon = (engine: EngineId): SettingsNavItem["icon"] => {
   return EngineNavIcon;
 };
 
+ENGINE_IDS.forEach((engine) => {
+  settingsRegistry.register({
+    id: `cli:${engine}`,
+    key: `cli:${engine}`,
+    label: () => i18n.t("settings.cliConfig"),
+    icon: engineNavIcon(engine),
+    group: "model",
+    // Leads the rail: the CLI's own configuration (endpoint, credential,
+    // model mapping) is what every install has to touch first.
+    order: 0,
+    component: () => <CliConfigSection engine={engine} />,
+  });
+});
+settingsRegistry.register({
+  id: "features",
+  key: "features",
+  label: () => i18n.t("settings.features"),
+  icon: SlidersHorizontal,
+  group: "model",
+  order: 1,
+  component: CliFeaturesSection,
+});
 settingsRegistry.register({
   id: "general",
   key: "general",
   label: () => i18n.t("settings.general"),
   icon: Settings,
-  group: "settings",
+  group: "app",
   order: 0,
   component: GeneralSection,
 });
@@ -54,7 +84,7 @@ settingsRegistry.register({
   key: "proxy",
   label: () => i18n.t("settings.proxy"),
   icon: Globe,
-  group: "settings",
+  group: "app",
   order: 1,
   component: ProxySection,
 });
@@ -63,7 +93,7 @@ settingsRegistry.register({
   key: "workspaces",
   label: () => i18n.t("settings.workspaces"),
   icon: FolderSymlink,
-  group: "settings",
+  group: "app",
   order: 2,
   component: WorkspacesSection,
 });
@@ -72,7 +102,7 @@ settingsRegistry.register({
   key: "shortcuts",
   label: () => i18n.t("shortcuts.sectionTitle"),
   icon: Keyboard,
-  group: "settings",
+  group: "app",
   order: 3,
   component: ShortcutsSection,
 });
@@ -81,8 +111,8 @@ settingsRegistry.register({
   key: "agentsPrompts",
   label: () => i18n.t("settings.agentsPrompts"),
   icon: Bot,
-  group: "settings",
-  order: 3,
+  group: "data",
+  order: 0,
   component: AgentsPromptsSection,
 });
 settingsRegistry.register({
@@ -90,8 +120,8 @@ settingsRegistry.register({
   key: "webAccess",
   label: () => i18n.t("settings.webAccess"),
   icon: Smartphone,
-  group: "settings",
-  order: 3,
+  group: "data",
+  order: 1,
   component: WebAccessSection,
 });
 settingsRegistry.register({
@@ -99,8 +129,8 @@ settingsRegistry.register({
   key: "usage",
   label: () => i18n.t("usage.title"),
   icon: ChartColumn,
-  group: "settings",
-  order: 4,
+  group: "data",
+  order: 2,
   component: UsageSection,
 });
 settingsRegistry.register({
@@ -108,20 +138,7 @@ settingsRegistry.register({
   key: "about",
   label: () => i18n.t("settings.about"),
   icon: Info,
-  group: "settings",
-  order: 4,
+  group: "misc",
+  order: 0,
   component: AboutSection,
-});
-ENGINE_IDS.forEach((engine) => {
-  settingsRegistry.register({
-    id: `cli:${engine}`,
-    key: `cli:${engine}`,
-    label: () => i18n.t("settings.cliConfig"),
-    icon: engineNavIcon(engine),
-    group: "settings",
-    // Leads the rail: the CLI's own configuration (endpoint, credential,
-    // model mapping) is what every install has to touch first.
-    order: -1,
-    component: () => <CliConfigSection engine={engine} />,
-  });
 });

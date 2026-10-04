@@ -242,6 +242,12 @@ export const zh = {
   },
   settings: {
     title: "设置",
+    groupModel: "模型与能力",
+    groupApp: "应用",
+    groupData: "数据与连接",
+    groupMisc: "其他",
+    groupPlugins: "插件",
+    features: "功能开关",
     general: "通用",
     agentsPrompts: "智能体与提示词",
     agentPromptTabAgents: "智能体",

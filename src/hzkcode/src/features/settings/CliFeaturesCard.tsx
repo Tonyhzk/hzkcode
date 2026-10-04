@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  SettingsCard,
-  SettingsSectionLabel,
-} from "@/components/application/settings/settings-rows";
+import { SettingsCard } from "@/components/application/settings/settings-rows";
 import { ipc, type AppSettings } from "@/lib/ipc";
 import { errorText } from "@/lib/errors";
 import { CLI_FEATURE_GROUPS } from "./cliFeatureEnv";
@@ -63,12 +60,11 @@ export function CliFeaturesCard() {
 
   return (
     <div className="flex w-full flex-col gap-4">
-      <SettingsSectionLabel>
-        {t("settings.cliFeatures")}
-        <span className="ml-2 text-body-2-regular font-normal text-text-tertiary">
-          {t("settings.cliFeaturesHint")}
-        </span>
-      </SettingsSectionLabel>
+      {/* No heading of its own: the card IS the 功能开关 page and the modal
+          title row already names it — only the hint rides here. */}
+      <p className="text-body-2-regular text-text-tertiary">
+        {t("settings.cliFeaturesHint")}
+      </p>
       {error && (
         <p role="alert" className="text-body-2-regular text-text-error-primary">
           {error}

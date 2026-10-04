@@ -8,7 +8,7 @@
 
 ## 引擎支持
 
-当前只保留 Claude Code 一个引擎（HZKCode CLI 的基座）：CLI 驱动协议与 Claude Code SDK 同源，Rust 侧 `ENGINES = ["claude"]`；设置页里它作为独立板块「模型配置」排在第一位（通用之前），内含官方配置与供应商渠道（API URL / API Key / 模型映射），没有启用开关（引擎固定启用）。
+当前只保留 Claude Code 一个引擎（HZKCode CLI 的基座）：CLI 驱动协议与 Claude Code SDK 同源，Rust 侧 `ENGINES = ["claude"]`；设置页按「模型与能力 / 应用 / 数据与连接 / 其他（+插件）」分组，「模型配置」板块（官方配置与供应商渠道：API URL / API Key / 模型映射）与独立的「功能开关」页同属「模型与能力」，没有启用开关（引擎固定启用）。功能开关（联网搜索、OSS、飞书、用户记忆、第二大脑、自动模式、工作状态汇报、会话代理、多模态读取、行为与工作流）只在该独立页维护，不再塞进模型配置页。
 
 - 已删除引擎：Codex、Kimi、Grok、Antigravity、OpenCode、Qoder、PI/OMP、DeepSeek Harness（适配器、会话扫描/解析、渠道注入、CLI 生命周期、二进制搜索路径均已裁剪）。
 - 模型第三方厂商徽标（GPT/DeepSeek/Kimi/Grok 等）保留：claude 渠道可服务第三方模型，模型列表按厂商显示图标；claude 的徽标已替换为 H 标（界面不出现 Claude 星标）。

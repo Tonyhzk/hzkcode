@@ -250,6 +250,12 @@ export const en: Messages = {
   },
   settings: {
     title: "Settings",
+    groupModel: "Model & capabilities",
+    groupApp: "App",
+    groupData: "Data & connections",
+    groupMisc: "Other",
+    groupPlugins: "Plugins",
+    features: "Feature switches",
     general: "General",
     agentsPrompts: "Agents & Prompts",
     agentPromptTabAgents: "Agents",
