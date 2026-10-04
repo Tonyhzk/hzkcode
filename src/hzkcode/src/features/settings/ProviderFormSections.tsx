@@ -399,7 +399,7 @@ export function EnvFieldControl({
   );
 }
 
-/** 自定义模型: batch input (commas or newlines) plus the removable list; the
+/** 自定义模型: comma-separated batch input plus the removable list; the
  *  saved ids merge into the chat model picker for this channel. */
 function CustomModelsField({ form }: { form: ProviderForm }) {
   const { t } = useTranslation();
