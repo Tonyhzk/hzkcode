@@ -296,6 +296,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
           [resolvedName]: {
             description: agentDescription(resolvedName, resolvedPrompt),
             prompt: resolvedPrompt,
+            // 3.1.0：自定义身份缺省不注入内置规范、CLAUDE.md/Rules 与个人
+            // 记忆；显式声明全量组件。GUI 的智能体是叠加在完整上下文上的
+            // 角色预设，保持既有行为的声明。
+            context: ["prompts", "claudemd", "memory"],
           },
         });
       }
