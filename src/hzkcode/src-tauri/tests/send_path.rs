@@ -36,6 +36,7 @@ fn cli_dir(tag: &str) -> std::path::PathBuf {
 fn write_fake_claude(dir: &std::path::Path) {
     let script = r#"#!/bin/sh
 read -r line
+printf '%s' "$HZKCODE_DEV_CALLER_CWD" > env-probe.txt
 echo '{"type":"system","subtype":"init","session_id":"fake-session-123"}'
 echo '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello "}}}'
 echo '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"from fake"}}}'
@@ -185,6 +186,15 @@ async fn send_message_streams_events_end_to_end() {
     assert_eq!(
         done.get("sessionId").and_then(Value::as_str),
         Some("fake-session-123")
+    );
+
+    // The engine child must see the workspace pinned as its caller cwd: the
+    // CLI derives its session-storage project dir from it, and an inherited
+    // value would file sessions under the wrong directory (never scanned,
+    // then undeletable from the sidebar).
+    assert_eq!(
+        std::fs::read_to_string(workspace.join("env-probe.txt")).unwrap(),
+        workspace.to_string_lossy()
     );
 
     // Process registry drained after exit.

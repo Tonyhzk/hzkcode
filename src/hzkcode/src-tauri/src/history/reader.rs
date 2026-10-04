@@ -528,14 +528,75 @@ fn delete_session_disk(engine: &str, path: &Path) -> Result<(), String> {
     }
 }
 
+/// Session ids are uuids (the CLI's own) — refuse anything else before it is
+/// echoed back into a filesystem lookup, so a hostile id cannot traverse out
+/// of the projects root.
+fn is_safe_session_id(session_id: &str) -> bool {
+    !session_id.is_empty()
+        && session_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Locate `<session_id>.jsonl` across every project dir under the CLI's
+/// projects root. The db row is the fast path, but not every session has one:
+/// a session created moments ago may not be scanned yet, and one filed under
+/// a wrong project dir (an inherited `HZKCODE_DEV_CALLER_CWD`, pinned at
+/// spawn) is never scanned at all — deleting must still work.
+fn session_files_by_id(engine: &str, session_id: &str) -> Vec<PathBuf> {
+    if engine != "claude" || !is_safe_session_id(session_id) {
+        return Vec::new();
+    }
+    let projects = crate::engine::engine_home(Some("HZKCODE_CONFIG_DIR"), ".hzkcode")
+        .join("projects");
+    let Ok(entries) = std::fs::read_dir(&projects) else {
+        return Vec::new();
+    };
+    let file_name = format!("{session_id}.jsonl");
+    entries
+        .flatten()
+        .map(|entry| entry.path().join(&file_name))
+        .filter(|candidate| candidate.is_file())
+        .collect()
+}
+
+/// Best-effort removal of the session's sidecar dir (`<project>/<session>/`
+/// holds subagent transcripts). The `.jsonl` is already gone by the time this
+/// runs, so a failure here must not fail the delete.
+fn remove_session_dir(session_file: &Path) {
+    let Some(stem) = session_file.file_stem() else {
+        return;
+    };
+    let dir = session_file.with_file_name(stem);
+    if dir.is_dir() {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 /// Sync body of `delete_session` (disk + db work off the main thread).
+///
+/// Disk first, then the row: on a disk failure the row is kept so a session
+/// cannot "delete then resurrect" on the next scan. The lookup must not
+/// depend on the index: a row without a file and a file without a row both
+/// delete cleanly, so a stale sidebar row can always go.
 fn delete_session_blocking(
     db: &crate::db::Db,
     engine: &str,
     session_id: &str,
 ) -> Result<(), String> {
-    let path = session_file_path(db, engine, session_id)?;
-    delete_session_disk(engine, &path)?;
+    let mut paths: Vec<PathBuf> = Vec::new();
+    if let Ok(recorded) = session_file_path(db, engine, session_id) {
+        paths.push(recorded);
+    }
+    for stray in session_files_by_id(engine, session_id) {
+        if !paths.contains(&stray) {
+            paths.push(stray);
+        }
+    }
+    for path in &paths {
+        delete_session_disk(engine, path)?;
+        remove_session_dir(path);
+    }
     let conn = db.0.lock();
     conn.execute(
         "DELETE FROM sessions WHERE engine=?1 AND session_id=?2",
@@ -831,6 +892,83 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// Steers HZKCODE_CONFIG_DIR (what `engine_home` reads) at the scratch;
+    /// shares the process-wide env lock with the other modules' tests.
+    struct ConfigDirGuard {
+        _lock: parking_lot::MutexGuard<'static, ()>,
+        prev: Option<std::ffi::OsString>,
+    }
+    impl ConfigDirGuard {
+        fn set(dir: &Path) -> Self {
+            let lock = crate::test_support::HOME_ENV_LOCK.lock();
+            let prev = std::env::var_os("HZKCODE_CONFIG_DIR");
+            std::env::set_var("HZKCODE_CONFIG_DIR", dir);
+            Self { _lock: lock, prev }
+        }
+    }
+    impl Drop for ConfigDirGuard {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(value) => std::env::set_var("HZKCODE_CONFIG_DIR", value),
+                None => std::env::remove_var("HZKCODE_CONFIG_DIR"),
+            }
+        }
+    }
+
+    #[test]
+    fn delete_session_finds_unindexed_files_and_stays_idempotent() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let projects = config_dir.join("projects");
+        let dir_a = projects.join("-ws-a");
+        let dir_b = projects.join("-ws-b");
+        std::fs::create_dir_all(&dir_a).unwrap();
+        std::fs::create_dir_all(&dir_b).unwrap();
+        // A fresh (never scanned) session, a mis-filed copy in another
+        // project dir, and its sidecar subagent dir.
+        std::fs::write(dir_a.join("fresh-1.jsonl"), "{}\n").unwrap();
+        std::fs::write(dir_b.join("fresh-1.jsonl"), "{}\n").unwrap();
+        std::fs::create_dir_all(dir_a.join("fresh-1/subagents")).unwrap();
+        std::fs::write(dir_a.join("fresh-1/subagents/agent-x.jsonl"), "{}\n").unwrap();
+        // An indexed session: row + file.
+        std::fs::write(dir_a.join("indexed-1.jsonl"), "{}\n").unwrap();
+        db.0.lock()
+            .execute(
+                "INSERT INTO sessions(engine,session_id,workspace_path,file_path,file_size,file_mtime_ms,title) VALUES('claude','indexed-1','/ws',?1,1,1,'t')",
+                rusqlite::params![dir_a.join("indexed-1.jsonl").to_string_lossy()],
+            )
+            .unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+
+        // No db row at all (fresh / mis-filed): located by id and deleted.
+        delete_session_blocking(&db, "claude", "fresh-1").unwrap();
+        assert!(!dir_a.join("fresh-1.jsonl").exists());
+        assert!(!dir_b.join("fresh-1.jsonl").exists());
+        assert!(!dir_a.join("fresh-1").exists(), "sidecar dir must go too");
+
+        // Indexed session: file and row both go.
+        delete_session_blocking(&db, "claude", "indexed-1").unwrap();
+        assert!(!dir_a.join("indexed-1.jsonl").exists());
+        let count: i64 = db
+            .0
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM sessions WHERE session_id='indexed-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+
+        // Nothing on disk and no row: still Ok, so a stale sidebar row can go.
+        delete_session_blocking(&db, "claude", "fresh-1").unwrap();
+
+        // A hostile id never escapes the projects root.
+        assert!(session_files_by_id("claude", "../evil").is_empty());
+        delete_session_blocking(&db, "claude", "../evil").unwrap();
     }
 
     #[test]

@@ -2059,6 +2059,11 @@ async fn send_reserved(
         command.current_dir(wsl_transport::fallback_cwd());
     } else {
         command.current_dir(&launch.req.workspace);
+        // CLI 用 HZKCODE_DEV_CALLER_CWD(「调用者目录」)决定会话落盘的工程
+        // 目录,缺省才退回进程 cwd。必须钉在工作区:从环境里继承的值(开发
+        // 实例会继承启动它的 shell 的)会把会话全部存到那个目录,工作区扫描
+        // 永远找不到 → 会话不入库、刚建完就删不掉。
+        command.env("HZKCODE_DEV_CALLER_CWD", &launch.req.workspace);
     }
     // Own process group so interrupt can kill the whole tree (grandchildren
     // inherit the stdout pipe and would otherwise block EOF forever).
