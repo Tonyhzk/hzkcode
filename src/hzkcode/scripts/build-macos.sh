@@ -23,4 +23,9 @@ if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
   export TAURI_SIGNING_PRIVATE_KEY
 fi
 
+# The updater key carries an EMPTY password (`-p ""` at generation). Export it
+# so the bundler never tries to prompt — without a TTY the prompt fails
+# ("Device not configured") and the updater artifacts stay unsigned.
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+
 pnpm exec tauri build --bundles app,dmg
