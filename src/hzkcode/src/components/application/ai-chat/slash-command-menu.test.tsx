@@ -8,7 +8,7 @@ import { useChatStore } from "@/features/chat/store";
 import { EMPTY_SESSION } from "@/features/chat/store/stream";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "zh" } }),
   // The chat store imports the app i18n instance, which calls
   // i18n.use(initReactI18next); keep that registration a no-op here.
   initReactI18next: { type: "3rdParty", init: () => {} },
@@ -137,7 +137,7 @@ describe("SlashCommandMenu", () => {
 describe("mergeSlashCommands", () => {
   it("drops a builtin whose name a catalog entry takes over", () => {
     const merged = mergeSlashCommands(
-      builtinSlashCommands((key) => key, ["compact", "cost"]),
+      builtinSlashCommands("zh", ["compact", "cost"]),
       [{ name: "Compact", description: "工作区自定义", source: "workspace", kind: "command" }],
     );
     const compacts = merged.filter((entry) => entry.name.toLowerCase() === "compact");
@@ -145,8 +145,20 @@ describe("mergeSlashCommands", () => {
     expect(compacts[0].source).toBe("workspace");
   });
 
+  it("carries mirrored descriptions and the terminal's argument hints", () => {
+    const [proxy] = builtinSlashCommands("zh", ["proxy"]);
+    expect(proxy.description).toContain("HTTP 代理");
+    expect(proxy.argumentHint).toBe("[on | <url> | off | restore]");
+    const [proxyEn] = builtinSlashCommands("en", ["proxy"]);
+    expect(proxyEn.description).toContain("HTTP proxy");
+    // Unknown names still render (no description, no hint).
+    const [unknown] = builtinSlashCommands("zh", ["nope"]);
+    expect(unknown.description).toBeNull();
+    expect(unknown.argumentHint).toBeNull();
+  });
+
   it("dedupes and sorts announced names, keeping built-ins ahead of the catalog", () => {
-    const builtins = builtinSlashCommands((key) => key, ["cost", "compact", "cost", ""]);
+    const builtins = builtinSlashCommands("zh", ["cost", "compact", "cost", ""]);
     expect(builtins.map((entry) => entry.name)).toEqual(["compact", "cost"]);
     const merged = mergeSlashCommands(builtins, ENTRIES);
     expect(merged.slice(0, 2)).toEqual(builtins);

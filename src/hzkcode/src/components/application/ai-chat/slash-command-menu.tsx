@@ -78,6 +78,14 @@ const Row = memo(function Row({
       <span className="shrink-0 font-mono text-body-regular text-text-primary">
         /{entry.name}
       </span>
+      {entry.argumentHint && (
+        <span
+          className="max-w-[45%] truncate font-mono text-caption-1-regular text-text-tertiary"
+          title={entry.argumentHint}
+        >
+          {entry.argumentHint}
+        </span>
+      )}
       {description && (
         <span className="truncate text-body-regular text-text-tertiary" title={description}>
           {description}
@@ -106,7 +114,7 @@ export function SlashCommandMenu({
   onClose: () => void;
   menuRef?: MutableRefObject<SlashCommandMenuHandle | null>;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const catalog = useSlashCommandStore((s) => (root ? s.byRoot[root] : undefined));
   useEffect(() => {
     if (root) useSlashCommandStore.getState().ensure(root);
@@ -120,8 +128,8 @@ export function SlashCommandMenu({
     return s.bySession[key]?.availableCommands ?? EMPTY_COMMANDS;
   });
   const builtins = useMemo(
-    () => builtinSlashCommands(t, sessionCommands),
-    [t, sessionCommands],
+    () => builtinSlashCommands(i18n.language, sessionCommands),
+    [i18n.language, sessionCommands],
   );
   const items = useMemo(
     () => matchSlashCommands(mergeSlashCommands(builtins, entries ?? []), query),
