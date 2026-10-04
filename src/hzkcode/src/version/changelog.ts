@@ -18,6 +18,42 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: "3.0.0-2",
+    date: "2026-10-04",
+    content: {
+      zh: `✨ 新功能
+- **权限模式全档位**：权限菜单补齐引擎的八个档位（默认 / 自动接受编辑 / 计划模式 / 只读 / 只读询问 / 自动询问 / 自动继续 / 全部跳过，与 Shift+Tab 循环顺序一致）；工具需要授权时，对话里会弹出「允许一次 / 拒绝」卡片，直接作答即可
+- **输入框指令菜单升级**：输入 / 即可看到引擎的全部内置指令（/proxy、/effort、/mcp 等带参数的指令附用法提示），选中后补上参数发送；/cost、/context、/compact 等命令的输出会显示在对话里
+- **消息重试与分支**：最下面一条消息旁新增「重试」与「分支」——重试即重新回答上一条提问，分支即从该消息创建一个分支会话（等价引擎的 // 与 /branch 指令）
+- **会话开关**：输入框下方新增「会话开关」菜单，可以按会话单独控制「会话代理」与「第二大脑」，不再只能跟随全局默认；代理地址未配置或无效时给出前往设置的入口
+- **设置页重新分组**：设置导航按「模型与能力 / 应用 / 数据与连接 / 其他」分组；功能开关独立成页，并扩充了会话代理、多模态读取（看图 / 看视频 / 听音频的模型与接口）、行为与工作流等开关
+- **自定义模型随渠道保存**：渠道编辑里可直接维护自定义模型列表（逗号分隔批量添加、可逐个移除），对话里的模型选择器按当前渠道显示；模型配置页随之更简洁（外部程序路径与配置文件编辑入口已移除）
+- **智能体提示词生效**：选择某个智能体后，会话以其系统提示词作为主线程运行（与引擎 --agent 一致）
+- **后台任务通知**：后台任务完成时，状态与摘要会显示在对话时间线上
+
+🐛 修复
+- 修复新会话偶尔保存到错误目录、导致左侧列表找不到也删不掉的问题
+- 未映射档位的渠道，模型选择器不再显示 opus / sonnet / haiku 别名，改为 High / Mid / Low 档位名
+- 错误提示横幅的文字现在可以选中复制
+- 界面用词统一：不再出现「CLI」字样，统一为「程序 / 引擎」表述`,
+      en: `✨ Features
+- **All permission modes**: the permission menu carries the engine's full set — default / accept edits / plan / read-only / read-only ask / auto ask / auto continue / bypass (the Shift+Tab cycle); pending tool authorizations surface as Allow once / Deny cards right in the conversation
+- **Upgraded slash menu**: type / to browse every built-in command (with usage hints for /proxy, /effort, /mcp and the like), pick one and add arguments; outputs of /cost, /context, /compact now render in the conversation
+- **Message retry & branch**: the last message row gains Retry (answer the previous question again) and Branch (fork the conversation from that message) — the equivalents of the // and /branch commands
+- **Session switches**: a menu under the composer toggles the session proxy and the second brain per session instead of always following the global default; an entry to settings appears when the proxy address is missing or invalid
+- **Regrouped settings**: the settings nav is organized into Models & capabilities / App / Data & connections / Other; feature switches get their own page, extended with session proxy, multimodal reading (image / video / audio models and endpoints) and workflow switches
+- **Custom models saved per channel**: maintain a custom model list right in the channel editor (comma-separated batch add, removable chips); the composer's model picker follows the active channel; the model-config page is simpler (external binary path and config-file editing entry points are gone)
+- **Agent prompts take effect**: picking an agent runs the session with its system prompt as the main thread (same as the engine's --agent)
+- **Background task notices**: task completion notices (status and summary) render in the conversation timeline
+
+🐛 Fixes
+- New sessions could occasionally land in the wrong directory, leaving them missing from the sidebar and impossible to delete — fixed
+- Channels without tier mappings no longer show opus / sonnet / haiku aliases in the model picker — High / Mid / Low instead
+- Error banners are now selectable for copying
+- Consistent wording — "CLI" no longer appears in the UI (the app's own program is called the engine)`,
+    },
+  },
+  {
     version: "3.0.0-1",
     date: "2026-09-22",
     content: {
