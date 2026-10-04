@@ -18,6 +18,28 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: "3.1.0-1",
+    date: "2026-10-05",
+    content: {
+      zh: `🔄 引擎更新
+- 内置引擎升级到 3.1.0（随应用一起更新，无需单独安装）
+
+✨ 新功能
+- 压缩过的长会话显示完整历史：升级后的引擎把压缩前的内容归档为独立分段，界面会自动拼接，之前聊过的内容仍然能翻到
+
+🔧 行为说明
+- 本机跨会话通信随引擎启用：同一台电脑上的其他会话（终端或其他窗口）可以在当前对话运行期间发来消息、触发一轮执行；消息会记录进会话，执行仍受当前权限模式约束`,
+      en: `🔄 Engine update
+- Bundled engine upgraded to 3.1.0 (updates ship with the app)
+
+✨ Features
+- Compacted long sessions show their full history: the upgraded engine archives pre-compaction content as separate segments, and the UI stitches them back together so earlier exchanges remain browsable
+
+🔧 Behavior note
+- Cross-session messaging is on with the engine: other sessions on this machine (terminal or other windows) can send a message into a running conversation and trigger a turn; messages are recorded in the session and executions still follow the session's permission mode`,
+    },
+  },
+  {
     version: "3.0.0-2",
     date: "2026-10-04",
     content: {

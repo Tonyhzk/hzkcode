@@ -1,5 +1,19 @@
 # 更新日志
 
+## [3.1.0-1] - 2026-10-05
+
+- 内置 CLI 升级到 3.1.0：源码快照更新为 `0_Reference/hzk-code-agent-3.1.0-39d129e4`（fork 仓库 tag `v3.1.0`、commit `39d129e4`）；二进制槽位 `src/hzkcode/src-tauri/binaries/hzkcode` 替换为 3.1.0 构建产物（`0_Release/3.1.0/hzkcode-3.1.0-macos-arm64`，旧 3.0.0 二进制备份到 `.delete/20261005054341/`），`--version` 自报 3.1.0、哈希与源产物一致
+- 接口检查（3.0.0 → 3.1.0 全部 57 个提交逐条核对）：GUI 注入的环境变量清单、无头 stream-json 协议（`src/entrypoints/sdk/` 无变化）、启动参数（main.tsx 选项集合逐项一致）、会话目录布局与 `system/informational` 通知输出均无破坏性变化；相对 3.0.0 真正新增的环境变量只有 `HZKCODE_DEFAULT_PERMISSION_MODE`、`HZKCODE_RESPONSES_WEBSOCKET`、`HZKCODE_SIMPLE_LOAD`、`HZKCODE_SIMPLE_TOOLS` 四个
+- 会话分段读取适配（CLI 3.1.0 的核心数据变化）：压缩后旧内容归档为独立段文件（`<会话ID>/segments/seg-<seq>.jsonl`，清单 `<会话ID>/segments.json`，活跃段仍是 `<会话ID>.jsonl`）；GUI 的历史分页读取、扫描摘要与分支定位改为沿清单父链拼接 root → active 段，压缩前的完整历史与旧单文件时代一样可见（写入端仅在请求构建时适配、不写回历史，读取端拼接不引入重复）
+- 段链读取的崩溃对账：按 CLI 的 `decideRotationRecovery` 语义做只读判定（roll-forward 未补清单 / rollback 未执行 / clear-rotation / 待人工处理），无法确认时回退单文件读取；链上缺失的归档段跳过而不是让整个解析失败
+- 缓存失效适配：会话签名在活跃文件之外把段清单与链上全部段文件的大小与 mtime 一并折入（`history::segments::session_stat_signature`，扫描与阅读共用）；`CACHE_VERSION` 升级为 3 触发一次全量重扫
+- 会话删除已天然覆盖分段目录：`remove_session_dir` 删除 `<会话ID>/` 整目录（含 `segments/`、清单与 subagents），无需改动
+- 智能体定义适配：CLI 3.1.0 下自定义身份缺省不注入内置规范、CLAUDE.md/Rules 与个人记忆（身份模式上下文裁剪，可用身份文件 `context` 字段恢复）；GUI 下发的 `--agents` 定义显式声明 `context: ["prompts","claudemd","memory"]`，保持「角色预设叠加在完整上下文上」的既有行为
+- 跨会话通信保持 CLI 默认（用户确认「保持行为一致」）：3.1.0 重新启用 `UDS_INBOX` / `LAN_PIPES` 并默认注册本机消息套接字，GUI 无头会话在轮次存活期间可被本机其他会话注入消息并触发一轮执行（与 CLI 交互式会话一致）；注入消息写入会话文件、执行受权限模式约束，GUI 不做拦截、不加额外 UI
+- 不接入 `HZKCODE_RESPONSES_WEBSOCKET`：GUI 每次发送都是新进程，WebSocket 长连接无法跨轮复用、兼容性要求高，渠道配置不暴露该开关（需要时可经渠道「高级 · 原始 JSON」的 env 或环境变量使用）
+- 权限默认模式变化对 GUI 无影响：CLI 3.1.0 未指定时默认进入 Auto Continue（原 Auto Ask），GUI 每次发送都显式传 `--permission-mode`（fallback 本就是 autoContinue），行为不变
+- 其余 3.1.0 变化经逐条核对均为 CLI 内部或 TUI 行为、GUI 无需代码改动：身份模式（/agents 克隆切换、身份文件 secondBrain 字段）、跨渠道思考回传系列（responsesAdapter 请求构建层，不写回历史）、第二大脑默认流式与空闲超时（GUI 开关缺省跟随 CLI 默认）、极简模式 `--bare`（GUI 不启用）、全屏跳转改进、任务管理提示词条件装配、记忆快照截断、`NotifyUser` 工具重命名（原 `FeishuNotify`，GUI 无引用）与新增 `Directory` 工具（GUI 工具解析按事件通用处理、`path` 参数命中文件 chip 提取、不误判 todo）
+
 ## [3.0.0-2] - 2026-10-04
 
 - 引擎裁剪：删除 Claude Code 之外的全部 CLI 引擎（Codex、Kimi、Grok、Antigravity、OpenCode、Qoder、PI/OMP、DeepSeek Harness），设置页与对话界面只保留 Claude 引擎入口

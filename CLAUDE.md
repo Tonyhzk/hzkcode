@@ -32,12 +32,14 @@
 ## 内置 CLI 与数据互通
 
 - 应用内置 CLI 二进制：源码槽位 `src/hzkcode/src-tauri/binaries/`，打包后位于 `HZK CODE.app/Contents/Resources/binaries/`（Windows 为安装目录下的 `binaries\`）；文件名 `hzkcode`（Windows `hzkcode.exe`），也可放上游构建产物 `claude`，两者都在时优先 `hzkcode`。
-- 当前内置 CLI 版本：**3.0.0**（槽位二进制 `--version` 自报）；替换槽位二进制时必须同步更新本行。
-- 3.0.0 源码快照：外层 `0_Reference/hzk-code-agent-3.0.0-670ee535`（fork 仓库 tag `v3.0.0`、commit `670ee535`，不进 Git）；替换二进制前的接口检查可对照该快照。
+- 当前内置 CLI 版本：**3.1.0**（槽位二进制 `--version` 自报）；替换槽位二进制时必须同步更新本行。
+- 3.1.0 源码快照：外层 `0_Reference/hzk-code-agent-3.1.0-39d129e4`（fork 仓库 tag `v3.1.0`、commit `39d129e4`，不进 Git）；替换二进制前的接口检查可对照该快照。
 - 对齐与核对基准：GUI 与内置 CLI 的功能盘点、差距核对、规划与开发一律以上述快照（当前内置版本的源码）和内置二进制实测为准；其他版本或其他仓库的代码不作为依据。
-- 会话启动参数：推理强度档位以 `--effort` 直传（不再用 `HZKCODE_MAX_THINKING_TOKENS` 伪造预算）；选中的智能体以 `--agents`（定义 JSON：name → description/prompt）+ `--agent`（主线程名）下发，无头会话应用其系统提示词；恢复会话时 CLI 仅在定义可用时还原（GUI 每次发送都会重新下发定义）；GUI 侧已移除「智能体文本块内联」（`components/agent-block.ts` 仅保留旧历史的剥离显示）。派生会话进程时把 `HZKCODE_DEV_CALLER_CWD` 钉在会话工作区（CLI 用它决定会话落盘的工程目录，继承启动目录会把会话存错位置、扫描不到也删不掉）。
+- 会话启动参数：推理强度档位以 `--effort` 直传（不再用 `HZKCODE_MAX_THINKING_TOKENS` 伪造预算）；选中的智能体以 `--agents`（定义 JSON：name → description/prompt，并显式声明 `context: ["prompts","claudemd","memory"]`——3.1.0 身份模式下自定义身份缺省不注入上下文三件套，声明后保持「角色预设叠加完整上下文」的既有行为）+ `--agent`（主线程名）下发，无头会话应用其系统提示词；恢复会话时 CLI 仅在定义可用时还原（GUI 每次发送都会重新下发定义）；GUI 侧已移除「智能体文本块内联」（`components/agent-block.ts` 仅保留旧历史的剥离显示）。派生会话进程时把 `HZKCODE_DEV_CALLER_CWD` 钉在会话工作区（CLI 用它决定会话落盘的工程目录，继承启动目录会把会话存错位置、扫描不到也删不掉）。
 - 会话删除（`delete_session`）不依赖数据库索引：先按记录路径、再按会话 id 在全部工程目录下定位 `.jsonl`（含子代理旁挂目录）删除，文件与记录缺一也幂等成功（侧栏的乐观行/过期行可以直接删掉）。
 - 会话分支（`branch_session`）复刻 CLI `/branch`：按消息 uuid 定位源会话（记录路径，缺失时按 id 全目录兜底），助手消息含本条、用户提问到其前为止；逐条改写 `sessionId`、重建 `parentUuid`、写入 `forkedFrom`，携带 content-replacement 记录；标题继承为「原名 (分支[ n])」写 `custom-title` 条目并即时入库。消息 uuid 由历史解析（`extract`）与实时流（`message_uuid` 事件）共同提供，前端消息行操作栏据此显示「分支」图标。
+- 会话分段读取（CLI 3.1.0）：压缩后旧内容归档为段文件（`<会话ID>/segments/` 与清单 `<会话ID>/segments.json`，活跃段固定为 `<会话ID>.jsonl`）；GUI 的历史读取、扫描摘要与分支定位都沿清单父链拼接 root → active（`history/segments.rs`，含旋转过渡态的只读对账、片段缺失跳过、无法确认时回退单文件），缓存签名 `session_stat_signature` 把清单与链上段文件的大小与 mtime 折入，扫描缓存版本（`CACHE_VERSION`）随之推进。
+- 跨会话通信（CLI 3.1.0 默认启用，用户确认保持行为一致）：本机 UDS 消息套接字随会话进程注册，GUI 无头会话在轮次存活期间可被本机其他会话注入消息触发一轮执行（与 CLI 交互式一致，界面不显示来源）；注入消息写入会话文件、执行受权限模式约束，GUI 不拦截、不加额外 UI。`HZKCODE_RESPONSES_WEBSOCKET` 不在 GUI 暴露（每次发送都是新进程，跨轮复用收益有限）。
 - 会话开关（编辑器工具条的「会话开关」菜单）：按会话固定 `HZKCODE_PROXY_ENABLED`（等价 `/proxy on|off`）与 `HZKCODE_ENABLE_SECOND_BRAIN`（等价 `/second-brain on|off`），随每次发送注入子进程、覆盖应用级默认（`SendRequest.proxy_enabled` / `second_brain_enabled`，状态存 `SessionState.proxyEnabled` / `secondBrainEnabled`，null＝跟随）。新增同类「进程启动期读环境」的会话级开关沿用这一形态。
 - 替换内置二进制前必须做接口检查：在 fork 仓库（`hzk-code-agent`）对旧版与新版的提交/标签对比有无影响 GUI 交互的接口变化——核对 GUI 注入的环境变量（`provider_files.rs` 的 `env_names` / `is_provider_env_key` 清单：`HZKCODE_BASE_URL` / `HZKCODE_API_KEY` / `HZKCODE_MODEL` / `HZKCODE_DEFAULT_HIGH|MID|LOW_MODEL` / `HZKCODE_API_MODE` / `HZKCODE_AUTH_MODE` / `HZKCODE_PROVIDER` / `HZKCODE_CONFIG_DIR` / `HZKCODE_PROVIDER_MANAGED_BY_HOST` 等）、无头 stream-json 会话协议与启动参数、配置与会话目录、系统通知输出；CLI 纯内部改动（记忆、第二大脑、提示词等）不算接口变化。方法：对两个提交分别 `git grep` 变量名与协议字段并对比，差异逐项确认无破坏或已在 GUI 侧适配后再替换。
 - 运行时解析顺序：设置页自定义路径 → 内置二进制 → 系统 PATH；命中内置时设置页版本行显示「内置」，且不提供 npm / 官方脚本的一键安装入口（随应用一起更新）。
@@ -82,7 +84,7 @@
 - `pnpm dev`：启动开发模式（自动启动 Vite，端口 14210，随后编译并运行 Tauri 应用；关闭应用窗口后该进程退出）
 - `pnpm install`：安装依赖
 - `pnpm build`：前端类型检查与构建
-- `pnpm test`：运行 Vitest 测试
+- `pnpm test`：运行 Vitest 测试（Node 26 下需 `NODE_OPTIONS=--no-experimental-webstorage`，否则 Node 原生 localStorage 与 jsdom 注入冲突导致用例收集失败）
 
 开发实例开关约定（用户明确要求）：批量改代码期间不启动 `pnpm dev`，改动完成后统一启动一次供实测；`tauri dev` 会在每次 Rust 源码变更时自动重建重启应用窗口并抢焦点，会打断用户桌面工作。前端改动走 Vite 热更新、不会弹窗，但实例仍按上述约定统一启停。
 
