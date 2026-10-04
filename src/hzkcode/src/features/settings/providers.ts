@@ -132,11 +132,11 @@ export function providerCustomModels(raw: unknown): string[] {
 }
 
 /** Batch input for the channel dialog's 自定义模型 list: split on commas
- *  (half- or full-width) and newlines, trim, and drop empty/duplicate ids. */
+ *  (half- or full-width), trim, and drop empty/duplicate ids. */
 export function mergeCustomModels(existing: string[], text: string): string[] {
   const seen = new Set(existing);
   const out = [...existing];
-  for (const part of text.split(/[,，\n]/)) {
+  for (const part of text.split(/[,，]/)) {
     const id = part.trim();
     if (!id || seen.has(id)) continue;
     seen.add(id);

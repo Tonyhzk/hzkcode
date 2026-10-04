@@ -20,18 +20,12 @@ describe("provider custom models", () => {
   });
 
   it("appends a comma-separated batch in one go", () => {
-    expect(mergeCustomModels(["a"], "b, c，d\ne")).toEqual([
-      "a",
-      "b",
-      "c",
-      "d",
-      "e",
-    ]);
+    expect(mergeCustomModels(["a"], "b, c，d")).toEqual(["a", "b", "c", "d"]);
   });
 
   it("drops empties and ids already present", () => {
     expect(mergeCustomModels(["a"], " a , , b ")).toEqual(["a", "b"]);
-    expect(mergeCustomModels([], ",，\n  ")).toEqual([]);
+    expect(mergeCustomModels([], ",，  ")).toEqual([]);
   });
 });
 
