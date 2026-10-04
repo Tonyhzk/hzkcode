@@ -47,6 +47,10 @@ import {
   sanitizeEditableHtml,
   setCaretOffset,
 } from "@/components/application/ai-chat/file-tags";
+import {
+  isUsableProxyUrl,
+  isUsableSessionProxyUrl,
+} from "@/components/application/ai-chat/proxy-url";
 import { ipc } from "@/lib/ipc";
 import { listenSettingsChanged } from "@/lib/events";
 import { sessionKey, useChatStore } from "@/features/chat/store";
@@ -342,28 +346,6 @@ const EMPTY_LIMITS: UsageLimit[] = [];
 const EMPTY_PLAN = "";
 
 /**
- * Mirrors `validate_proxy_settings` in src-tauri/src/proxy.rs: enabling the
- * proxy requires a configured URL with an http(s)/socks5 scheme and a host.
- * Disabling never fails validation, so an enabled toggle stays operable even
- * if the stored URL is later broken.
- */
-function isUsableProxyUrl(value: string | null): boolean {
-  const trimmed = value?.trim() ?? "";
-  if (!trimmed) return false;
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return false;
-  }
-  const scheme = parsed.protocol.replace(":", "");
-  return (
-    ["http", "https", "socks5", "socks5h"].includes(scheme) &&
-    parsed.hostname.length > 0
-  );
-}
-
-/**
  * One-click network-proxy switch for the composer footer: the glyph carries
  * the state (dim = off, green = on) and the click persists `systemProxyEnabled`
  * through the same read-modify-write funnel the settings page uses, so the two
@@ -495,9 +477,10 @@ function SessionToggles() {
     setSessionSecondBrain(sessionKeyValue, value);
     setIsOpen(false);
   };
+  const proxyUsable = isUsableSessionProxyUrl(address);
   const proxyOptions: { value: boolean | null; label: string; disabled?: boolean }[] = [
     { value: null, label: t("chat.sessionProxyFollow") },
-    { value: true, label: t("chat.sessionProxyOn"), disabled: !address },
+    { value: true, label: t("chat.sessionProxyOn"), disabled: !proxyUsable },
     { value: false, label: t("chat.sessionProxyOff") },
   ];
   const brainOptions: { value: boolean | null; label: string; disabled?: boolean }[] = [
@@ -584,22 +567,22 @@ function SessionToggles() {
                 {address}
               </span>
             ) : (
-              <>
-                <span className="min-w-0 flex-1 truncate text-caption-1-regular text-text-tertiary">
-                  {t("chat.sessionProxyNoAddress")}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsOpen(false);
-                    // The session proxy address lives on the 功能开关 page.
-                    navigate("/settings?page=features");
-                  }}
-                  className="shrink-0 cursor-pointer text-caption-1-medium text-text-link-default outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring"
-                >
-                  {t("chat.sessionProxyGoSettings")}
-                </button>
-              </>
+              <span className="min-w-0 flex-1 truncate text-caption-1-regular text-text-tertiary">
+                {t("chat.sessionProxyNoAddress")}
+              </span>
+            )}
+            {!proxyUsable && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  // The session proxy address lives on the 功能开关 page.
+                  navigate("/settings?page=features");
+                }}
+                className="shrink-0 cursor-pointer text-caption-1-medium text-text-link-default outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+              >
+                {t("chat.sessionProxyGoSettings")}
+              </button>
             )}
           </div>
           <div className="flex items-center gap-2.5 border-t border-border-primary-default px-2 pt-1.5 text-body-medium text-text-tertiary">
