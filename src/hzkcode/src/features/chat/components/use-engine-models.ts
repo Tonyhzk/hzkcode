@@ -6,6 +6,7 @@ import { ipc, type CliConfig, type EngineCatalog, type EngineInfo } from "@/lib/
 import {
   CLI_CONFIG_CHANGED_EVENT,
   isPseudoProvider,
+  providerCustomModels,
   providerEntries,
   providerModel,
   PSEUDO_LOCAL,
@@ -53,6 +54,15 @@ function configuredModel(
 ): string {
   const raw = channelRaw(engineId, cliConfig, channelId);
   return raw ? providerModel(engineId as EngineId, raw).trim() : "";
+}
+
+/** Custom model ids of a channel record (`channelId` empty → engine default). */
+function channelCustomModels(
+  engineId: string,
+  cliConfig: CliConfig | null,
+  channelId?: string,
+): string[] {
+  return providerCustomModels(channelRaw(engineId, cliConfig, channelId));
 }
 
 /** Alias → channel env key: the picker's alias ids (opus/sonnet/haiku) run
@@ -124,9 +134,6 @@ export function useEngineModels(
     Record<string, Record<string, EngineCatalog>>
   >({});
   const wsKey = workspacePath ?? "";
-  // Engine-level custom models (设置 → CLI → 自定义模型): user-added ids
-  // merged into the picker next to the CLI's catalog.
-  const [customModels, setCustomModels] = useState<Record<string, string[]>>({});
   // Engines whose catalog probe is still in flight: the picker shows whatever
   // it already knows (usually just the configured model) until it lands, so
   // the panel needs to say "still loading" instead of looking truncated.
@@ -138,15 +145,12 @@ export function useEngineModels(
   useEffect(() => {
     ipc.getCliConfig().then(setCliConfig).catch(() => {});
   }, []);
-  // The settings CLI page mutates provider config and custom models outside
-  // this tree; refetch so the picker tracks both immediately.
+  // The settings CLI page mutates provider config — channels carry their own
+  // custom model lists — outside this tree; refetch so the picker tracks it
+  // immediately.
   useEffect(() => {
     const reload = () => {
       ipc.getCliConfig().then(setCliConfig).catch(() => {});
-      ipc
-        .getAppSettings()
-        .then((s) => setCustomModels(s.customModels ?? {}))
-        .catch(() => {});
     };
     reload();
     window.addEventListener(CLI_CONFIG_CHANGED_EVENT, reload);
@@ -222,13 +226,13 @@ export function useEngineModels(
         continue;
       }
       // Channel model leads (it is what the CLI would run unprompted), the
-      // backend catalog follows, then engine-level custom models, and the
+      // backend catalog follows, then the channel's custom models, and the
       // current-override append last so the selection never vanishes.
       const known = [
         ...new Set([
           ...providerModels,
           ...catalog.map((m) => m.id),
-          ...(customModels[engine.id] ?? []),
+          ...channelCustomModels(engine.id, cliConfig, providers[engine.id]),
           ...(current ? [current] : []),
         ]),
       ];
@@ -259,7 +263,7 @@ export function useEngineModels(
       });
     }
     return result;
-  }, [engines, cliConfig, catalogs, wsKey, models, customModels, providers]);
+  }, [engines, cliConfig, catalogs, wsKey, models, providers]);
   // Selectable ids WITHOUT the current-override append: what the channel,
   // the backend catalog, and the custom model list can actually serve.
   const knownIdsByEngine = useMemo(() => {
@@ -274,12 +278,20 @@ export function useEngineModels(
       // authoritative-catalog reset on local workspaces only.
       if (!catalogs[engine.id]?.remote) {
         if (configured) ids.add(configured);
-        for (const id of customModels[engine.id] ?? []) ids.add(id);
+        // Custom models ride on channel records: accept the session channel's
+        // and the engine default's, so a channel switch does not invalidate a
+        // stored pick.
+        for (const id of [
+          ...channelCustomModels(engine.id, cliConfig, providers[engine.id]),
+          ...channelCustomModels(engine.id, cliConfig),
+        ]) {
+          ids.add(id);
+        }
       }
       result[engine.id] = ids;
     }
     return result;
-  }, [engines, cliConfig, catalogs, wsKey, customModels]);
+  }, [engines, cliConfig, catalogs, wsKey, providers]);
   // Official + custom channels for the flyout. Skip the list when the engine
   // has no in-app channels — a lone 官方配置 row is noise.
   const channelsByEngine = useMemo(() => {
@@ -321,7 +333,7 @@ export function useEngineModels(
       const fallback =
         explicitDefault ||
         catalogs[engine.id]?.models.find((m) => m.id !== "default")?.id ||
-        customModels[engine.id]?.[0];
+        channelCustomModels(engine.id, cliConfig)[0];
       if (!stored) {
         if (fallback) updates[engine.id] = fallback;
         continue;
@@ -343,7 +355,7 @@ export function useEngineModels(
       }
     }
     if (Object.keys(updates).length > 0) void pinModels(updates);
-  }, [engines, models, cliConfig, catalogs, wsKey, customModels, knownIdsByEngine, pinModels]);
+  }, [engines, models, cliConfig, catalogs, wsKey, knownIdsByEngine, pinModels]);
 
   // Manual refresh from the flyout: re-read provider configs and re-probe
   // every engine's catalog (the mount effect skips engines already probed,

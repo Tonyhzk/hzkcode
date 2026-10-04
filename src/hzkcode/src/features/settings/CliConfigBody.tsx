@@ -8,13 +8,11 @@ import { WorkspaceSortableList } from "@/components/application/ai-chat/workspac
 import { ipc } from "@/lib/ipc";
 import { PSEUDO_LOCAL } from "./providers";
 import { ChannelRow } from "./CliChannelRow";
-import { CliEngineSettingsCard } from "./CliEngineSettingsCard";
 import type { CliConfigState } from "./useCliConfig";
 
 /**
  * The loaded CLI config UI:
- *   官方配置 fallback row
- *   → 供应商渠道 card (avatar/switch/⋯-menu rows + drag sorting)
+ *   供应商渠道 card (avatar/switch/edit/delete rows + drag sorting)
  *   → empty state.
  */
 export function CliConfigBody({ cli }: { cli: CliConfigState }) {
@@ -32,11 +30,6 @@ export function CliConfigBody({ cli }: { cli: CliConfigState }) {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <CliEngineSettingsCard
-        cli={cli}
-        onEditOfficial={() => cli.setOfficialEditing(true)}
-      />
-
       <div className="flex w-full flex-col gap-2">
         <div className="flex items-center justify-between gap-3">
           <SettingsSectionLabel>

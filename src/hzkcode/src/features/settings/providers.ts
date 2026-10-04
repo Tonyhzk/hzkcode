@@ -120,6 +120,31 @@ export function claudeSettingsJson(raw: unknown): string {
   return "";
 }
 
+/** User-added model ids stored on the channel record (`customModels`). */
+export function providerCustomModels(raw: unknown): string[] {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  if (!Array.isArray(o.customModels)) return [];
+  const ids = o.customModels
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  return [...new Set(ids)];
+}
+
+/** Batch input for the channel dialog's 自定义模型 list: split on commas
+ *  (half- or full-width) and newlines, trim, and drop empty/duplicate ids. */
+export function mergeCustomModels(existing: string[], text: string): string[] {
+  const seen = new Set(existing);
+  const out = [...existing];
+  for (const part of text.split(/[,，\n]/)) {
+    const id = part.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
 /** One channel row of an engine's provider map, flattened for the UI. */
 export interface ProviderEntry {
   /** Map key — the id `set_current_provider` expects. */

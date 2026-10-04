@@ -17,7 +17,7 @@ import { useProviderForm } from "./useProviderForm";
  * settingsConfig.
  *
  * `raw` stays with the parent and is merged back on save so fields this form
- * doesn't know (source, customModels, …) survive.
+ * doesn't know (source, …) survive.
  */
 export interface ProviderFormValue {
   name: string;
@@ -25,6 +25,8 @@ export interface ProviderFormValue {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** User-added model ids stored on the channel, merged into the picker. */
+  customModels: string[];
   /** claude: full settings.json text → stored as settingsConfig. */
   settingsJson: string;
 }

@@ -5,6 +5,7 @@ import Cloud from "lucide-react/dist/esm/icons/cloud";
 import Eye from "lucide-react/dist/esm/icons/eye";
 import EyeOff from "lucide-react/dist/esm/icons/eye-off";
 import Globe from "lucide-react/dist/esm/icons/globe";
+import X from "lucide-react/dist/esm/icons/x";
 import { Input } from "@/components/base/input/input";
 import { TextArea } from "@/components/base/input/textarea";
 import { Select, SelectItem } from "@/components/base/select/select";
@@ -13,6 +14,7 @@ import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { cx } from "@/utils/cx";
 import {
   has1mSuffix,
+  mergeCustomModels,
   with1mSuffix,
   without1mSuffix,
   type EngineId,
@@ -397,6 +399,83 @@ export function EnvFieldControl({
   );
 }
 
+/** 自定义模型: batch input (commas or newlines) plus the removable list; the
+ *  saved ids merge into the chat model picker for this channel. */
+function CustomModelsField({ form }: { form: ProviderForm }) {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState("");
+  const { customModels } = form.value;
+  const merged = mergeCustomModels(customModels, draft);
+  const add = () => {
+    if (merged.length === customModels.length) return;
+    form.patch({ customModels: merged });
+    setDraft("");
+  };
+  const remove = (id: string) =>
+    form.patch({ customModels: customModels.filter((m) => m !== id) });
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-body-medium text-text-primary">
+        {t("settings.cliCustomModels")}
+      </p>
+      <p className="text-body-2-regular text-text-tertiary">
+        {t("settings.cliCustomModelsDialogDesc")}
+      </p>
+      <div
+        className="flex items-center gap-2"
+        onKeyDownCapture={(event) => {
+          // Enter adds the batch instead of submitting the dialog form.
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          add();
+        }}
+      >
+        <div className="min-w-0 flex-1">
+          <Input
+            size="small"
+            aria-label={t("settings.cliCustomModels")}
+            placeholder={t("settings.cliCustomModelsPlaceholder")}
+            value={draft}
+            onChange={setDraft}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={add}
+          disabled={merged.length === customModels.length}
+          className="h-8 shrink-0 rounded-lg border border-border-button-default px-2.5 text-body-2-medium text-text-secondary transition-colors hover:bg-background-secondary-hover disabled:opacity-50"
+        >
+          {t("settings.cliCustomModelsAdd")}
+        </button>
+      </div>
+      {customModels.length === 0 ? (
+        <p className="text-body-2-regular text-text-tertiary">
+          {t("settings.cliCustomModelsEmpty")}
+        </p>
+      ) : (
+        <ul className="flex flex-wrap gap-1.5">
+          {customModels.map((id) => (
+            <li
+              key={id}
+              className="flex max-w-full items-center gap-1 rounded-lg border border-border-button-default bg-background-secondary-default py-0.5 pr-1 pl-2 text-body-2-regular text-text-secondary"
+            >
+              <span className="truncate">{id}</span>
+              <button
+                type="button"
+                aria-label={`${t("settings.cliDelete")} ${id}`}
+                onClick={() => remove(id)}
+                className="flex size-5 shrink-0 items-center justify-center rounded text-foreground-icon-tertiary hover:bg-background-secondary-hover hover:text-text-error-primary"
+              >
+                <X className="size-3" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Relay warning, channel controls, and the collapsible raw JSON editor. */
 export function ClaudeFormSections({ form }: { form: ProviderForm }) {
   const { t } = useTranslation();
@@ -447,6 +526,8 @@ export function ClaudeFormSections({ form }: { form: ProviderForm }) {
           </div>
         ))}
       </div>
+
+      <CustomModelsField form={form} />
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">

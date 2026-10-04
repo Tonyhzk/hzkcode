@@ -1,7 +1,7 @@
 import { ConfirmDialog } from "@/components/dialogs";
 import { CLI_DISPLAY_NAMES } from "@/components/foundations/icons/engine-brands";
 import { ProviderDialog } from "./ProviderDialog";
-import { claudeSettingsJson } from "./providers";
+import { claudeSettingsJson, providerCustomModels } from "./providers";
 import type { CliConfigState } from "./useCliConfig";
 
 /** Add/edit provider dialog; the stored settingsConfig becomes the initial
@@ -25,6 +25,7 @@ export function CliProviderDialog({ cli }: { cli: CliConfigState }) {
               baseUrl: dialog.entry.baseUrl,
               apiKey: dialog.entry.apiKey,
               model: dialog.entry.model,
+              customModels: providerCustomModels(dialog.entry.raw),
               settingsJson: claudeSettingsJson(dialog.entry.raw),
             }
           : undefined

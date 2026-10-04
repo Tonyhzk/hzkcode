@@ -1,14 +1,12 @@
 import type { EngineId } from "./providers";
 import { CliConfigBody } from "./CliConfigBody";
 import { CliDeleteConfirm, CliProviderDialog } from "./CliConfigDialogs";
-import { CliOfficialEditDialog } from "./CliOfficialEditDialog";
 import { useCliConfig } from "./useCliConfig";
 
 /**
- * One CLI's page under the CLI 管理 nav group — the BoardUI ai-chat "Tools"
+ * One CLI's page under the settings nav — the BoardUI ai-chat "Tools"
  * template language:
- *   引擎设置 card (enable switch)
- *   → 官方配置 / auth / 供应商渠道 under one disabled-overlay wrapper
+ *   供应商渠道 card (channels with drag sorting)
  *   → empty state.
  *
  * State and mutations live in useCliConfig; the loaded UI is CliConfigBody
@@ -29,7 +27,6 @@ export function CliConfigSection({ engine }: { engine: EngineId }) {
       )}
       {config && <CliConfigBody cli={cli} />}
       <CliProviderDialog cli={cli} />
-      <CliOfficialEditDialog cli={cli} />
       <CliDeleteConfirm cli={cli} />
     </div>
   );

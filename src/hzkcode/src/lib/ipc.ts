@@ -227,10 +227,7 @@ export interface AppSettings {
   /** Ids of workspaces hidden into the sidebar's collapsible 已归档 section. */
   archivedWorkspaces: string[];
   language: string;
-  claudeBin: string | null;
   defaultModels: Record<string, string>;
-  /** Per-engine user-added custom model ids (设置 → CLI → 自定义模型). */
-  customModels: Record<string, string[]>;
   defaultEfforts: Record<string, string>;
   /** Max sessions listed per workspace in the sidebar (default 5). */
   sidebarThreadLimit: number;
@@ -616,21 +613,6 @@ export interface PluginUpdate {
   latestVersion: string;
 }
 
-export interface OfficialConfigFile {
-  /** Absolute path — the pane label, and the write-back key. */
-  path: string;
-  /** Editor language mode: "json" | "toml". */
-  format: string;
-  /** Live file content; "" when absent (`exists` distinguishes). */
-  content: string;
-  exists: boolean;
-}
-
-export interface OfficialConfigDraft {
-  path: string;
-  content: string;
-}
-
 export const ipc = {
   // config
   getCliConfig: () => invoke<CliConfig>("get_cli_config"),
@@ -640,17 +622,6 @@ export const ipc = {
     invoke<void>("delete_provider", { engine, id }),
   setCurrentProvider: (engine: string, id: string) =>
     invoke<void>("set_current_provider", { engine, id }),
-  /** Native config files of this engine (官方配置 editor). Empty for
-   *  engines whose official state lives in auth stores. */
-  providerFilePaths: (engine: string) =>
-    invoke<string[]>("provider_file_paths", { engine }),
-  /** Editable files of the engine's 官方配置 (pane order); empty for
-   *  pi/omp/dsh, whose official state lives in auth stores. */
-  officialConfigRead: (engine: string) =>
-    invoke<OfficialConfigFile[]>("official_config_read", { engine }),
-  /** Gated backend-side on 官方配置 being the active configuration. */
-  officialConfigWrite: (engine: string, files: OfficialConfigDraft[]) =>
-    invoke<void>("official_config_write", { engine, files }),
   reorderProviders: (engine: string, ids: string[]) =>
     invoke<void>("reorder_providers", { engine, ids }),
   /** 拉取模型: probe the channel's /v1/models endpoint for its model list. */

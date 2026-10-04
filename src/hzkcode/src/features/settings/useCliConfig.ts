@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { ipc, type CliConfig, type OfficialConfigDraft } from "@/lib/ipc";
+import { ipc, type CliConfig } from "@/lib/ipc";
 import { newId } from "@/lib/id";
 import {
   PSEUDO_LOCAL,
@@ -32,15 +32,8 @@ export interface CliConfigState {
   setDialog: Dispatch<SetStateAction<DialogState>>;
   pendingDelete: ProviderEntry | null;
   setPendingDelete: Dispatch<SetStateAction<ProviderEntry | null>>;
-  /** 官方配置 edit dialog open state. */
-  officialEditing: boolean;
-  setOfficialEditing: Dispatch<SetStateAction<boolean>>;
-  /** Save the edited official files; returns the error message (dialog
-   *  stays open) or null on success (dialog closed). Backend re-validates. */
-  saveOfficialConfig: (files: OfficialConfigDraft[]) => Promise<string | null>;
   currentId: string;
   entries: ProviderEntry[];
-  officialActive: boolean;
   mutate: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
   activate: (id: string) => void;
   saveProvider: (value: ProviderFormValue) => void;
@@ -53,10 +46,9 @@ export interface CliConfigState {
  * Semantics (single source of truth is the backend's single `current`):
  *   - Each row carries a Switch showing whether it is current; flipping a
  *     switch on makes that channel current (single-select, radio-style).
- *     Flipping the current custom channel off falls back to 官方配置; the
- *     官方配置 switch can only be turned on, never off.
- *   - 官方配置 is the built-in fallback (the CLI's own config file) and sits
- *     above the channel list.
+ *     Flipping the current custom channel off falls back to 官方配置.
+ *   - 官方配置 is the built-in fallback (the program's own config file),
+ *     used whenever no channel is current.
  */
 export function useCliConfig(engine: EngineId): CliConfigState {
   const { t } = useTranslation();
@@ -65,7 +57,6 @@ export function useCliConfig(engine: EngineId): CliConfigState {
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [pendingDelete, setPendingDelete] = useState<ProviderEntry | null>(null);
-  const [officialEditing, setOfficialEditing] = useState(false);
   useEffect(() => {
     let cancelled = false;
     ipc
@@ -114,10 +105,19 @@ export function useCliConfig(engine: EngineId): CliConfigState {
       dialog?.entry?.raw && typeof dialog.entry.raw === "object"
         ? (dialog.entry.raw as Record<string, unknown>)
         : {};
-    // The dialog owns env/settingsConfig outright (JSON editor); unknown
-    // top-level keys (source, customModels, …) survive.
+    // The dialog owns env/settingsConfig (JSON editor) and the custom model
+    // list outright; unknown top-level keys (source, …) survive.
     const next: Record<string, unknown> = { ...rawObj };
-    for (const key of ["name", "remark", "baseUrl", "apiKey", "model", "settingsConfig", "env"]) {
+    for (const key of [
+      "name",
+      "remark",
+      "baseUrl",
+      "apiKey",
+      "model",
+      "customModels",
+      "settingsConfig",
+      "env",
+    ]) {
       delete next[key];
     }
     const put = (key: string, val: string) => {
@@ -128,6 +128,7 @@ export function useCliConfig(engine: EngineId): CliConfigState {
     put("remark", value.remark);
     put("baseUrl", value.baseUrl);
     put("apiKey", value.apiKey);
+    if (value.customModels.length > 0) next.customModels = value.customModels;
     // The JSON editor is the source of truth for env; the flat `model`
     // field is migrated into it (HZKCODE_MODEL) at dialog open.
     try {
@@ -150,24 +151,6 @@ export function useCliConfig(engine: EngineId): CliConfigState {
     void mutate(() => ipc.deleteProvider(engine, id));
   };
 
-  const officialActive = currentId === PSEUDO_LOCAL;
-
-  const saveOfficialConfig = useCallback(
-    async (files: OfficialConfigDraft[]): Promise<string | null> => {
-      setBusy(true);
-      try {
-        await ipc.officialConfigWrite(engine, files);
-        setOfficialEditing(false);
-        return null;
-      } catch (e) {
-        return errorText(e);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [engine],
-  );
-
   return {
     t,
     config,
@@ -178,12 +161,8 @@ export function useCliConfig(engine: EngineId): CliConfigState {
     setDialog,
     pendingDelete,
     setPendingDelete,
-    officialEditing,
-    setOfficialEditing,
-    saveOfficialConfig,
     currentId,
     entries,
-    officialActive,
     mutate,
     activate,
     saveProvider,

@@ -4,12 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/ipc", () => ({
   ipc: {
-    // The bin-path / custom-models rows read AppSettings on mount.
-    getAppSettings: () => Promise.resolve({ customModels: {} }),
+    reorderProviders: () => Promise.resolve(),
   },
 }));
 import i18n from "@/lib/i18n";
 import { CliConfigBody } from "./CliConfigBody";
+import type { ProviderEntry } from "./providers";
 import type { CliConfigState } from "./useCliConfig";
 
 // React 18's act() requires this flag to be set by the test environment.
@@ -32,10 +32,6 @@ function makeCli(over: Partial<CliConfigState> = {}): CliConfigState {
     setPendingDelete: () => {},
     currentId: "",
     entries: [],
-    officialActive: true,
-    officialEditing: false,
-    setOfficialEditing: () => {},
-    saveOfficialConfig: () => Promise.resolve(null),
     mutate: vi.fn(),
     activate: () => {},
     saveProvider: () => {},
@@ -44,7 +40,17 @@ function makeCli(over: Partial<CliConfigState> = {}): CliConfigState {
   } as CliConfigState;
 }
 
-describe("CliEngineSettingsCard official edit entry", () => {
+const ENTRY: ProviderEntry = {
+  id: "chan-a",
+  name: "渠道 A",
+  remark: "",
+  baseUrl: "https://aiapi.example.com",
+  apiKey: "",
+  model: "deepseek-v4-pro[1m]",
+  raw: {},
+};
+
+describe("CliConfigBody", () => {
   let container: HTMLDivElement;
   let root: Root | null;
 
@@ -64,25 +70,27 @@ describe("CliEngineSettingsCard official edit entry", () => {
     await act(async () => root?.render(<CliConfigBody cli={cli} />));
   }
 
-  function editButton(): HTMLButtonElement {
-    const label = i18n.t("settings.cliEdit");
+  function buttonByLabel(label: string): HTMLButtonElement {
     const button = Array.from(container.querySelectorAll("button")).find(
-      (b) => b.textContent?.trim() === label,
+      (b) => b.textContent?.trim() === label || b.getAttribute("aria-label") === label,
     );
     expect(button).toBeDefined();
     return button as HTMLButtonElement;
   }
 
-  it("file-managed engine: 编辑 stays available while a custom channel is current", async () => {
-    await render(makeCli({ engine: "claude", officialActive: false, currentId: "chan-a" }));
-    expect(editButton().disabled).toBe(false);
+  it("empty list: shows the empty state and 添加渠道 opens the add dialog", async () => {
+    const setDialog = vi.fn();
+    await render(makeCli({ entries: [], setDialog }));
+    expect(container.textContent).toContain(i18n.t("settings.cliEmptyTitle"));
+    await act(async () => buttonByLabel(i18n.t("settings.cliDialogAdd")).click());
+    expect(setDialog).toHaveBeenCalledWith({});
   });
 
-  it("file-managed engine: 编辑 opens the generic editor when 官方配置 is active", async () => {
-    const setOfficialEditing = vi.fn();
-    await render(makeCli({ engine: "claude", officialActive: true, setOfficialEditing }));
-    expect(editButton().disabled).toBe(false);
-    await act(async () => editButton().click());
-    expect(setOfficialEditing).toHaveBeenCalledWith(true);
+  it("renders one row per channel and 编辑 opens the edit dialog", async () => {
+    const setDialog = vi.fn();
+    await render(makeCli({ entries: [ENTRY], currentId: "chan-a", setDialog }));
+    expect(container.textContent).toContain("渠道 A");
+    await act(async () => buttonByLabel(i18n.t("settings.cliEdit")).click());
+    expect(setDialog).toHaveBeenCalledWith({ entry: ENTRY });
   });
 });
