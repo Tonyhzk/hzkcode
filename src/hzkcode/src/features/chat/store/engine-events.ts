@@ -266,6 +266,34 @@ function onMessage(
   });
 }
 
+/** The finished assistant message's transcript uuid: hang it on the newest
+ *  assistant row that does not carry one yet, so branch-style actions can
+ *  address the transcript entry once the turn settles. */
+function onMessageUuid(
+  event: EngineEventPayload,
+  key: string,
+  deps: EngineEventDeps,
+) {
+  const uuid = typeof event.data === "string" ? event.data : "";
+  if (!uuid) return;
+  const prev = deps.get().bySession[key];
+  if (!prev) return;
+  let target = -1;
+  for (let i = prev.messages.length - 1; i >= 0; i--) {
+    const message = prev.messages[i];
+    if (message.role !== "assistant") continue;
+    if (!message.uuid) target = i;
+    break;
+  }
+  if (target === -1) return;
+  deps.set((s) => {
+    const cur = s.bySession[key] ?? EMPTY_SESSION;
+    const messages = cur.messages.slice();
+    messages[target] = { ...messages[target], uuid };
+    return { bySession: { ...s.bySession, [key]: { ...cur, messages } } };
+  });
+}
+
 /** Model a local send resolved for a session key, held until the run reports
  *  the native session id (`session` event) so the two can be remembered
  *  together — the engine transcript only carries the bare model name, and the
@@ -1357,6 +1385,9 @@ export function handleEngineEvents(
         break;
       case "message":
         onMessage(event, key, deps);
+        break;
+      case "message_uuid":
+        onMessageUuid(event, key, deps);
         break;
       case "session":
         onSession(event, key, deps);

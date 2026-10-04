@@ -257,6 +257,16 @@ impl Engine for ClaudeEngine {
                         }
                     } else {
                         out.push(EngineEvent::Model(model.to_string()));
+                        // The finished message's transcript uuid: the UI hangs
+                        // it on the live row so /branch-style actions can
+                        // address this entry once the turn settles.
+                        if let Some(uuid) = value
+                            .get("uuid")
+                            .and_then(Value::as_str)
+                            .filter(|s| !s.is_empty())
+                        {
+                            out.push(EngineEvent::MessageUuid(uuid.to_string()));
+                        }
                     }
                 }
             }

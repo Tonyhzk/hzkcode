@@ -16,6 +16,12 @@ pub struct Message {
     pub role: String,
     pub text: String,
     pub ts: Option<String>,
+    /// The CLI's own uuid for the transcript entry this row came from (main
+    /// conversation only): the branch action addresses fork points by it,
+    /// mirroring the CLI's /branch. Live rows get it from the engine's
+    /// message_uuid event; rows that do not map to one entry stay None.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
     /// Target file of a tool call (read/edit/write/...); drives the file
     /// chip in the timeline. None for non-tool rows and path-less tools.
     #[serde(skip_serializing_if = "Option::is_none")]

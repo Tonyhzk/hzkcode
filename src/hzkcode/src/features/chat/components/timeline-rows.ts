@@ -142,6 +142,27 @@ export function rowKey(row: TimelineRow): string | number {
   return row.kind === "msg" ? row.message.seq : `process-${row.firstSeq}`;
 }
 
+/** Branch target uuid per message row (the CLI's /branch semantics): a reply
+ *  forks inclusively of itself, so it targets its own transcript entry; a
+ *  user prompt forks right before it, so it targets the reply it follows.
+ *  Rows whose entry cannot be resolved (only a first prompt has none) are
+ *  absent — the branch icon hides for them. */
+export function branchTargets(rows: TimelineRow[]): Map<string | number, string> {
+  const targets = new Map<string | number, string>();
+  let previousReply: string | null = null;
+  for (const row of rows) {
+    if (row.kind !== "msg") continue;
+    const uuid = row.message.uuid;
+    if (row.message.role === "assistant" && uuid) {
+      previousReply = uuid;
+      targets.set(rowKey(row), uuid);
+    } else if (row.message.role === "user" && previousReply) {
+      targets.set(rowKey(row), previousReply);
+    }
+  }
+  return targets;
+}
+
 export function toolEntranceKey(processId: number, index: number): string {
   return `${processId}:${index}`;
 }

@@ -10,6 +10,7 @@ export interface EngineEventPayload {
     | "delta"
     | "thinking"
     | "message"
+    | "message_uuid"
     | "session"
     | "usage"
     | "error"

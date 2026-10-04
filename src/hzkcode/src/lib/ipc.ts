@@ -73,6 +73,10 @@ export interface Message {
   result?: unknown;
   todos?: TodosPayload;
   ts: string | null;
+  /** The CLI's own uuid for the transcript entry (main conversation only):
+   *  the branch action addresses fork points by it. Live rows get it from
+   *  the engine's `message_uuid` event once the reply finishes streaming. */
+  uuid?: string | null;
   usage?: unknown;
   model?: string | null;
   /** Reasoning effort level ("low" | "medium" | "high" | "xhigh" | "max") */
@@ -753,6 +757,21 @@ export const ipc = {
     }),
   deleteSession: (engine: string, sessionId: string) =>
     invoke<void>("delete_session", { engine, sessionId }),
+  /** Fork the conversation at one message (the CLI's /branch): a new session
+   *  file next to the source, history up to the target entry, `forkedFrom`
+   *  traceability, title inherited as "<原题> (分支[ n])". */
+  branchSession: (
+    engine: string,
+    sessionId: string,
+    workspacePath: string,
+    targetUuid: string,
+  ) =>
+    invoke<{ sessionId: string; title: string | null }>("branch_session", {
+      engine,
+      sessionId,
+      workspacePath,
+      targetUuid,
+    }),
   /** Remote (plugin-fed, e.g. WSL distro) session delete: no local db row
    *  exists, so the host rm's the validated remotePath over the same remote
    *  channel loadRemoteSessionPage reads through. */

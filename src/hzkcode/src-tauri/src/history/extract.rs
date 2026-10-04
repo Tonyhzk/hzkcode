@@ -165,6 +165,7 @@ fn fold_rows(rows: Vec<LineRow>) -> ParsedSession {
             role: row.role,
             text: row.text,
             ts: row.ts,
+            uuid: row.uuid,
             path: row.path,
             args: row.args,
             result: row.result,
@@ -276,6 +277,8 @@ struct LineRow {
     role: String,
     text: String,
     ts: Option<String>,
+    /// The source entry's uuid (claude transcript lines); None elsewhere.
+    uuid: Option<String>,
     path: Option<String>,
     args: Option<Value>,
     tool_call_id: Option<String>,
@@ -296,6 +299,7 @@ impl LineRow {
             role: role.to_string(),
             text,
             ts,
+            uuid: None,
             path: None,
             args: None,
             tool_call_id: None,
@@ -494,6 +498,12 @@ fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
         .unwrap_or(line_type)
         .to_string();
     let ts = ts_string(value, &["timestamp"]);
+    // The entry's uuid: the branch action forks from a message by it.
+    let uuid = value
+        .get("uuid")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     let usage = message.get("usage").cloned();
     let model = message
         .get("model")
@@ -569,11 +579,13 @@ fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
                     model,
                     effort,
                     images: collected,
+                    uuid: uuid.clone(),
                     ..LineRow::new(&role, text, ts)
                 });
             } else if !collected.is_empty() {
                 out.push(LineRow {
                     images: collected,
+                    uuid: uuid.clone(),
                     ..LineRow::new(&role, String::new(), ts)
                 });
             }
@@ -585,6 +597,7 @@ fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
                     usage,
                     model,
                     effort,
+                    uuid,
                     ..LineRow::new(&role, text, ts)
                 });
             }

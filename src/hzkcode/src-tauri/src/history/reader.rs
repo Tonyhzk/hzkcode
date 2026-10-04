@@ -1,6 +1,7 @@
 use super::{parse_session_file, Message, ParsedSession, SessionMeta};
 use base64::Engine as _;
 use serde::Serialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -344,6 +345,9 @@ fn subagent_history_row(message: &Message, delegation: bool) -> Message {
         role: message.role.clone(),
         text: if delegation { message.text.clone() } else { String::new() },
         ts: None,
+        // Subagent rows are display-only folds of sidechain messages: they
+        // do not address a main-conversation entry, so no branch uuid.
+        uuid: None,
         path: None,
         args: if delegation { message.args.clone() } else { None },
         // Status snapshots and result presence matter; the full output still
@@ -621,6 +625,266 @@ pub async fn delete_session(
     .map_err(|e| e.to_string())??;
     sink.emit_sessions_changed();
     Ok(())
+}
+
+/// One forked session: the new id plus the inherited title when the source
+/// carried a custom one.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchResult {
+    pub session_id: String,
+    pub title: Option<String>,
+}
+
+/// First user prompt of the forked prefix, collapsed to one line — the
+/// sidebar fallback title until the next scan derives the full summary.
+fn first_prompt_of(entries: &[&Value]) -> String {
+    for entry in entries {
+        if entry.get("type").and_then(Value::as_str) != Some("user") {
+            continue;
+        }
+        let content = entry.get("message").and_then(|m| m.get("content"));
+        let text = match content {
+            Some(Value::String(s)) => s.clone(),
+            Some(Value::Array(blocks)) => blocks
+                .iter()
+                .find_map(|b| {
+                    (b.get("type").and_then(Value::as_str) == Some("text"))
+                        .then(|| b.get("text").and_then(Value::as_str))
+                        .flatten()
+                })
+                .unwrap_or_default()
+                .to_string(),
+            _ => String::new(),
+        };
+        let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !collapsed.is_empty() {
+            return collapsed.chars().take(100).collect();
+        }
+    }
+    String::new()
+}
+
+/// `<base> (分支[ n])`, numbered past any title already in use — the CLI's
+/// own naming for forks of a titled session.
+fn unique_branch_title(db: &crate::db::Db, base: &str) -> String {
+    let titles: Vec<String> = {
+        let conn = db.0.lock();
+        conn.prepare("SELECT custom_title FROM sessions WHERE custom_title IS NOT NULL")
+            .and_then(|mut stmt| {
+                stmt.query_map([], |r| r.get::<_, String>(0))
+                    .map(|rows| rows.filter_map(Result::ok).collect())
+            })
+            .unwrap_or_default()
+    };
+    let plain = format!("{base} (分支)");
+    if !titles.iter().any(|t| t == &plain) {
+        return plain;
+    }
+    let mut n = 2u32;
+    loop {
+        let candidate = format!("{base} (分支 {n})");
+        if !titles.iter().any(|t| t == &candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// Fork the session at `target_uuid`, mirroring the CLI's /branch: main
+/// conversation entries up to and including an assistant target (a user
+/// target forks right before it), `sessionId` rewritten, the parent chain
+/// rebuilt, `forkedFrom` traceability added, and the aggregated
+/// content-replacement entry carried over.
+fn branch_session_blocking(
+    db: &crate::db::Db,
+    engine: &str,
+    session_id: &str,
+    workspace_path: &str,
+    target_uuid: &str,
+) -> Result<BranchResult, String> {
+    if engine != "claude" {
+        return Err(format!("branch_session: unknown engine {engine}"));
+    }
+    // The recorded path first; a session created moments ago may not be
+    // indexed yet, so fall back to the id scan (same resolution as delete).
+    let source = session_file_path(db, engine, session_id)
+        .ok()
+        .filter(|path| path.is_file())
+        .or_else(|| session_files_by_id(engine, session_id).into_iter().next())
+        .ok_or_else(|| "没有可创建分支的会话".to_string())?;
+    let content =
+        std::fs::read_to_string(&source).map_err(|e| format!("read {}: {e}", source.display()))?;
+    let entries: Vec<Value> = content
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
+        .collect();
+
+    let is_transcript_message = |entry: &Value| {
+        matches!(
+            entry.get("type").and_then(Value::as_str),
+            Some("user" | "assistant" | "attachment" | "system")
+        )
+    };
+    let main: Vec<&Value> = entries
+        .iter()
+        .filter(|entry| {
+            is_transcript_message(entry)
+                && entry.get("isSidechain").and_then(Value::as_bool) != Some(true)
+        })
+        .collect();
+    let target_index = main
+        .iter()
+        .position(|entry| entry.get("uuid").and_then(Value::as_str) == Some(target_uuid))
+        .ok_or_else(|| "所选消息已不可用，无法从此处创建分支".to_string())?;
+    // Assistant target: include that reply. Any other target (a user prompt):
+    // fork right before it, so the branch ends on the previous reply.
+    let branch_end = if main[target_index].get("type").and_then(Value::as_str) == Some("assistant")
+    {
+        target_index + 1
+    } else {
+        target_index
+    };
+    let kept = &main[..branch_end];
+    if kept.is_empty() {
+        return Err("没有可创建分支的消息".to_string());
+    }
+
+    let fork_id = uuid::Uuid::new_v4().to_string();
+    let mut lines: Vec<String> = Vec::with_capacity(kept.len() + 2);
+    let mut parent: Option<String> = None;
+    for entry in kept {
+        let mut forked = (*entry).clone();
+        let obj = forked.as_object_mut().ok_or("会话条目格式异常")?;
+        obj.insert("sessionId".into(), Value::String(fork_id.clone()));
+        obj.insert(
+            "parentUuid".into(),
+            parent.clone().map(Value::String).unwrap_or(Value::Null),
+        );
+        obj.insert("isSidechain".into(), Value::Bool(false));
+        let entry_uuid = entry
+            .get("uuid")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        obj.insert(
+            "forkedFrom".into(),
+            serde_json::json!({ "sessionId": session_id, "messageUuid": entry_uuid }),
+        );
+        lines.push(serde_json::to_string(&forked).map_err(|e| e.to_string())?);
+        parent = Some(entry_uuid);
+    }
+
+    let replacements: Vec<Value> = entries
+        .iter()
+        .filter(|entry| {
+            entry.get("type").and_then(Value::as_str) == Some("content-replacement")
+                && entry.get("sessionId").and_then(Value::as_str) == Some(session_id)
+        })
+        .filter_map(|entry| entry.get("replacements").and_then(Value::as_array))
+        .flat_map(|list| list.iter().cloned())
+        .collect();
+    if !replacements.is_empty() {
+        lines.push(
+            serde_json::to_string(&serde_json::json!({
+                "type": "content-replacement",
+                "sessionId": fork_id,
+                "replacements": replacements,
+            }))
+            .map_err(|e| e.to_string())?,
+        );
+    }
+
+    // Inherit the source's custom title the way the CLI does; the entry
+    // keeps the CLI's own /resume listing in sync with the sidebar.
+    let source_title: Option<String> = db
+        .0
+        .lock()
+        .query_row(
+            "SELECT custom_title FROM sessions WHERE engine=?1 AND session_id=?2",
+            rusqlite::params![engine, session_id],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .unwrap_or(None)
+        .filter(|t| !t.trim().is_empty());
+    let title = source_title.map(|base| unique_branch_title(db, base.trim()));
+    if let Some(title) = title.as_deref() {
+        lines.push(
+            serde_json::to_string(&serde_json::json!({
+                "type": "custom-title",
+                "customTitle": title,
+                "sessionId": fork_id,
+            }))
+            .map_err(|e| e.to_string())?,
+        );
+    }
+
+    let fork_path = source.with_file_name(format!("{fork_id}.jsonl"));
+    let mut payload = lines.join("\n");
+    payload.push('\n');
+    crate::settings::atomic_write(&fork_path, &payload)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&fork_path, std::fs::Permissions::from_mode(0o600));
+    }
+
+    // Index the fork immediately so the sidebar shows it with its title; the
+    // next scan updates the derived fields (its upsert never touches
+    // custom_title).
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let first_prompt = first_prompt_of(kept);
+    db.0.lock()
+        .execute(
+            "INSERT INTO sessions(engine, session_id, workspace_path, file_path, file_size, file_mtime_ms, title, preview, created_at, updated_at, message_count, custom_title)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?6,?6,?9,?10)
+             ON CONFLICT(engine, session_id) DO UPDATE SET
+                workspace_path=excluded.workspace_path,
+                file_path=excluded.file_path,
+                file_size=excluded.file_size,
+                file_mtime_ms=excluded.file_mtime_ms",
+            rusqlite::params![
+                engine,
+                fork_id,
+                workspace_path,
+                fork_path.to_string_lossy(),
+                payload.len() as i64,
+                now_ms,
+                first_prompt,
+                "",
+                kept.len() as i64,
+                title,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(BranchResult {
+        session_id: fork_id,
+        title,
+    })
+}
+
+/// Fork the conversation at one message (the CLI's /branch equivalent).
+#[tauri::command]
+pub async fn branch_session(
+    state: tauri::State<'_, crate::AppState>,
+    engine: String,
+    session_id: String,
+    workspace_path: String,
+    target_uuid: String,
+) -> Result<BranchResult, String> {
+    let db = Arc::clone(&state.db);
+    let sink = Arc::clone(&state.sink);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        branch_session_blocking(&db, &engine, &session_id, &workspace_path, &target_uuid)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    sink.emit_sessions_changed();
+    Ok(result)
 }
 
 /// 远程(WSL 发行版内)会话删除:插件会话源上报的 remotePath 经与
@@ -972,6 +1236,98 @@ mod tests {
     }
 
     #[test]
+    fn branch_session_forks_at_the_target_entry() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let projects = config_dir.join("projects");
+        let dir = projects.join("-ws");
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src-1.jsonl");
+        let lines = [
+            serde_json::json!({"type":"user","uuid":"u1","sessionId":"src-1","message":{"role":"user","content":"hi"},"timestamp":"2026-10-04T00:00:00.000Z"}),
+            serde_json::json!({"type":"assistant","uuid":"a1","sessionId":"src-1","message":{"role":"assistant","model":"m","content":[{"type":"text","text":"hello"}]},"timestamp":"2026-10-04T00:00:01.000Z"}),
+            serde_json::json!({"type":"user","uuid":"u2","sessionId":"src-1","message":{"role":"user","content":"again"},"timestamp":"2026-10-04T00:00:02.000Z"}),
+            serde_json::json!({"type":"assistant","uuid":"a2","sessionId":"src-1","message":{"role":"assistant","model":"m","content":[{"type":"text","text":"done"}]},"timestamp":"2026-10-04T00:00:03.000Z"}),
+            serde_json::json!({"type":"content-replacement","sessionId":"src-1","replacements":[{"id":"r1"}]}),
+        ];
+        std::fs::write(
+            &src,
+            lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n") + "\n",
+        )
+        .unwrap();
+        db.0.lock()
+            .execute(
+                "INSERT INTO sessions(engine,session_id,workspace_path,file_path,file_size,file_mtime_ms,title,custom_title) VALUES('claude','src-1','/ws',?1,1,1,'t','接续测试')",
+                rusqlite::params![src.to_string_lossy().to_string()],
+            )
+            .unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+
+        // Assistant target: forks inclusive of that reply.
+        let result = branch_session_blocking(&db, "claude", "src-1", "/ws", "a1").unwrap();
+        let fork = dir.join(format!("{}.jsonl", result.session_id));
+        let text = std::fs::read_to_string(&fork).unwrap();
+        let forked: Vec<Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        let ids: Vec<&str> = forked
+            .iter()
+            .filter_map(|e| e.get("uuid").and_then(Value::as_str))
+            .collect();
+        assert_eq!(ids, ["u1", "a1"]);
+        assert!(forked.iter().all(|e| {
+            e.get("sessionId").and_then(Value::as_str) == Some(result.session_id.as_str())
+        }));
+        assert_eq!(
+            forked[0].get("forkedFrom").unwrap(),
+            &serde_json::json!({"sessionId":"src-1","messageUuid":"u1"})
+        );
+        assert!(forked[0].get("parentUuid").unwrap().is_null());
+        assert_eq!(forked[1].get("parentUuid").and_then(Value::as_str), Some("u1"));
+        let repl = forked
+            .iter()
+            .find(|e| e.get("type").and_then(Value::as_str) == Some("content-replacement"))
+            .unwrap();
+        assert_eq!(
+            repl.get("sessionId").and_then(Value::as_str),
+            Some(result.session_id.as_str())
+        );
+        assert_eq!(result.title.as_deref(), Some("接续测试 (分支)"));
+        assert!(forked.iter().any(|e| {
+            e.get("type").and_then(Value::as_str) == Some("custom-title")
+                && e.get("customTitle").and_then(Value::as_str) == Some("接续测试 (分支)")
+        }));
+        let db_title: Option<String> = db
+            .0
+            .lock()
+            .query_row(
+                "SELECT custom_title FROM sessions WHERE session_id=?1",
+                rusqlite::params![result.session_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(db_title.as_deref(), Some("接续测试 (分支)"));
+
+        // User target: forks right before the selected prompt.
+        let second = branch_session_blocking(&db, "claude", "src-1", "/ws", "u2").unwrap();
+        assert_eq!(second.title.as_deref(), Some("接续测试 (分支 2)"));
+        let text2 = std::fs::read_to_string(dir.join(format!("{}.jsonl", second.session_id))).unwrap();
+        let ids2: Vec<String> = text2
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter_map(|e| e.get("uuid").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        assert_eq!(ids2, ["u1", "a1"]);
+
+        // Missing target: localized error, nothing written.
+        let before = std::fs::read_dir(&dir).unwrap().count();
+        assert!(branch_session_blocking(&db, "claude", "src-1", "/ws", "nope").is_err());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), before);
+    }
+
+    #[test]
     fn remote_session_path_shape_is_claude_only() {
         // 合法形态:绝对 .jsonl 且落在 claude 会话目录下
         assert!(is_plausible_remote_session_path(
@@ -1046,6 +1402,7 @@ mod tests {
             role: role.into(),
             text: String::new(),
             ts: None,
+            uuid: None,
             path: None,
             args: None,
             result: None,

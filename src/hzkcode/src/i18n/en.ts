@@ -214,6 +214,8 @@ export const en: Messages = {
     toolFailed: "Failed",
     diffEmpty: "No changes",
     copy: "Copy",
+    retry: "Retry",
+    branch: "Branch",
     modelPicker: "Models",
     modelSearchPlaceholder: "Search models…",
     modelsLoading: "Loading models…",

@@ -290,6 +290,7 @@ pub fn run() {
             history::reader::load_session_page,
             history::reader::load_remote_session_page,
             history::reader::delete_session,
+            history::reader::branch_session,
             history::reader::delete_remote_session,
             history::reader::pin_session,
             history::reader::rename_session,

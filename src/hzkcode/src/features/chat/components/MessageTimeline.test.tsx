@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatDuration } from "./format-duration";
 import { MessageRow } from "./MessageTimeline";
-import { buildRows } from "./timeline-rows";
+import { branchTargets, buildRows, rowKey } from "./timeline-rows";
 import type { Message } from "@/lib/ipc";
 
 // React's act() environment flag — same setup as Markdown.test.tsx.
@@ -122,6 +122,140 @@ describe("user bubble copy affordance", () => {
     const shown = container.textContent ?? "";
     expect(shown).toContain("↑1.5M");
     expect(shown).toContain("↓2.2k");
+  });
+});
+
+describe("retry affordance on the bottom message", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("sits next to copy on the last user message and fires the handler", async () => {
+    const onRetry = vi.fn();
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={{ seq: 1, role: "user", text: "hello", ts: null }}
+          workspacePath="/ws"
+          turnFinal
+          onRetry={onRetry}
+        />,
+      );
+    });
+    const buttons = container.querySelectorAll<HTMLButtonElement>("button");
+    expect(buttons).toHaveLength(2);
+    await act(async () => buttons[1].click());
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("sits next to copy on a final assistant segment and fires the handler", async () => {
+    const onRetry = vi.fn();
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={{ seq: 2, role: "assistant", text: "done", ts: null }}
+          workspacePath="/ws"
+          turnFinal
+          onRetry={onRetry}
+        />,
+      );
+    });
+    const buttons = container.querySelectorAll<HTMLButtonElement>("button");
+    expect(buttons).toHaveLength(2);
+    await act(async () => buttons[buttons.length - 1].click());
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays off when the timeline does not mark the row as the last message", async () => {
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={{ seq: 1, role: "user", text: "older", ts: null }}
+          workspacePath="/ws"
+          turnFinal
+        />,
+      );
+    });
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+  });
+});
+
+describe("branch targets and affordance", () => {
+  it("maps replies to themselves and prompts to the reply before them", () => {
+    const messages: Message[] = [
+      { seq: 1, role: "user", text: "hi", ts: null, uuid: "u1" },
+      { seq: 2, role: "assistant", text: "hello", ts: null, uuid: "a1" },
+      { seq: 3, role: "user", text: "again", ts: null, uuid: "u2" },
+      { seq: 4, role: "assistant", text: "done", ts: null, uuid: "a2" },
+    ];
+    const rows = buildRows(messages);
+    const targets = branchTargets(rows);
+    const bySeq = (seq: number) => {
+      const row = rows.find(
+        (r) => r.kind === "msg" && r.message.seq === seq,
+      )!;
+      return targets.get(rowKey(row));
+    };
+    expect(bySeq(1)).toBeUndefined();
+    expect(bySeq(2)).toBe("a1");
+    expect(bySeq(3)).toBe("a1");
+    expect(bySeq(4)).toBe("a2");
+  });
+
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("renders a branch button next to copy and hands over the target uuid", async () => {
+    const onBranch = vi.fn();
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={{ seq: 2, role: "assistant", text: "done", ts: null, uuid: "a1" }}
+          workspacePath="/ws"
+          turnFinal
+          branchTarget="a1"
+          onBranch={onBranch}
+        />,
+      );
+    });
+    const buttons = container.querySelectorAll<HTMLButtonElement>("button");
+    expect(buttons).toHaveLength(2);
+    await act(async () => buttons[1].click());
+    expect(onBranch).toHaveBeenCalledWith("a1");
+  });
+
+  it("hides the branch button without a resolvable target", async () => {
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={{ seq: 1, role: "user", text: "hi", ts: null }}
+          workspacePath="/ws"
+          turnFinal
+        />,
+      );
+    });
+    expect(container.querySelectorAll("button")).toHaveLength(1);
   });
 });
 

@@ -170,6 +170,9 @@ export interface ChatStore {
   /** Re-send the session's last user message (grant card's one-click retry
    * after a directory grant takes effect on the next launch). */
   resendLastUser: (key: string) => Promise<void>;
+  /** Fork the conversation at one message (the CLI's /branch): a new session
+   *  file next to the source, title inherited, then opened in place. */
+  branchFromMessage: (key: string, targetUuid: string) => Promise<void>;
   /** Enqueue a message on the active session while a turn streams. */
   queueMessage: (text: string, images: string[]) => void;
   /** Drop a queued message from the active session. */

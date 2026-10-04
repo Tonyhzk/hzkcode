@@ -99,6 +99,11 @@ pub enum EngineEvent {
         result: Option<Value>,
         patch: bool,
     },
+    /// The CLI's uuid for the assistant message that just finished streaming
+    /// (partial-message deltas carry no id of their own): the UI pairs it
+    /// with the live row so the branch action can address the transcript
+    /// entry by uuid, exactly like the CLI's own /branch.
+    MessageUuid(String),
     /// Native session id became known.
     SessionId(String),
     /// Token usage snapshot from the engine.
@@ -1427,6 +1432,13 @@ impl TurnCore {
                 )
             }
             EngineEvent::AttemptEnd { error } => state.attempt_error = error,
+            EngineEvent::MessageUuid(uuid) => state.push(
+                &self.sink,
+                &self.run_id,
+                &self.engine_id,
+                "message_uuid",
+                Value::String(uuid),
+            ),
             EngineEvent::SessionId(id) => self.adopt_session_id(state, &id, true),
             EngineEvent::Usage(usage) => {
                 state.push(&self.sink, &self.run_id, &self.engine_id, "usage", usage)

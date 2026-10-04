@@ -1436,6 +1436,30 @@ export const useChatStore = create<ChatStore>((set, get) => {
       if (tab) await sendPrompt(tab, lastUser.text, lastUser.images ?? []);
     },
 
+    /** Fork the conversation at one message (the CLI's /branch): the host
+     *  writes the new session file next to the source, then the branch opens
+     *  like any other session. */
+    branchFromMessage: async (key, targetUuid) => {
+      const s = get();
+      const tab =
+        s.openTabs.find(
+          (t) => sessionKey(t.engine, t.sessionId, t.workspacePath) === key,
+        ) ?? s.active;
+      if (!tab?.sessionId) return;
+      try {
+        const result = await ipc.branchSession(
+          tab.engine,
+          tab.sessionId,
+          tab.workspacePath,
+          targetUuid,
+        );
+        await get().refreshSessions();
+        await get().selectSession(tab.engine, result.sessionId, tab.workspacePath);
+      } catch (error) {
+        set({ actionError: errorText(error) });
+      }
+    },
+
     queueMessage: (text, images) => {
       const { active } = get();
       if (!active || (!text.trim() && images.length === 0)) return;

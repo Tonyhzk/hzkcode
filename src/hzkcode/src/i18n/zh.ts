@@ -204,6 +204,8 @@ export const zh = {
     toolFailed: "失败",
     diffEmpty: "无修改内容",
     copy: "复制",
+    retry: "重试",
+    branch: "分支",
     modelPicker: "模型",
     modelSearchPlaceholder: "搜索模型…",
     modelsLoading: "正在获取模型列表…",

@@ -3,6 +3,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import Copy from "lucide-react/dist/esm/icons/copy";
 import Check from "lucide-react/dist/esm/icons/check";
+import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
+import GitBranch from "lucide-react/dist/esm/icons/git-branch";
 import AlertCircle from "lucide-react/dist/esm/icons/alert-circle";
 import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle";
 import Info from "lucide-react/dist/esm/icons/info";
@@ -22,7 +24,7 @@ import { QuestionRecord } from "./QuestionCard";
 import { PermissionRecord } from "./PermissionCard";
 import { MESSAGE_ANCHOR_RAIL_BAND_CLASS, MessageAnchorRail } from "./MessageAnchorRail";
 import { createAnchorRowsBuilder } from "./timeline-anchors";
-import { buildRows, collectToolKeys, rowKey, type TimelineRow } from "./timeline-rows";
+import { branchTargets, buildRows, collectToolKeys, rowKey, type TimelineRow } from "./timeline-rows";
 import { formatDuration } from "./format-duration";
 import { ProcessDisclosure } from "./ProcessDisclosure";
 import { CollapsibleMessage } from "./CollapsibleMessage";
@@ -42,6 +44,9 @@ const TimelineRowView = memo(function TimelineRowView({
   thinkingAutoCollapse,
   detailedDisplay,
   seenTools,
+  onRetry,
+  branchTarget,
+  onBranch,
 }: {
   row: TimelineRow;
   workspacePath: string;
@@ -56,6 +61,10 @@ const TimelineRowView = memo(function TimelineRowView({
    *  tool calls print their arguments and results inline. */
   detailedDisplay: boolean;
   seenTools: Set<string>;
+  /** Wired on the bottom-most chat message only (see MessageTimeline). */
+  onRetry?: () => void;
+  branchTarget?: string;
+  onBranch?: (targetUuid: string) => void;
 }) {
   // Plugin-defined row kinds (plan §4.2 #5) dispatch to the registered
   // renderer before the builtin switch below; builtin kinds never hit this
@@ -92,6 +101,9 @@ const TimelineRowView = memo(function TimelineRowView({
       message={row.message}
       workspacePath={workspacePath}
       turnFinal={row.turnFinal && !turnLive}
+      onRetry={onRetry}
+      branchTarget={branchTarget}
+      onBranch={onBranch}
     />
   );
 });
@@ -182,8 +194,20 @@ function MessageMeta({ message }: { message: Message }) {
   );
 }
 
-/** Assistant message hover actions (copy). */
-function MessageActions({ text }: { text: string }) {
+/** Assistant message hover actions (copy + retry + branch). The retry
+ *  affordance is wired only on the timeline's last message (the terminal's
+ *  `//`); branch rides any message that resolves to a transcript entry. */
+function MessageActions({
+  text,
+  onRetry,
+  branchTarget,
+  onBranch,
+}: {
+  text: string;
+  onRetry?: () => void;
+  branchTarget?: string;
+  onBranch?: (targetUuid: string) => void;
+}) {
   const { t } = useTranslation();
   const { copied, copy } = useCopied();
   const iconBtn =
@@ -202,6 +226,28 @@ function MessageActions({ text }: { text: string }) {
           <Copy className="size-3.5" aria-hidden />
         )}
       </button>
+      {onRetry && (
+        <button
+          type="button"
+          aria-label={t("chat.retry")}
+          title={t("chat.retry")}
+          onClick={onRetry}
+          className={iconBtn}
+        >
+          <RotateCcw className="size-3.5" aria-hidden />
+        </button>
+      )}
+      {branchTarget && onBranch && (
+        <button
+          type="button"
+          aria-label={t("chat.branch")}
+          title={t("chat.branch")}
+          onClick={() => onBranch(branchTarget)}
+          className={iconBtn}
+        >
+          <GitBranch className="size-3.5" aria-hidden />
+        </button>
+      )}
     </div>
   );
 }
@@ -212,31 +258,80 @@ function MessageActions({ text }: { text: string }) {
  *  it copies; a footer stays put regardless of bubble height. Mirrors the
  *  assistant row's hover-reveal so a settled conversation stays clean, and
  *  stays reachable by keyboard. */
-function UserMessageCopy({ text }: { text: string }) {
+function UserMessageCopy({
+  text,
+  onRetry,
+  branchTarget,
+  onBranch,
+}: {
+  text: string;
+  onRetry?: () => void;
+  branchTarget?: string;
+  onBranch?: (targetUuid: string) => void;
+}) {
   const { t } = useTranslation();
   const { copied, copy } = useCopied();
-  if (!text.trim()) return null;
+  const iconBtn =
+    "flex size-6 cursor-pointer items-center justify-center rounded-md bg-transparent text-foreground-icon-secondary opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-background-tertiary-hover hover:text-foreground-icon-primary";
+  const canBranch = Boolean(branchTarget && onBranch);
+  if (!text.trim() && !onRetry && !canBranch) return null;
   return (
-    <button
-      type="button"
-      aria-label={t("chat.copy")}
-      title={t("chat.copy")}
-      onClick={() => copy(text)}
-      className="flex size-6 cursor-pointer items-center justify-center rounded-md bg-transparent text-foreground-icon-secondary opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-background-tertiary-hover hover:text-foreground-icon-primary"
-    >
-      {copied ? (
-        <Check className="size-3.5 text-lime-500" aria-hidden />
-      ) : (
-        <Copy className="size-3.5" aria-hidden />
+    <div className="flex items-center gap-0.5">
+      {text.trim() && (
+        <button
+          type="button"
+          aria-label={t("chat.copy")}
+          title={t("chat.copy")}
+          onClick={() => copy(text)}
+          className={iconBtn}
+        >
+          {copied ? (
+            <Check className="size-3.5 text-lime-500" aria-hidden />
+          ) : (
+            <Copy className="size-3.5" aria-hidden />
+          )}
+        </button>
       )}
-    </button>
+      {onRetry && (
+        <button
+          type="button"
+          aria-label={t("chat.retry")}
+          title={t("chat.retry")}
+          onClick={onRetry}
+          className={iconBtn}
+        >
+          <RotateCcw className="size-3.5" aria-hidden />
+        </button>
+      )}
+      {canBranch && (
+        <button
+          type="button"
+          aria-label={t("chat.branch")}
+          title={t("chat.branch")}
+          onClick={() => onBranch!(branchTarget!)}
+          className={iconBtn}
+        >
+          <GitBranch className="size-3.5" aria-hidden />
+        </button>
+      )}
+    </div>
   );
 }
 
 /** User bubble. The agent block sendPrompt appended stays in history (the
  *  CLI transcript owns it), but the bubble strips it and carries the agent
  *  identity as a small badge above, mirroring the meta row's caption type. */
-function UserMessageRow({ message }: { message: Message }) {
+function UserMessageRow({
+  message,
+  onRetry,
+  branchTarget,
+  onBranch,
+}: {
+  message: Message;
+  onRetry?: () => void;
+  branchTarget?: string;
+  onBranch?: (targetUuid: string) => void;
+}) {
   const { t } = useTranslation();
   const stripped = useMemo(() => stripAgentBlock(message.text), [message.text]);
   return (
@@ -261,7 +356,12 @@ function UserMessageRow({ message }: { message: Message }) {
           {stripped.text}
         </CollapsibleMessage>
       </div>
-      <UserMessageCopy text={stripped.text} />
+      <UserMessageCopy
+        text={stripped.text}
+        onRetry={onRetry}
+        branchTarget={branchTarget}
+        onBranch={onBranch}
+      />
     </div>
   );
 }
@@ -293,10 +393,21 @@ export const MessageRow = memo(function MessageRow({
   message,
   workspacePath,
   turnFinal,
+  onRetry,
+  branchTarget,
+  onBranch,
 }: {
   message: Message;
   workspacePath: string;
   turnFinal: boolean;
+  /** Retry affordance (the terminal's `//`): wired on the timeline's last
+   *  message only, so a mid-history bubble never shows it. */
+  onRetry?: () => void;
+  /** Branch affordance (the CLI's /branch): the transcript uuid the fork
+   *  should end at — the row's own entry for a reply, the previous reply
+   *  for a user prompt. Absent when the row cannot resolve one. */
+  branchTarget?: string;
+  onBranch?: (targetUuid: string) => void;
 }) {
   // A live row's text grows per store flush; a full markdown reparse per
   // flush scales linearly with reply length (~30ms at 32KB) and starves the
@@ -317,7 +428,14 @@ export const MessageRow = memo(function MessageRow({
     return <PermissionRecord message={message} />;
   }
   if (message.role === "user") {
-    return <UserMessageRow message={message} />;
+    return (
+      <UserMessageRow
+        message={message}
+        onRetry={onRetry}
+        branchTarget={branchTarget}
+        onBranch={onBranch}
+      />
+    );
   }
   if (message.role === "notice") {
     return <NoticeRow message={message} />;
@@ -327,7 +445,12 @@ export const MessageRow = memo(function MessageRow({
       <Markdown text={text} workspacePath={workspacePath} streaming={message.live} />
       {turnFinal && (
         <div className="mt-1 flex items-center gap-2">
-          <MessageActions text={message.text} />
+          <MessageActions
+            text={message.text}
+            onRetry={onRetry}
+            branchTarget={branchTarget}
+            onBranch={onBranch}
+          />
           <MessageMeta message={message} />
         </div>
       )}
@@ -340,11 +463,19 @@ export const MessageTimeline = memo(function MessageTimeline({
   streaming,
   onLoadEarlier,
   workspacePath,
+  onRetry,
+  onBranch,
 }: {
   session: SessionState;
   streaming: boolean;
   onLoadEarlier: () => void;
   workspacePath: string;
+  /** Repeat the last prompt (the terminal's `//`); rendered as a small icon
+   *  next to the copy action on the bottom-most chat message. */
+  onRetry?: () => void;
+  /** Fork the conversation at one message (the CLI's /branch): the target is
+   *  the transcript uuid the fork should end at. */
+  onBranch?: (targetUuid: string) => void;
 }) {
 
   const { t } = useTranslation();
@@ -375,6 +506,23 @@ export const MessageTimeline = memo(function MessageTimeline({
     }
     return null;
   }, [rows]);
+  // The bottom-most chat message (user or assistant) carries the retry icon.
+  // Notice rows are not messages; process rows fold tool runs.
+  const lastMessageKey = useMemo(() => {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const row = rows[i];
+      if (
+        row.kind === "msg" &&
+        (row.message.role === "user" || row.message.role === "assistant")
+      ) {
+        return rowKey(row);
+      }
+    }
+    return null;
+  }, [rows]);
+  // Branch target per message row (the CLI's /branch semantics); rows
+  // without a resolvable transcript entry get no icon.
+  const branchTargetByRow = useMemo(() => branchTargets(rows), [rows]);
   // Live stream rows are ordinary rows that grow in place; the only extra
   // tail item is the turn-status indicator below them.
   // The tail indicator stays mounted AND visible for the whole turn — a
@@ -538,6 +686,20 @@ export const MessageTimeline = memo(function MessageTimeline({
                     thinkingAutoCollapse={thinkingAutoCollapse}
                     detailedDisplay={detailedDisplay}
                     seenTools={seenTools}
+                    onRetry={
+                      onRetry &&
+                      !turnLive &&
+                      rows[item.index].kind === "msg" &&
+                      rowKey(rows[item.index]) === lastMessageKey
+                        ? onRetry
+                        : undefined
+                    }
+                    branchTarget={
+                      !turnLive && rows[item.index].kind === "msg"
+                        ? branchTargetByRow.get(rowKey(rows[item.index]))
+                        : undefined
+                    }
+                    onBranch={onBranch}
                   />
                 )}
               </div>
