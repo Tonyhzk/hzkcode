@@ -329,6 +329,8 @@ pub fn read_settings() -> Result<AppSettings, String> {
 /// Write-then-rename so a crash mid-write never leaves a truncated file that
 /// the next read would reject as corrupt.
 pub(crate) fn atomic_write(path: &std::path::Path, content: &str) -> Result<(), String> {
+    #[cfg(test)]
+    crate::test_support::guard_test_write(path)?;
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, content).map_err(|e| format!("write {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("rename {}: {e}", path.display()))

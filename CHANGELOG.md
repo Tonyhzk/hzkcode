@@ -89,7 +89,7 @@
 - 推理强度对齐：改为直传 CLI 的 `--effort` 档位（low / medium / high / xhigh / max），不再用 `HZKCODE_MAX_THINKING_TOKENS` 伪造思考预算，由 CLI 按其模型感知规则解析
 - CLI 会话 Agent：选中智能体后以 `--agents`（定义 JSON）+ `--agent`（会话主线程）启动，无头会话应用其系统提示词；恢复会话时按 CLI 规则在定义可用时还原（GUI 每次发送都会重新下发定义，因此照常生效）；移除旧的「智能体文本块内联」机制（旧会话历史中的块仍按原样剥离显示）
 - 后台任务完成通知与输出历史：`system/task_notification` 以结构化事件（status/summary）在时间线显示为通知行、标签随界面语言本地化；同源的后台任务通知在会话文件中以 `<task-notification>` XML 用户行持久化，历史解析将其显示为通知行（取 `<summary>`），不再露出原始 XML；本地命令输出（synthetic 助手快照与 `<local-command-stdout>` 行）在历史重载后保留，与实时显示一致
-- 测试基础设施：Rust 测试中操控进程级环境变量（HOME 等）的各模块锁合并为一个进程级共享锁（`test_support`），消除 `cargo test` 并行运行时的偶发相互干扰
+- 测试基础设施：Rust 测试中操控进程级环境变量（HOME 等）的各模块锁合并为一个进程级共享锁（`test_support`），消除 `cargo test` 并行运行时的偶发相互干扰；并为持久化写入加护栏（`test_support::guard_test_write`，接入 `settings::atomic_write` 与 `agents::write_store_to`）：测试构建只允许写入系统临时目录，防止竞态把夹具写进真实用户目录（事故复盘：一次 HOME 竞争曾把测试夹具写入真实 `~/.hzkcode/gui/config.json` 并覆盖用户渠道）
 - 移除遗留「停用引擎」状态：历史配置的 `current` 停在 `__disabled__`（旧版停用开关的标记）时，启动后不再显示「未启用 CLI」并把模型选择器换成提示 —— 发送启动门控（`ensure_engine_enabled`）与 `EngineInfo.enabled` 字段整体删除，引擎固定可用；`resolve_provider` 把该标记与官方配置同等对待（空 env、不报错），`get_cli_config` 返回前将其归一化为未选渠道，渠道迁移的官方判定并入该标记（`disabled_from` 字段与前端 `PSEUDO_DISABLED` 一并删除，遗留配置不再触发 `HZKCODE_PROVIDER_MIGRATION_CONFLICT`），`set_current_provider` 不再接受写入该标记
 - 界面文案不再出现「CLI」字样：内置终端程序即应用自身组成部分，用户可见处统一改为「程序 / 引擎 / 版本」等表述（权限不可用提示、内置指令分组与标签、版本命令说明、一键安装标题、官方配置与自定义路径 / 模型说明、渠道对话框说明、自动压缩与功能开关提示、会话代理地址与开关、使用量脚注等中英文案约 40 处），对话区的模型选择器兜底占位改为「暂无可用的模型配置，点击前往设置」；Rust 侧一键更新说明同步去掉该字样
 - 模型档位显示修正：渠道未映射档位时，模型选择器的三个档位不再回落显示 CLI 别名（Opus / Sonnet / Haiku），目录层直接命名为 High / Mid / Low，具体跑哪个内建模型仍由副标题注明；映射了档位的渠道保持「[档位]模型名」显示不变

@@ -83,6 +83,8 @@
 
 验证口径（Rust）：涉及公共签名变更（`SendRequest` 字段、tauri 命令参数、`EngineEvent` 变体等）时，以 `cargo test --no-run`（编译 lib / tests / examples 全目标）与 `cargo test --test send_path` 作为完成标准，不得只跑 `cargo test --lib`。
 
+测试写入护栏（Rust）：测试构建只允许写入系统临时目录（`test_support::guard_test_write`，已接入 `settings::atomic_write` 与 `agents::write_store_to`）；新增持久化写入点或新的 HOME/config 目录操控测试时必须接同一护栏与共享锁，防止夹具写入真实用户目录。护栏拒绝即测试失败，按失败处理，不得放宽护栏绕过。
+
 ## UI 验证
 
 - 截图只截应用窗口本身（不截桌面、不激活窗口）：`1_Script/mac-window-shot list [过滤词]` 列窗口，`1_Script/mac-window-shot shot <匹配词> <输出.png>` 直接截取（去阴影，走系统 screencapture；源码 `1_Script/mac-window-shot.swift`，编译产物不入库）。

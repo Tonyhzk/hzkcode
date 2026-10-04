@@ -70,6 +70,8 @@ fn write_store(store: &AgentStore) -> Result<(), String> {
 }
 
 fn write_store_to(path: &Path, store: &AgentStore) -> Result<(), String> {
+    #[cfg(test)]
+    crate::test_support::guard_test_write(path)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
