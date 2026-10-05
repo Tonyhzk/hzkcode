@@ -88,7 +88,7 @@
 - `pnpm build`：前端类型检查与构建
 - `pnpm test`：运行 Vitest 测试（Node 26 下需 `NODE_OPTIONS=--no-experimental-webstorage`，否则 Node 原生 localStorage 与 jsdom 注入冲突导致用例收集失败）
 
-开发实例开关约定（用户明确要求）：批量改代码期间不启动 `pnpm dev`，改动完成后统一启动一次供实测；`tauri dev` 会在每次 Rust 源码变更时自动重建重启应用窗口并抢焦点，会打断用户桌面工作。前端改动走 Vite 热更新、不会弹窗，但实例仍按上述约定统一启停。
+开发实例开关约定（用户明确要求）：启动按需，只有用户明确要求时才启动；用户手动退出实例（关闭应用窗口）后保持关闭，不得自动重新启动或恢复；`tauri dev` 会在每次 Rust 源码变更时自动重建重启应用窗口并抢焦点，会打断用户桌面工作。前端改动走 Vite 热更新、不会弹窗。
 
 验证口径（Rust）：涉及公共签名变更（`SendRequest` 字段、tauri 命令参数、`EngineEvent` 变体等）时，以 `cargo test --no-run`（编译 lib / tests / examples 全目标）与 `cargo test --test send_path` 作为完成标准，不得只跑 `cargo test --lib`。
 
