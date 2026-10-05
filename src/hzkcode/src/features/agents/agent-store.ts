@@ -14,6 +14,7 @@ import i18n from "@/lib/i18n";
 import {
   ipc,
   type AgentConfig,
+  type AgentInputPayload,
   type BuiltInAgentDivisionView,
   type BuiltInAgentView,
 } from "@/lib/ipc";
@@ -37,12 +38,9 @@ export function currentCatalogLocale(): string {
   return i18n.resolvedLanguage ?? i18n.language;
 }
 
-export interface AgentInput {
-  name: string;
-  prompt?: string;
-  icon?: string;
-}
-export type AgentUpdates = Partial<AgentInput>;
+/** The whole identity record the editor submits; every field replaces the
+ *  stored value (see AgentInputPayload in lib/ipc). */
+export type AgentInput = AgentInputPayload;
 
 interface AgentStore {
   agents: AgentConfig[];
@@ -57,7 +55,7 @@ interface AgentStore {
    *  create-root-cache-store stale-on-error model). */
   refresh: () => Promise<void>;
   create: (input: AgentInput) => Promise<AgentConfig>;
-  update: (id: string, updates: AgentUpdates) => Promise<void>;
+  update: (id: string, input: AgentInput) => Promise<void>;
   remove: (id: string) => Promise<void>;
 }
 

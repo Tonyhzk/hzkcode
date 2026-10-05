@@ -67,9 +67,14 @@ import { effectivePermission, readPermissionPref } from "./store/permissions";
 import i18n from "@/lib/i18n";
 import {
   clearSelectedAgent,
+  getRecordedAgent,
   getSelectedAgent,
+  migrateRecordedAgent,
   migrateSelectedAgent,
+  selectSelectedAgent,
+  setRecordedAgent,
 } from "@/features/agents/selected-agent";
+import { useAgentStore } from "@/features/agents/agent-store";
 import { persistSettings } from "./store/settings-persist";
 import {
   listExternalSessionMetas,
@@ -265,12 +270,26 @@ export const useChatStore = create<ChatStore>((set, get) => {
     // launch carries its definition as `--agents` JSON and selects it with
     // `--agent`, so headless sessions run under the agent's system prompt
     // and the CLI re-derives it on resume.
-    const selectedAgent = getSelectedAgent(tab.workspacePath, tab.sessionId);
+    let selectedAgent = getSelectedAgent(tab.workspacePath, tab.sessionId);
+    // The persisted pin snapshots the record picked at selection time; edits
+    // made later in settings must still apply to pinned sessions, so refresh
+    // it from the catalog (built-in picks resolve their own prompt below).
+    if (selectedAgent && selectedAgent.source !== "builtIn") {
+      const pinned = selectedAgent;
+      const fresh = useAgentStore
+        .getState()
+        .agents.find((agent) => agent.id === pinned.id);
+      if (fresh) selectedAgent = { ...pinned, ...fresh };
+    }
     // Built-in resolve failures are re-flagged after the optimistic-turn
     // patch below (which resets `error` for the new turn).
     let agentResolveError: string | null = null;
     let agentName: string | null = null;
     let agentsJson: string | null = null;
+    // Identity overrides for this send: tool whitelist, model and effort.
+    let agentTools: string[] | null = null;
+    let identityModel: string | null = null;
+    let identityEffort: string | null = null;
     if (selectedAgent) {
       let resolvedName = selectedAgent.name;
       let resolvedPrompt: string | null = null;
@@ -290,28 +309,134 @@ export const useChatStore = create<ChatStore>((set, get) => {
       } else {
         resolvedPrompt = selectedAgent.prompt ?? null;
       }
-      if (resolvedPrompt) {
+      if (agentResolveError === null) {
+        // The CLI rejects an empty prompt in an agent definition, and the
+        // definition is what carries the identity on resume — so an identity
+        // that only configures tools/model gets a minimal prompt line
+        // instead of silently losing everything at send time.
+        resolvedPrompt =
+          resolvedPrompt?.trim() ||
+          i18n.t("chat.agentDefaultPrompt", { name: resolvedName });
         agentName = resolvedName;
+        // 3.1.0：自定义身份缺省不注入内置规范、CLAUDE.md/Rules 与个人
+        // 记忆。身份限定后按限定集合下发；未限定时显式声明全量——GUI 的
+        // 智能体是叠加在完整上下文上的角色预设，保持既有行为。
+        const context = selectedAgent.context ?? [
+          "prompts",
+          "claudemd",
+          "memory",
+        ];
+        // The whitelist rides the launch flag below: the headless path does
+        // not read a definition's tool list. An empty list (disable every
+        // tool) is preserved as-is.
+        agentTools = selectedAgent.tools ?? null;
+        identityModel = selectedAgent.model ?? null;
+        identityEffort = selectedAgent.effort ?? null;
         agentsJson = JSON.stringify({
           [resolvedName]: {
             description: agentDescription(resolvedName, resolvedPrompt),
             prompt: resolvedPrompt,
-            // 3.1.0：自定义身份缺省不注入内置规范、CLAUDE.md/Rules 与个人
-            // 记忆；显式声明全量组件。GUI 的智能体是叠加在完整上下文上的
-            // 角色预设，保持既有行为的声明。
-            context: ["prompts", "claudemd", "memory"],
+            context,
+            // The definition carries the other knobs too, so a session later
+            // resumed from the terminal keeps them (the launch flags are the
+            // headless source of truth).
+            ...(agentTools ? { tools: agentTools } : {}),
+            ...(identityModel ? { model: identityModel } : {}),
+            ...(identityEffort ? { effort: identityEffort } : {}),
           },
         });
       }
     }
     const engine = tab.engine;
     const key = sessionKey(engine, tab.sessionId, tab.workspacePath);
+    // Identity switch on a conversation that already has messages clones it
+    // (the CLI's /agents semantics): the original session keeps its identity,
+    // the new one continues under the picked identity. Drafts and empty
+    // conversations switch in place — the host reports nothing to clone.
+    // The baseline is the identity this app last sent with; when it has no
+    // record yet (a CLI-created session, or a cleared store), the identity
+    // recorded in the session file itself stands in.
+    let recordedAgent = getRecordedAgent(tab.workspacePath, tab.sessionId);
+    if (recordedAgent === undefined && tab.sessionId) {
+      try {
+        recordedAgent = await ipc.getSessionAgentSetting(engine, tab.sessionId);
+      } catch {
+        recordedAgent = undefined;
+      }
+    }
+    if (
+      tab.sessionId &&
+      agentResolveError === null &&
+      (recordedAgent ?? null) !== (agentName ?? null)
+    ) {
+      let cloned: { sessionId: string; cloned: boolean } | null = null;
+      try {
+        cloned = await ipc.cloneSession(engine, tab.sessionId, tab.workspacePath);
+      } catch (error) {
+        patchSession(set, key, { error: errorText(error) });
+        return;
+      }
+      if (cloned.cloned && cloned.sessionId !== tab.sessionId) {
+        // The clone carries the new pick; the source session goes back to
+        // the identity it was running under (the recorded baseline), so
+        // returning there resumes that identity instead of cloning again.
+        const previous = recordedAgent ?? null;
+        const previousDefinition =
+          previous === null
+            ? null
+            : (useAgentStore
+                .getState()
+                .agents.find((agent) => agent.name === previous) ?? null);
+        const previousBuiltIn =
+          previousDefinition || previous === null
+            ? undefined
+            : useAgentStore
+                .getState()
+                .builtInAgents.find((agent) => agent.name === previous);
+        if (previousDefinition) {
+          selectSelectedAgent(
+            tab.workspacePath,
+            tab.sessionId,
+            previousDefinition,
+          );
+        } else if (previousBuiltIn) {
+          selectSelectedAgent(tab.workspacePath, tab.sessionId, {
+            id: previousBuiltIn.id,
+            name: previousBuiltIn.name,
+            source: "builtIn",
+          });
+        } else {
+          // No previous identity, or its definition is gone (deleted or
+          // disabled): the source is identity-less, matching what the CLI
+          // can restore for it.
+          clearSelectedAgent(tab.workspacePath, tab.sessionId);
+          setRecordedAgent(tab.workspacePath, tab.sessionId, null);
+        }
+        setRecordedAgent(tab.workspacePath, cloned.sessionId, agentName);
+        if (selectedAgent) {
+          selectSelectedAgent(tab.workspacePath, cloned.sessionId, selectedAgent);
+        } else {
+          clearSelectedAgent(tab.workspacePath, cloned.sessionId);
+        }
+        await get().refreshSessions();
+        await get().selectSession(engine, cloned.sessionId, tab.workspacePath);
+        const nextTab = get().active;
+        if (nextTab?.sessionId === cloned.sessionId) {
+          return sendPrompt(nextTab, prompt, images);
+        }
+        patchSession(set, key, { error: i18n.t("chat.agentCloneFailed") });
+        return;
+      }
+    }
     // Resolve BEFORE the optimistic rows land: the patch below writes
     // activeModel, and a resolver reading it afterwards would see its own
     // write instead of the session's history.
     // The session's own model, not the engine default: continuing a
-    // conversation keeps running the model that conversation uses.
+    // conversation keeps running the model that conversation uses. A pinned
+    // identity's model wins over both — the identity pins its own model (see
+    // the identity editor).
     const model =
+      identityModel ||
       resolveSessionModel(tab, get().bySession[key], get().models[engine]) ||
       null;
     // Remember what this session runs, spelled as the picker spells it: the
@@ -328,7 +453,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
         rememberModelForRun(key, model);
       }
     }
+    // Same override rule as the model: a pinned identity's level wins when
+    // set.
     const effort =
+      identityEffort ??
       resolveSessionEffort(tab, get().bySession[key], get().efforts[engine]) ??
       null;
     // Remember the level the way the model is remembered: the picker follows
@@ -410,12 +538,21 @@ export const useChatStore = create<ChatStore>((set, get) => {
         providerId: provider,
         agentName,
         agentsJson,
+        agentTools,
         // Session proxy switch (the composer's 会话开关, the CLI's /proxy):
         // null keeps the app/shell default for this send.
         proxyEnabled: get().bySession[key]?.proxyEnabled ?? null,
         // Session second-brain switch (the CLI's /second-brain).
         secondBrainEnabled: get().bySession[key]?.secondBrainEnabled ?? null,
       });
+      // Record the identity only after the send landed: a failed spawn or a
+      // permission denial keeps the previous value, so the retry still
+      // clones on an identity change.
+      setRecordedAgent(
+        tab.workspacePath,
+        result.sessionId ?? tab.sessionId,
+        agentName,
+      );
       // Older backends choose their own id. Retire the provisional route.
       if (result.runId !== requestedRunId) {
         runRouting.delete(requestedRunId);
@@ -437,6 +574,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           && (!settled || (knownKey && get().bySession[knownKey]?.interrupted) || stillPending)) {
         // Preassigned native id (grok): adopt immediately.
         migrateSelectedAgent(tab.workspacePath, result.sessionId);
+        migrateRecordedAgent(tab.workspacePath, result.sessionId);
         const newKey = sessionKey(
           engine,
           result.sessionId,

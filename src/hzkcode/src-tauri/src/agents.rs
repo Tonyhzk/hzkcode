@@ -20,6 +20,24 @@ pub struct AgentConfig {
     /// Creation time, unix milliseconds; assigned by agent_add.
     #[serde(default)]
     pub created_at: Option<u64>,
+    /// Tool whitelist for the identity (official engine tool names). None
+    /// keeps every tool available; Some(list) restricts the session to those
+    /// tools — an empty list disables all tools (the engine's `--tools ""`).
+    #[serde(default)]
+    pub tools: Option<Vec<String>>,
+    /// Model for this identity: an engine alias (opus / sonnet / haiku) or a
+    /// concrete model name. None follows the session's model.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Context components to inject (prompts / claudemd / memory). None keeps
+    /// the full set (the pre-existing behavior); Some restricts to the subset
+    /// (possibly empty — an identity-only conversation).
+    #[serde(default)]
+    pub context: Option<Vec<String>>,
+    /// Reasoning effort level for this identity (low/medium/high/xhigh/max).
+    /// None follows the session's level.
+    #[serde(default)]
+    pub effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -31,6 +49,11 @@ struct AgentStore {
 
 const MAX_NAME_CHARS: usize = 64;
 const MAX_PROMPT_CHARS: usize = 100_000;
+const MAX_TOOLS: usize = 64;
+const MAX_TOOL_NAME_CHARS: usize = 64;
+const MAX_MODEL_CHARS: usize = 128;
+const CONTEXT_COMPONENTS: [&str; 3] = ["prompts", "claudemd", "memory"];
+const EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
 fn agents_file() -> PathBuf {
     crate::paths::app_home().join("agents.json")
@@ -117,6 +140,85 @@ fn sanitize_icon(icon: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+/// Tool names are forwarded verbatim as `--tools` args (the engine ignores
+/// unknown names); keep them to a sane charset and drop duplicates. An empty
+/// list is preserved — it means "disable every tool".
+fn validate_tools(tools: Option<Vec<String>>) -> Result<Option<Vec<String>>, String> {
+    let Some(tools) = tools else {
+        return Ok(None);
+    };
+    if tools.len() > MAX_TOOLS {
+        return Err(format!("Agent tool list must be at most {MAX_TOOLS} entries"));
+    }
+    let mut out: Vec<String> = Vec::new();
+    for tool in tools {
+        let trimmed = tool.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let valid = trimmed.chars().count() <= MAX_TOOL_NAME_CHARS
+            && trimmed
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        if !valid {
+            return Err(format!("Invalid tool name: {trimmed}"));
+        }
+        if !out.iter().any(|seen| seen == trimmed) {
+            out.push(trimmed.to_string());
+        }
+    }
+    Ok(Some(out))
+}
+
+/// Empty model names normalize to None (follow the session's model).
+fn validate_model(model: Option<String>) -> Result<Option<String>, String> {
+    let Some(model) = model else {
+        return Ok(None);
+    };
+    let trimmed = model.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.chars().count() > MAX_MODEL_CHARS {
+        return Err("Agent model name is too long".to_string());
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
+/// Context components: unknown values are dropped, duplicates removed. None
+/// (field absent) means "full set"; Some([]) means "inject nothing".
+fn validate_context(context: Option<Vec<String>>) -> Result<Option<Vec<String>>, String> {
+    let Some(context) = context else {
+        return Ok(None);
+    };
+    let mut out: Vec<String> = Vec::new();
+    for component in context {
+        let name = component.trim().to_ascii_lowercase();
+        if CONTEXT_COMPONENTS.contains(&name.as_str()) && !out.iter().any(|seen| seen == &name) {
+            out.push(name);
+        }
+    }
+    Ok(Some(out))
+}
+
+/// Empty effort values normalize to None (follow the session's level).
+fn validate_effort(effort: Option<String>) -> Result<Option<String>, String> {
+    let Some(effort) = effort else {
+        return Ok(None);
+    };
+    let trimmed = effort.trim().to_ascii_lowercase();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if !EFFORT_LEVELS.contains(&trimmed.as_str()) {
+        return Err(format!(
+            "Agent effort must be one of: {}",
+            EFFORT_LEVELS.join(", ")
+        ));
+    }
+    Ok(Some(trimmed))
+}
+
 fn sorted_agents(store: &AgentStore) -> Vec<AgentConfig> {
     let mut agents = store.agents.clone();
     // Newest first, matching the legacy app's ordering.
@@ -133,6 +235,10 @@ fn agent_add_blocking(
     name: String,
     prompt: Option<String>,
     icon: Option<String>,
+    tools: Option<Vec<String>>,
+    model: Option<String>,
+    context: Option<Vec<String>>,
+    effort: Option<String>,
 ) -> Result<AgentConfig, String> {
     let mut store = read_store()?;
     let agent = AgentConfig {
@@ -141,32 +247,39 @@ fn agent_add_blocking(
         prompt: validate_prompt(prompt)?,
         icon: sanitize_icon(icon),
         created_at: Some(now_millis()),
+        tools: validate_tools(tools)?,
+        model: validate_model(model)?,
+        context: validate_context(context)?,
+        effort: validate_effort(effort)?,
     };
     store.agents.push(agent.clone());
     write_store(&store)?;
     Ok(agent)
 }
 
+/// The editor submits the whole record: every field replaces the stored
+/// value (None clears it), so removing a tool list or a model sticks.
 fn agent_update_blocking(
     id: String,
-    name: Option<String>,
+    name: String,
     prompt: Option<String>,
     icon: Option<String>,
+    tools: Option<Vec<String>>,
+    model: Option<String>,
+    context: Option<Vec<String>>,
+    effort: Option<String>,
 ) -> Result<bool, String> {
     let mut store = read_store()?;
     let Some(agent) = store.agents.iter_mut().find(|agent| agent.id == id) else {
         return Ok(false);
     };
-    if let Some(name) = name {
-        agent.name = validate_name(&name)?;
-    }
-    if let Some(prompt) = prompt {
-        // Some("") clears the prompt via the empty→None normalization.
-        agent.prompt = validate_prompt(Some(prompt))?;
-    }
-    if let Some(icon) = icon {
-        agent.icon = sanitize_icon(Some(icon));
-    }
+    agent.name = validate_name(&name)?;
+    agent.prompt = validate_prompt(prompt)?;
+    agent.icon = sanitize_icon(icon);
+    agent.tools = validate_tools(tools)?;
+    agent.model = validate_model(model)?;
+    agent.context = validate_context(context)?;
+    agent.effort = validate_effort(effort)?;
     write_store(&store)?;
     Ok(true)
 }
@@ -194,22 +307,34 @@ pub async fn agent_add(
     name: String,
     prompt: Option<String>,
     icon: Option<String>,
+    tools: Option<Vec<String>>,
+    model: Option<String>,
+    context: Option<Vec<String>>,
+    effort: Option<String>,
 ) -> Result<AgentConfig, String> {
-    tauri::async_runtime::spawn_blocking(move || agent_add_blocking(name, prompt, icon))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        agent_add_blocking(name, prompt, icon, tools, model, context, effort)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn agent_update(
     id: String,
-    name: Option<String>,
+    name: String,
     prompt: Option<String>,
     icon: Option<String>,
+    tools: Option<Vec<String>>,
+    model: Option<String>,
+    context: Option<Vec<String>>,
+    effort: Option<String>,
 ) -> Result<bool, String> {
-    tauri::async_runtime::spawn_blocking(move || agent_update_blocking(id, name, prompt, icon))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        agent_update_blocking(id, name, prompt, icon, tools, model, context, effort)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -308,6 +433,7 @@ fn import_legacy_agents_from(
                 prompt,
                 icon: migrate_icon(agent.icon),
                 created_at: agent.created_at.and_then(|v| u64::try_from(v).ok()),
+                ..Default::default()
             });
         }
         if !imported.is_empty() {
@@ -393,32 +519,77 @@ mod tests {
             "  代码审查  ".to_string(),
             Some("审查 diff".to_string()),
             Some("bot".to_string()),
+            Some(vec!["Read".to_string(), "Bash".to_string()]),
+            Some("opus".to_string()),
+            Some(vec!["prompts".to_string(), "memory".to_string()]),
+            Some("high".to_string()),
         )
         .unwrap();
         assert!(!agent.id.is_empty());
         assert_eq!(agent.name, "代码审查");
         assert!(agent.created_at.is_some());
+        assert_eq!(agent.model.as_deref(), Some("opus"));
+        assert_eq!(agent.effort.as_deref(), Some("high"));
 
         let list = agent_list_blocking().unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, agent.id);
         assert_eq!(list[0].prompt.as_deref(), Some("审查 diff"));
+        assert_eq!(
+            list[0].tools.as_deref(),
+            Some(&["Read".to_string(), "Bash".to_string()][..])
+        );
 
-        // Partial update: name only, prompt/icon untouched.
-        assert!(agent_update_blocking(agent.id.clone(), Some("评审".to_string()), None, None).unwrap());
+        // The editor submits the whole record: every field replaces its
+        // stored value (None clears the optional ones).
+        assert!(agent_update_blocking(
+            agent.id.clone(),
+            "评审".to_string(),
+            Some("审查 diff（新）".to_string()),
+            Some("bot".to_string()),
+            Some(vec!["Read".to_string()]),
+            None,
+            None,
+            None,
+        )
+        .unwrap());
         let list = agent_list_blocking().unwrap();
         assert_eq!(list[0].name, "评审");
-        assert_eq!(list[0].prompt.as_deref(), Some("审查 diff"));
+        assert_eq!(list[0].prompt.as_deref(), Some("审查 diff（新）"));
         assert_eq!(list[0].icon.as_deref(), Some("bot"));
+        assert_eq!(list[0].tools.as_deref(), Some(&["Read".to_string()][..]));
+        assert_eq!(list[0].model, None, "None clears the stored model");
+        assert_eq!(list[0].context, None);
+        assert_eq!(list[0].effort, None);
 
-        // Some("") clears optional fields.
-        assert!(agent_update_blocking(agent.id.clone(), None, Some("".to_string()), Some("".to_string())).unwrap());
+        // Empty optional fields clear them on a full submit.
+        assert!(agent_update_blocking(
+            agent.id.clone(),
+            "评审".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap());
         let list = agent_list_blocking().unwrap();
         assert_eq!(list[0].prompt, None);
         assert_eq!(list[0].icon, None);
 
         // Unknown ids are a false, not an error.
-        assert!(!agent_update_blocking("missing".to_string(), Some("x".to_string()), None, None).unwrap());
+        assert!(!agent_update_blocking(
+            "missing".to_string(),
+            "x".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap());
         assert!(!agent_delete_blocking("missing".to_string()).unwrap());
 
         assert!(agent_delete_blocking(agent.id.clone()).unwrap());
@@ -428,14 +599,90 @@ mod tests {
     #[test]
     fn name_validation() {
         let _home = ScratchHome::new("validate");
-        assert!(agent_add_blocking("   ".to_string(), None, None).is_err());
+        assert!(agent_add_blocking("   ".to_string(), None, None, None, None, None, None).is_err());
         let long = "a".repeat(MAX_NAME_CHARS + 1);
-        assert!(agent_add_blocking(long, None, None).is_err());
+        assert!(agent_add_blocking(long, None, None, None, None, None, None).is_err());
         let prompt = "p".repeat(MAX_PROMPT_CHARS + 1);
-        assert!(agent_add_blocking("ok".to_string(), Some(prompt), None).is_err());
+        assert!(
+            agent_add_blocking("ok".to_string(), Some(prompt), None, None, None, None, None)
+                .is_err()
+        );
         // Blank prompt is not an error — it normalizes to None.
-        let agent = agent_add_blocking("ok".to_string(), Some("   ".to_string()), None).unwrap();
+        let agent =
+            agent_add_blocking("ok".to_string(), Some("   ".to_string()), None, None, None, None, None)
+                .unwrap();
         assert_eq!(agent.prompt, None);
+    }
+
+    #[test]
+    fn identity_field_validation() {
+        let _home = ScratchHome::new("identity-validation");
+        // Tool names: charset enforced; blanks and duplicates drop.
+        assert!(agent_add_blocking(
+            "x".to_string(),
+            None,
+            None,
+            Some(vec!["ok".to_string(), "bad name".to_string()]),
+            None,
+            None,
+            None,
+        )
+        .is_err());
+        let agent = agent_add_blocking(
+            "x".to_string(),
+            None,
+            None,
+            Some(vec![
+                "Bash".to_string(),
+                "Bash".to_string(),
+                "".to_string(),
+            ]),
+            Some("  deepseek-v4  ".to_string()),
+            Some(vec![
+                "prompts".to_string(),
+                "unknown".to_string(),
+                "MEMORY".to_string(),
+            ]),
+            Some("HIGH".to_string()),
+        )
+        .unwrap();
+        assert_eq!(
+            agent.tools.as_deref(),
+            Some(&["Bash".to_string()][..]),
+            "duplicates and blanks drop"
+        );
+        assert_eq!(agent.model.as_deref(), Some("deepseek-v4"), "model trims");
+        assert_eq!(
+            agent.context.as_deref(),
+            Some(&["prompts".to_string(), "memory".to_string()][..]),
+            "unknown components drop, values lowercase"
+        );
+        assert_eq!(agent.effort.as_deref(), Some("high"));
+
+        // Unknown effort levels are rejected.
+        assert!(agent_add_blocking(
+            "y".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("ultra".to_string()),
+        )
+        .is_err());
+
+        // An explicitly empty tool list survives (disable every tool).
+        let empty = agent_add_blocking(
+            "z".to_string(),
+            None,
+            None,
+            Some(vec![]),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(empty.tools.as_deref(), Some(&[][..]));
     }
 
     // Migration tests take explicit legacy/dest paths, so no HOME steering —

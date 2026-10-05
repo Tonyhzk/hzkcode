@@ -19,6 +19,10 @@ vi.mock("@/lib/ipc", () => ({
     updateAppSettings: vi.fn(async () => {}),
     grantScope: vi.fn(async () => "/data"),
     grantRoot: vi.fn(async () => {}),
+    // The agent store's module-level refresh runs when the chat store (and
+    // through it this test's imports) loads its catalog.
+    listAgents: vi.fn(async () => []),
+    listBuiltInAgents: vi.fn(async () => ({ agents: [], divisions: [] })),
   },
 }));
 vi.mock("@/lib/events", () => ({

@@ -977,6 +977,8 @@ struct SendMessageArgs {
     provider_id: Option<String>,
     agent_name: Option<String>,
     agents_json: Option<String>,
+    /// Identity tool whitelist (see engine::SendRequest::agent_tools).
+    agent_tools: Option<Vec<String>>,
     /// Per-session proxy switch (see engine::SendRequest::proxy_enabled).
     proxy_enabled: Option<bool>,
     /// Per-session second-brain switch (see
@@ -1055,6 +1057,13 @@ struct EngineSessionArgs {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct EngineSessionWorkspaceArgs {
+    engine: String,
+    session_id: String,
+    workspace_path: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PinSessionArgs {
     engine: String,
     session_id: String,
@@ -1130,14 +1139,22 @@ struct AgentAddArgs {
     name: String,
     prompt: Option<String>,
     icon: Option<String>,
+    tools: Option<Vec<String>>,
+    model: Option<String>,
+    context: Option<Vec<String>>,
+    effort: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AgentUpdateArgs {
     id: String,
-    name: Option<String>,
+    name: String,
     prompt: Option<String>,
     icon: Option<String>,
+    tools: Option<Vec<String>>,
+    model: Option<String>,
+    context: Option<Vec<String>>,
+    effort: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1378,6 +1395,7 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
                 a.provider_id,
                 a.agent_name,
                 a.agents_json,
+                a.agent_tools,
                 a.run_id,
                 a.proxy_enabled,
                 a.second_brain_enabled,
@@ -1461,6 +1479,29 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
         "delete_session" => {
             let a: EngineSessionArgs = parse_args(&raw)?;
             ser(crate::history::reader::delete_session(app.state(), a.engine, a.session_id).await)
+        }
+        "clone_session" => {
+            let a: EngineSessionWorkspaceArgs = parse_args(&raw)?;
+            ser(
+                crate::history::reader::clone_session(
+                    app.state(),
+                    a.engine,
+                    a.session_id,
+                    a.workspace_path,
+                )
+                .await,
+            )
+        }
+        "get_session_agent_setting" => {
+            let a: EngineSessionArgs = parse_args(&raw)?;
+            ser(
+                crate::history::reader::get_session_agent_setting(
+                    app.state(),
+                    a.engine,
+                    a.session_id,
+                )
+                .await,
+            )
         }
         "delete_remote_session" => {
             let a: DeleteRemoteSessionArgs = parse_args(&raw)?;
@@ -1610,11 +1651,21 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
         "agent_list" => ser(crate::agents::agent_list().await),
         "agent_add" => {
             let a: AgentAddArgs = parse_args(&raw)?;
-            ser(crate::agents::agent_add(a.name, a.prompt, a.icon).await)
+            ser(
+                crate::agents::agent_add(
+                    a.name, a.prompt, a.icon, a.tools, a.model, a.context, a.effort,
+                )
+                .await,
+            )
         }
         "agent_update" => {
             let a: AgentUpdateArgs = parse_args(&raw)?;
-            ser(crate::agents::agent_update(a.id, a.name, a.prompt, a.icon).await)
+            ser(
+                crate::agents::agent_update(
+                    a.id, a.name, a.prompt, a.icon, a.tools, a.model, a.context, a.effort,
+                )
+                .await,
+            )
         }
         "agent_delete" => {
             let a: IdArgs = parse_args(&raw)?;

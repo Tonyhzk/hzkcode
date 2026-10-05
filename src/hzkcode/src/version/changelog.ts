@@ -26,6 +26,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 
 ✨ 新功能
 - 压缩过的长会话显示完整历史：升级后的引擎把压缩前的内容归档为独立分段，界面会自动拼接，之前聊过的内容仍然能翻到
+- 身份编辑器升级：智能体可以配置「可用工具」（勾选列表，只有勾选的可被使用）、「模型」（跟随会话或指定档位）、「思考档」与「上下文注入」（内置规范 / CLAUDE.md 与 Rules / 个人记忆分别开关）；给已有对话更换身份时会自动克隆一条新对话继续，原对话保持不变、可随时回去
 
 🔧 行为说明
 - 本机跨会话通信随引擎启用：同一台电脑上的其他会话（终端或其他窗口）可以在当前对话运行期间发来消息、触发一轮执行；消息会记录进会话，执行仍受当前权限模式约束`,
@@ -34,6 +35,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 
 ✨ Features
 - Compacted long sessions show their full history: the upgraded engine archives pre-compaction content as separate segments, and the UI stitches them back together so earlier exchanges remain browsable
+- **Identity editor upgrade**: an agent can now pin allowed tools (a checklist — only the checked tools may be used), a model (follow the session or a specific tier), reasoning effort, and context injection (built-in guidelines / CLAUDE.md & Rules / personal memory toggled individually); switching the identity on a conversation that already has messages clones it into a new one — the original stays untouched and can be revisited anytime
 
 🔧 Behavior note
 - Cross-session messaging is on with the engine: other sessions on this machine (terminal or other windows) can send a message into a running conversation and trigger a turn; messages are recorded in the session and executions still follow the session's permission mode`,

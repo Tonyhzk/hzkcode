@@ -111,6 +111,19 @@ impl Engine for ClaudeEngine {
             cmd.arg("--agent");
             cmd.arg(agent_name);
         }
+        // Identity tool whitelist: the CLI auto-denies every built-in tool not
+        // listed, so the pinned identity's allowed set is enforced (an empty
+        // list disables all tools via the `--tools ""` preset).
+        if let Some(tools) = req.agent_tools.as_ref() {
+            cmd.arg("--tools");
+            if tools.is_empty() {
+                cmd.arg("");
+            } else {
+                for tool in tools {
+                    cmd.arg(tool);
+                }
+            }
+        }
         // Effort rides the CLI's own flag so its model-aware resolution
         // applies (off/none handling, per-model support, the persisted
         // effortLevel chain) instead of a faked thinking budget.

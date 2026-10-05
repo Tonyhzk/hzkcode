@@ -101,11 +101,41 @@ pub fn sweep_pasted_images() {
 mod tests {
     use super::*;
 
+    /// save_pasted_image writes under `home_dir()/.hzkcode/gui`; steer HOME
+    /// into a scratch dir (sharing the process-wide env lock) so the test
+    /// never touches the real profile nor races other HOME-steering tests.
+    struct ScratchHome {
+        _lock: parking_lot::MutexGuard<'static, ()>,
+        prev: Option<std::ffi::OsString>,
+        dir: std::path::PathBuf,
+    }
+    impl ScratchHome {
+        fn new() -> Self {
+            let lock = crate::test_support::HOME_ENV_LOCK.lock();
+            let dir = std::env::temp_dir()
+                .join(format!("hzkcode-images-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let prev = std::env::var_os("HOME");
+            std::env::set_var("HOME", &dir);
+            Self { _lock: lock, prev, dir }
+        }
+    }
+    impl Drop for ScratchHome {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
     // 1x1 red PNG.
     const PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
     #[test]
     fn round_trips_png_to_pasted_images_dir() {
+        let _home = ScratchHome::new();
         let path = save_pasted_image(PNG_B64.to_string(), "png".to_string()).unwrap();
         let written = std::fs::read(&path).unwrap();
         assert_eq!(

@@ -343,7 +343,32 @@ export interface AgentConfig {
    *  (older persisted selections) means "custom". */
   source?: "custom" | "builtIn";
   createdAt?: number;
+  /** Tool whitelist (official engine tool names): when present, the session
+   *  may only use these tools; an empty list disables every tool. Absent
+   *  keeps the full pool available. */
+  tools?: string[] | null;
+  /** Model for this identity: an engine alias (opus / sonnet / haiku) or a
+   *  concrete model name; absent follows the session's model. */
+  model?: string | null;
+  /** Context components to inject (prompts / claudemd / memory); absent keeps
+   *  the full set, an empty list injects nothing. */
+  context?: string[] | null;
+  /** Reasoning effort for this identity (low/medium/high/xhigh/max); absent
+   *  follows the session's level. */
+  effort?: string | null;
 }
+
+/** The whole identity record the editor submits (agent_add / agent_update).
+ *  Every field replaces the stored value; null/omitted optionals clear. */
+export type AgentInputPayload = {
+  name: string;
+  prompt?: string | null;
+  icon?: string | null;
+  tools?: string[] | null;
+  model?: string | null;
+  context?: string[] | null;
+  effort?: string | null;
+};
 /** Provider block of the built-in agent catalog (`list_built_in_agents`). */
 export interface BuiltInAgentProviderView {
   id: string;
@@ -684,6 +709,10 @@ export const ipc = {
     providerId: string | null;
     agentName: string | null;
     agentsJson: string | null;
+    /** Identity tool whitelist (the CLI's `--tools`): the listed tool names
+     *  are the only ones the session may use; an empty list disables every
+     *  tool. Null leaves the pool untouched. */
+    agentTools?: string[] | null;
     /** Per-session proxy switch (the composer's 会话开关): true pins
      *  HZKCODE_PROXY_ENABLED=1 (use the configured address), false forces a
      *  direct connection, null keeps the app/shell default. */
@@ -750,6 +779,20 @@ export const ipc = {
       workspacePath,
       targetUuid,
     }),
+  /** Clone a session under a fresh id (the identity-switch fork, mirroring
+   *  the CLI's /agents): the source stays untouched, callers switch to the
+   *  returned id and continue there. Empty conversations return
+   *  `cloned: false` with the source id — nothing to clone. */
+  cloneSession: (engine: string, sessionId: string, workspacePath: string) =>
+    invoke<{ sessionId: string; title: string | null; cloned: boolean }>(
+      "clone_session",
+      { engine, sessionId, workspacePath },
+    ),
+  /** The identity a session currently runs under, read straight from its
+   *  transcript (`agent-setting`); null when it never ran under one. The
+   *  fallback baseline for the identity-switch clone detector. */
+  getSessionAgentSetting: (engine: string, sessionId: string) =>
+    invoke<string | null>("get_session_agent_setting", { engine, sessionId }),
   /** Remote (plugin-fed, e.g. WSL distro) session delete: no local db row
    *  exists, so the host rm's the validated remotePath over the same remote
    *  channel loadRemoteSessionPage reads through. */
@@ -829,12 +872,12 @@ export const ipc = {
     withGrantRetry(() => invoke<SlashCommandEntry[]>("list_slash_commands", { path })),
   // agents — user personas stored in ~/.hzkcode/gui/agents.json (app home,
   // so no grant flow); picked via the composer `#` menu, managed in
-  // settings. agent_update takes a partial; absent fields stay unchanged.
+  // settings. agent_update submits the whole record — every field replaces
+  // its stored value (a null optional field clears it).
   listAgents: () => invoke<AgentConfig[]>("agent_list"),
-  addAgent: (input: { name: string; prompt?: string; icon?: string }) =>
-    invoke<AgentConfig>("agent_add", input),
-  updateAgent: (id: string, updates: { name?: string; prompt?: string; icon?: string }) =>
-    invoke<boolean>("agent_update", { id, ...updates }),
+  addAgent: (input: AgentInputPayload) => invoke<AgentConfig>("agent_add", input),
+  updateAgent: (id: string, input: AgentInputPayload) =>
+    invoke<boolean>("agent_update", { id, ...input }),
   deleteAgent: (id: string) => invoke<boolean>("agent_delete", { id }),
   // built-in agent catalog — bundled read-only personas (resources/
   // agent-catalogs); enabled ids live in app settings. The composer `#`

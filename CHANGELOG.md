@@ -13,6 +13,12 @@
 - 不接入 `HZKCODE_RESPONSES_WEBSOCKET`：GUI 每次发送都是新进程，WebSocket 长连接无法跨轮复用、兼容性要求高，渠道配置不暴露该开关（需要时可经渠道「高级 · 原始 JSON」的 env 或环境变量使用）
 - 权限默认模式变化对 GUI 无影响：CLI 3.1.0 未指定时默认进入 Auto Continue（原 Auto Ask），GUI 每次发送都显式传 `--permission-mode`（fallback 本就是 autoContinue），行为不变
 - 其余 3.1.0 变化经逐条核对均为 CLI 内部或 TUI 行为、GUI 无需代码改动：身份模式（/agents 克隆切换、身份文件 secondBrain 字段）、跨渠道思考回传系列（responsesAdapter 请求构建层，不写回历史）、第二大脑默认流式与空闲超时（GUI 开关缺省跟随 CLI 默认）、极简模式 `--bare`（GUI 不启用）、全屏跳转改进、任务管理提示词条件装配、记忆快照截断、`NotifyUser` 工具重命名（原 `FeishuNotify`，GUI 无引用）与新增 `Directory` 工具（GUI 工具解析按事件通用处理、`path` 参数命中文件 chip 提取、不误判 todo）
+- 身份编辑器（新功能）：用户自建智能体升级为完整「身份」配置——提示词、可用工具（白名单勾选列表，`features/agents/tool-catalog.ts` 对齐内置 CLI 3.1.0 的工具名）、模型（跟随会话 / High / Mid / Low）、上下文注入（内置规范 / CLAUDE.md 与 Rules / 个人记忆分别开关）、思考档（跟随会话 / 五档）；发送时工具白名单经 `--tools` 注入（未配置=不传、全部可用；空列表=`--tools ""` 禁用全部），模型/effort 以身份配置优先，定义字段（tools/model/effort/context）随 `--agents` JSON 下发，交互式恢复该会话时同样生效
+- 身份编辑器细节：工具勾选为白名单语义——全勾也会保存为显式清单（未列出/未来新增的内置工具保持停用，`null` 仅作旧数据的「不限制」语义）；提示词改为必填（引擎拒绝空身份提示词；旧数据在发送时以最小提示词兜底，避免工具/模型配置被静默丢弃）；`agent_update` 改为整体提交语义（每个字段覆盖存储值、缺省清空），旧数据的单字段更新路径同步收口；`--tools` 只作用于内置工具集（MCP 等其他来源不受其约束，界面提示已注明）
+- 身份切换克隆（对齐 CLI /agents 语义）：已有消息的会话在更换身份发送前经新命令 `clone_session` 把整个会话克隆为新会话（不写 forkedFrom、compact 边界保持 null parent、标题原样继承、源文件不动），切换到新会话后继续；草稿与空会话直接切换；克隆失败报错并保持当前会话与身份不变
+- 身份切换其余语义：克隆后原会话的选择恢复为原身份（定义在时按名恢复，已删/停用时清为无身份），回切原会话继续原身份、不会再次克隆；内置身份解析失败按原位回退（不触发克隆）；会话身份记录在每次发送成功后写入（发送失败保留旧记录，重试仍能正确克隆），并随会话 id 采用在两条采纳路径上迁移
+- 会话身份读取兜底：本应用没有该会话的身份记录时（CLI 创建的会话、记录被清），以会话文件为准——新命令 `get_session_agent_setting` 沿段链从最新段往前、逐文件从尾部扫描最后一条 `agent-setting` 条目；读不到按旧行为处理
+- 测试与 mock 适配：`SendRequest::agent_tools` 全链路（tauri/web IPC、send_path、engine_smoke 示例）同步更新；新增 identity/克隆的 Rust 与前端测试（`clone_session` 空会话返回源 id、全量复制与边界处理；`session_agent_setting` 尾扫描与跨段、编辑器白名单保存语义、身份字段下发、空数组保留、空提示词兜底、克隆与克隆失败分支、原会话身份恢复、发送失败不写记录、解析失败不克隆）；三个聊天组件测试的 ipc mock 补齐 `listAgents`/`listBuiltInAgents`（agent-store 随聊天 store 加载其目录）；`scanner.rs` 测试的自定义 `HOME_LOCK` 统一改为 `test_support::HOME_ENV_LOCK`（与 reader 等模块共享，消除并行改 `HZKCODE_CONFIG_DIR` 造成的偶发失败），`engine/images.rs` 的写盘测试改用临时 HOME（不再触碰真实用户目录、与其他 HOME 相关测试共用同一把锁）
 
 ## [3.0.0-2] - 2026-10-04
 

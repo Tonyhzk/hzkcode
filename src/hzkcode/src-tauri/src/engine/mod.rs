@@ -59,6 +59,12 @@ pub struct SendRequest {
     /// Session agent definitions (`--agents <json>`, the CLI's flagSettings
     /// source): a record of name -> definition.
     pub agents_json: Option<String>,
+    /// Identity tool whitelist for this send (the CLI's `--tools`): Some(list)
+    /// restricts the session's tool pool to those names; an empty list
+    /// disables every tool. None leaves the pool untouched. The CLI reads it
+    /// at startup and every GUI send is its own process, so each send carries
+    /// the pinned identity's allow-list.
+    pub agent_tools: Option<Vec<String>>,
     /// Per-session proxy switch (the composer's /proxy control): Some(true)
     /// pins `HZKCODE_PROXY_ENABLED=1` (use the configured address),
     /// Some(false) forces a direct connection, None keeps the app/shell
@@ -1004,6 +1010,7 @@ fn prepare_launch(
     provider_id: Option<String>,
     agent_name: Option<String>,
     agents_json: Option<String>,
+    agent_tools: Option<Vec<String>>,
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
 ) -> Result<Launch, String> {
@@ -1050,6 +1057,15 @@ fn prepare_launch(
         provider_id,
         agent_name: agent_name.filter(|s| !s.trim().is_empty()),
         agents_json: agents_json.filter(|s| !s.trim().is_empty()),
+        // An empty list is a deliberate value (disable every tool) — only a
+        // missing list (None) means "leave the pool untouched".
+        agent_tools: agent_tools.map(|list| {
+            list.into_iter()
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .take(64)
+                .collect()
+        }),
         proxy_enabled,
         second_brain_enabled,
     };
@@ -1915,6 +1931,7 @@ pub async fn send_message(
     provider_id: Option<String>,
     agent_name: Option<String>,
     agents_json: Option<String>,
+    agent_tools: Option<Vec<String>>,
     run_id: Option<String>,
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
@@ -1932,6 +1949,7 @@ pub async fn send_message(
         provider_id,
         agent_name,
         agents_json,
+        agent_tools,
         run_id,
         proxy_enabled,
         second_brain_enabled,
@@ -1956,6 +1974,7 @@ pub async fn send_message_inner(
     provider_id: Option<String>,
     agent_name: Option<String>,
     agents_json: Option<String>,
+    agent_tools: Option<Vec<String>>,
     run_id: Option<String>,
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
@@ -2013,6 +2032,7 @@ pub async fn send_message_inner(
         provider_id,
         agent_name,
         agents_json,
+        agent_tools,
         run_id,
         proxy_enabled,
         second_brain_enabled,
@@ -2044,6 +2064,7 @@ async fn send_reserved(
     provider_id: Option<String>,
     agent_name: Option<String>,
     agents_json: Option<String>,
+    agent_tools: Option<Vec<String>>,
     run_id: String,
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
@@ -2066,6 +2087,7 @@ async fn send_reserved(
         provider_id,
         agent_name,
         agents_json,
+        agent_tools,
         proxy_enabled,
         second_brain_enabled,
     )?;
@@ -2374,6 +2396,7 @@ mod permission_tests {
             provider_id: None,
             agent_name: None,
             agents_json: None,
+            agent_tools: None,
             proxy_enabled: None,
             second_brain_enabled: None,
         }
@@ -2421,6 +2444,29 @@ mod permission_tests {
         let bypass = argv(&e, &req(Some("bypass")));
         assert!(bypass.contains(&"--dangerously-skip-permissions".to_string()));
         assert!(!bypass.contains(&"--permission-mode".to_string()));
+    }
+
+    #[test]
+    fn claude_passes_agent_tool_whitelist() {
+        let e = claude::ClaudeEngine::new();
+        // Absent list: the pool is left untouched.
+        let none = argv(&e, &req(None));
+        assert!(!none.contains(&"--tools".to_string()));
+
+        // Some(list): names ride the --tools variadic in order.
+        let mut r = req(None);
+        r.agent_tools = Some(vec!["Bash".to_string(), "Read".to_string()]);
+        let args = argv(&e, &r);
+        assert!(
+            args.windows(3)
+                .any(|w| w == ["--tools", "Bash", "Read"]),
+            "{args:?}"
+        );
+
+        // Some(empty): the `--tools ""` preset disables every tool.
+        r.agent_tools = Some(Vec::new());
+        let args = argv(&e, &r);
+        assert!(has_pair(&args, "--tools", ""), "{args:?}");
     }
 
     #[test]

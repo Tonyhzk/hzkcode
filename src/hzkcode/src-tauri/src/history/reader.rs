@@ -3,6 +3,7 @@ use base64::Engine as _;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
 
@@ -902,6 +903,307 @@ pub async fn branch_session(
     Ok(result)
 }
 
+/// One cloned session: the fresh id plus the inherited title.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloneResult {
+    pub session_id: String,
+    pub title: Option<String>,
+    /// False when the conversation is empty — nothing to clone; callers keep
+    /// sending into the source session.
+    pub cloned: bool,
+}
+
+/// Clone the session into a fresh one, mirroring the CLI's identity-switch
+/// fork: the whole main conversation is copied under a new session id (the
+/// source file is untouched), `parentUuid` is rebuilt as a linear chain
+/// (compact boundaries keep their original null parent), and the custom
+/// title is inherited as-is.
+fn clone_session_blocking(
+    db: &crate::db::Db,
+    engine: &str,
+    session_id: &str,
+    workspace_path: &str,
+) -> Result<CloneResult, String> {
+    if engine != "claude" {
+        return Err(format!("clone_session: unknown engine {engine}"));
+    }
+    let source = session_file_path(db, engine, session_id)
+        .ok()
+        .filter(|path| path.is_file())
+        .or_else(|| session_files_by_id(engine, session_id).into_iter().next())
+        .ok_or_else(|| "没有可克隆的会话".to_string())?;
+    // Segmented (compacted) sessions read as their whole root → active chain
+    // — same as the read and branch paths.
+    let files = super::segments::session_files_for_read(engine, &source);
+    let mut entries: Vec<Value> = Vec::new();
+    for file in &files {
+        let content = match std::fs::read_to_string(file) {
+            Ok(content) => content,
+            // The active file surfaces its real error; an unreadable archive
+            // segment only trims the cloned prefix.
+            Err(error) if file.as_path() == source.as_path() => {
+                return Err(format!("read {}: {error}", file.display()));
+            }
+            Err(_) => continue,
+        };
+        entries.extend(
+            content
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok()),
+        );
+    }
+    let main: Vec<&Value> = entries
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry.get("type").and_then(Value::as_str),
+                Some("user" | "assistant" | "attachment" | "system")
+            ) && entry.get("isSidechain").and_then(Value::as_bool) != Some(true)
+        })
+        .collect();
+    if main.is_empty() {
+        return Ok(CloneResult {
+            session_id: session_id.to_string(),
+            title: None,
+            cloned: false,
+        });
+    }
+
+    let fork_id = uuid::Uuid::new_v4().to_string();
+    let mut lines: Vec<String> = Vec::with_capacity(main.len() + 2);
+    let mut parent: Option<String> = None;
+    for entry in &main {
+        let mut cloned = (*entry).clone();
+        let obj = cloned.as_object_mut().ok_or("会话条目格式异常")?;
+        obj.insert("sessionId".into(), Value::String(fork_id.clone()));
+        let is_compact_boundary = entry.get("type").and_then(Value::as_str) == Some("system")
+            && entry.get("subtype").and_then(Value::as_str) == Some("compact_boundary");
+        if !is_compact_boundary {
+            // Rebuild the chain linearly; a compact boundary keeps its null
+            // parent (its logicalParentUuid stays as originally written).
+            obj.insert(
+                "parentUuid".into(),
+                parent.clone().map(Value::String).unwrap_or(Value::Null),
+            );
+        }
+        obj.insert("isSidechain".into(), Value::Bool(false));
+        let entry_uuid = entry
+            .get("uuid")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        lines.push(serde_json::to_string(&cloned).map_err(|e| e.to_string())?);
+        parent = Some(entry_uuid);
+    }
+
+    let replacements: Vec<Value> = entries
+        .iter()
+        .filter(|entry| {
+            entry.get("type").and_then(Value::as_str) == Some("content-replacement")
+                && entry.get("sessionId").and_then(Value::as_str) == Some(session_id)
+        })
+        .filter_map(|entry| entry.get("replacements").and_then(Value::as_array))
+        .flat_map(|list| list.iter().cloned())
+        .collect();
+    if !replacements.is_empty() {
+        lines.push(
+            serde_json::to_string(&serde_json::json!({
+                "type": "content-replacement",
+                "sessionId": fork_id,
+                "replacements": replacements,
+            }))
+            .map_err(|e| e.to_string())?,
+        );
+    }
+
+    // Inherit the source's custom title as-is — the identity fork keeps the
+    // original title (unlike /branch, which numbers a new branch).
+    let title: Option<String> = db
+        .0
+        .lock()
+        .query_row(
+            "SELECT custom_title FROM sessions WHERE engine=?1 AND session_id=?2",
+            rusqlite::params![engine, session_id],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .unwrap_or(None)
+        .filter(|t| !t.trim().is_empty());
+    if let Some(title) = title.as_deref() {
+        lines.push(
+            serde_json::to_string(&serde_json::json!({
+                "type": "custom-title",
+                "customTitle": title,
+                "sessionId": fork_id,
+            }))
+            .map_err(|e| e.to_string())?,
+        );
+    }
+
+    let fork_path = source.with_file_name(format!("{fork_id}.jsonl"));
+    let mut payload = lines.join("\n");
+    payload.push('\n');
+    crate::settings::atomic_write(&fork_path, &payload)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&fork_path, std::fs::Permissions::from_mode(0o600));
+    }
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let first_prompt = first_prompt_of(&main);
+    db.0.lock()
+        .execute(
+            "INSERT INTO sessions(engine, session_id, workspace_path, file_path, file_size, file_mtime_ms, title, preview, created_at, updated_at, message_count, custom_title)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?6,?6,?9,?10)
+             ON CONFLICT(engine, session_id) DO UPDATE SET
+                workspace_path=excluded.workspace_path,
+                file_path=excluded.file_path,
+                file_size=excluded.file_size,
+                file_mtime_ms=excluded.file_mtime_ms",
+            rusqlite::params![
+                engine,
+                fork_id,
+                workspace_path,
+                fork_path.to_string_lossy(),
+                payload.len() as i64,
+                now_ms,
+                first_prompt,
+                "",
+                main.len() as i64,
+                title,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(CloneResult {
+        session_id: fork_id,
+        title,
+        cloned: true,
+    })
+}
+
+/// Clone a session under a fresh id (the identity-switch fork): the source
+/// file stays untouched, callers switch to the returned id and continue
+/// there. An empty conversation returns `cloned: false` with the source id.
+#[tauri::command]
+pub async fn clone_session(
+    state: tauri::State<'_, crate::AppState>,
+    engine: String,
+    session_id: String,
+    workspace_path: String,
+) -> Result<CloneResult, String> {
+    let db = Arc::clone(&state.db);
+    let sink = Arc::clone(&state.sink);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        clone_session_blocking(&db, &engine, &session_id, &workspace_path)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    sink.emit_sessions_changed();
+    Ok(result)
+}
+
+/// Parse one transcript line as an `agent-setting` metadata entry.
+fn parse_agent_setting_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('{') {
+        return None;
+    }
+    let value: Value = serde_json::from_str(trimmed).ok()?;
+    if value.get("type").and_then(Value::as_str) != Some("agent-setting") {
+        return None;
+    }
+    value
+        .get("agentSetting")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+/// The last `agent-setting` entry of one file: scanned from the tail with an
+/// expanding window (the CLI appends it on exit, so it usually sits at EOF;
+/// the first hit walking backwards is the file's last entry).
+fn read_last_agent_setting(file: &Path) -> Option<String> {
+    let mut file = std::fs::File::open(file).ok()?;
+    let size = file.metadata().ok()?.len();
+    if size == 0 {
+        return None;
+    }
+    let mut window = std::cmp::min(64 * 1024, size);
+    loop {
+        let start = size - window;
+        file.seek(SeekFrom::Start(start)).ok()?;
+        let mut buf = vec![0u8; (size - start) as usize];
+        file.read_exact(&mut buf).ok()?;
+        let text = String::from_utf8_lossy(&buf);
+        let mut lines: Vec<&str> = text.split('\n').collect();
+        // A window starting mid-file may begin inside a line; drop it.
+        if start > 0 && !lines.is_empty() {
+            lines.remove(0);
+        }
+        for line in lines.iter().rev() {
+            if let Some(setting) = parse_agent_setting_line(line) {
+                return Some(setting);
+            }
+        }
+        if start == 0 {
+            return None;
+        }
+        window = std::cmp::min(window * 4, size);
+    }
+}
+
+/// The identity a session currently runs under: the last `agent-setting`
+/// entry along its segment chain (newest segment first — the CLI re-appends
+/// the entry on every exit; pre-boundary entries in older segments count
+/// too). None when the session never ran under an identity.
+fn session_agent_setting_blocking(
+    db: &crate::db::Db,
+    engine: &str,
+    session_id: &str,
+) -> Result<Option<String>, String> {
+    if engine != "claude" {
+        return Err(format!(
+            "get_session_agent_setting: unknown engine {engine}"
+        ));
+    }
+    let Some(source) = session_file_path(db, engine, session_id)
+        .ok()
+        .filter(|path| path.is_file())
+        .or_else(|| session_files_by_id(engine, session_id).into_iter().next())
+    else {
+        return Ok(None);
+    };
+    let files = super::segments::session_files_for_read(engine, &source);
+    for file in files.iter().rev() {
+        if let Some(setting) = read_last_agent_setting(file) {
+            return Ok(Some(setting));
+        }
+    }
+    Ok(None)
+}
+
+/// Read the session's current identity (`agent-setting`) straight from its
+/// transcript — the fallback baseline for the identity-switch clone
+/// detector when this app has no local record yet (a session created by the
+/// CLI, or after the record store was cleared).
+#[tauri::command]
+pub async fn get_session_agent_setting(
+    state: tauri::State<'_, crate::AppState>,
+    engine: String,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    let db = Arc::clone(&state.db);
+    tauri::async_runtime::spawn_blocking(move || {
+        session_agent_setting_blocking(&db, &engine, &session_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// 远程(WSL 发行版内)会话删除:插件会话源上报的 remotePath 经与
 /// load_remote_session_page 相同的形状白名单校验后,走同一套远程通道
 /// rm。远程会话没有本地 db 行,无需 emit_sessions_changed——前端
@@ -1483,5 +1785,161 @@ mod tests {
         std::fs::write(&path, "{}").unwrap();
         assert!(delete_session_disk("future-engine", &path).is_err());
         assert!(path.exists());
+    }
+
+    #[test]
+    fn clone_session_copies_everything_under_a_new_id() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let dir = config_dir.join("projects").join("-ws");
+        std::fs::create_dir_all(&dir).unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+        std::fs::write(
+            dir.join("src-1.jsonl"),
+            concat!(
+                r#"{"type":"user","uuid":"u1","message":{"role":"user","content":"hi"}}"#,
+                "\n",
+                r#"{"type":"assistant","uuid":"a1","message":{"role":"assistant","content":[{"type":"text","text":"yo"}]}}"#,
+                "\n",
+                r#"{"type":"system","subtype":"compact_boundary","uuid":"b1"}"#,
+                "\n",
+                r#"{"type":"user","uuid":"u2","message":{"role":"user","content":"again"}}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        let cloned = clone_session_blocking(&db, "claude", "src-1", "/ws").unwrap();
+        assert!(cloned.cloned);
+        assert_ne!(cloned.session_id, "src-1");
+        let content =
+            std::fs::read_to_string(dir.join(format!("{}.jsonl", cloned.session_id))).unwrap();
+        let lines: Vec<Value> = content
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(lines.len(), 4);
+        assert!(lines
+            .iter()
+            .all(|line| line["sessionId"] == cloned.session_id.as_str()));
+        // The chain is rebuilt linearly; the compact boundary keeps its null
+        // parent; no forkedFrom trace (the identity fork is not a branch).
+        assert_eq!(lines[1]["parentUuid"], "u1");
+        assert_eq!(lines[2]["parentUuid"], Value::Null);
+        assert_eq!(lines[3]["parentUuid"], "b1");
+        assert!(lines.iter().all(|line| line.get("forkedFrom").is_none()));
+        // The source file is untouched.
+        assert!(dir.join("src-1.jsonl").exists());
+
+        // Cloning twice yields distinct ids.
+        let again = clone_session_blocking(&db, "claude", "src-1", "/ws").unwrap();
+        assert!(again.cloned);
+        assert_ne!(again.session_id, cloned.session_id);
+    }
+
+    #[test]
+    fn clone_session_on_empty_conversation_returns_source() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let dir = config_dir.join("projects").join("-ws");
+        std::fs::create_dir_all(&dir).unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+        // Only metadata rows — nothing to clone.
+        std::fs::write(
+            dir.join("src-1.jsonl"),
+            "{\"type\":\"custom-title\",\"customTitle\":\"t\",\"sessionId\":\"src-1\"}\n",
+        )
+        .unwrap();
+
+        let cloned = clone_session_blocking(&db, "claude", "src-1", "/ws").unwrap();
+        assert!(!cloned.cloned);
+        assert_eq!(cloned.session_id, "src-1");
+        assert!(!std::fs::read_to_string(dir.join("src-1.jsonl"))
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn session_agent_setting_reads_the_last_entry() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let dir = config_dir.join("projects").join("-ws");
+        std::fs::create_dir_all(&dir).unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+        std::fs::write(
+            dir.join("src-1.jsonl"),
+            concat!(
+                r#"{"type":"user","uuid":"u1","message":{"role":"user","content":"hi"}}"#,
+                "\n",
+                r#"{"type":"agent-setting","agentSetting":"旧身份","sessionId":"src-1"}"#,
+                "\n",
+                r#"{"type":"agent-setting","agentSetting":"新身份","sessionId":"src-1"}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            session_agent_setting_blocking(&db, "claude", "src-1")
+                .unwrap()
+                .as_deref(),
+            Some("新身份")
+        );
+
+        // No entry at all: None.
+        std::fs::write(
+            dir.join("src-2.jsonl"),
+            concat!(
+                r#"{"type":"user","uuid":"u2","message":{"role":"user","content":"hi"}}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            session_agent_setting_blocking(&db, "claude", "src-2").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn session_agent_setting_reaches_older_segments() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let dir = config_dir.join("projects").join("-ws");
+        std::fs::create_dir_all(dir.join("sess-1/segments")).unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+        // The active segment has no entry; the archived root one does.
+        std::fs::write(
+            dir.join("sess-1.jsonl"),
+            concat!(
+                r#"{"type":"user","uuid":"u3","message":{"role":"user","content":"again"}}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("sess-1/segments/seg-1.jsonl"),
+            concat!(
+                r#"{"type":"agent-setting","agentSetting":"分段身份","sessionId":"sess-1"}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("sess-1/segments.json"),
+            r#"{"version":1,"sessionId":"sess-1","activeSegment":"seg-2","segments":[
+                {"id":"seg-1","seq":1,"file":"segments/seg-1.jsonl","kind":"root","parent":null},
+                {"id":"seg-2","seq":2,"file":"segments/seg-2.jsonl","kind":"compact","parent":"seg-1"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            session_agent_setting_blocking(&db, "claude", "sess-1")
+                .unwrap()
+                .as_deref(),
+            Some("分段身份")
+        );
     }
 }

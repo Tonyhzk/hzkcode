@@ -472,25 +472,23 @@ pub fn spawn_scan(db: Arc<crate::db::Db>, sink: Arc<crate::event_sink::EventSink
 mod tests {
     use super::*;
 
-    /// Serializes env-mutating scanner tests: two tests mutating the process
-    /// environment in parallel would clobber each other.
-    static HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     fn scratch_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("hzkcode-{tag}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
 
-    /// Env-mutating guard for HZKCODE_CONFIG_DIR; shares HOME_LOCK so every
-    /// env-dependent scanner test stays serialized.
+    /// Env-mutating guard for HZKCODE_CONFIG_DIR; shares the process-wide
+    /// env lock (`test_support::HOME_ENV_LOCK`) so scanner tests stay
+    /// serialized against every other module that steers the same variable
+    /// (a module-local lock let reader tests race this one and flake).
     struct HzkcodeConfigDirGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
+        _lock: parking_lot::MutexGuard<'static, ()>,
         prev: Option<std::ffi::OsString>,
     }
     impl HzkcodeConfigDirGuard {
         fn set(dir: &Path) -> Self {
-            let lock = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let lock = crate::test_support::HOME_ENV_LOCK.lock();
             let prev = std::env::var_os("HZKCODE_CONFIG_DIR");
             std::env::set_var("HZKCODE_CONFIG_DIR", dir);
             Self { _lock: lock, prev }

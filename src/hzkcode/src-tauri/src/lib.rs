@@ -291,6 +291,8 @@ pub fn run() {
             history::reader::load_remote_session_page,
             history::reader::delete_session,
             history::reader::branch_session,
+            history::reader::clone_session,
+            history::reader::get_session_agent_setting,
             history::reader::delete_remote_session,
             history::reader::pin_session,
             history::reader::rename_session,

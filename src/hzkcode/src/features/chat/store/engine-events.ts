@@ -25,7 +25,10 @@ import {
 import type { ChatStore } from "../store";
 import { mergeUsage, parseUsage, reportedContextWindow, type ParsedUsage } from "../usage";
 import { usageTrackingEnabled } from "@/features/settings/usage-tracking";
-import { migrateSelectedAgent } from "@/features/agents/selected-agent";
+import {
+  migrateRecordedAgent,
+  migrateSelectedAgent,
+} from "@/features/agents/selected-agent";
 import i18n from "@/lib/i18n";
 
 /**
@@ -470,8 +473,10 @@ function onSession(
     return { openTabs };
   });
   // The pinned agent followed the draft key; move it onto the native id so
-  // the next send in this tab injects it again.
+  // the next send in this tab injects it again. The identity record follows
+  // the same move (the clone detector compares against it).
   migrateSelectedAgent(workspacePath, nativeId);
+  migrateRecordedAgent(workspacePath, nativeId);
   // Sidebar row + tab title pick the new session up immediately instead of
   // waiting for the post-turn rescan.
   const firstUser = (deps.get().bySession[newKey]?.messages ?? []).find(

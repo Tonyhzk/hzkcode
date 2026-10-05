@@ -41,6 +41,7 @@ async fn run_one(engine_id: &str, workspace: &PathBuf) -> Result<(), String> {
         provider_id: None,
         agent_name: None,
         agents_json: None,
+        agent_tools: None,
         proxy_enabled: None,
         second_brain_enabled: None,
     };
