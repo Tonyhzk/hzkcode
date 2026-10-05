@@ -30,6 +30,10 @@ export const TOOL_CATALOG: readonly ToolCatalogGroup[] = [
     title: { zh: "文件与命令", en: "Files & shell" },
     entries: [
       { name: "Bash", label: { zh: "执行命令", en: "Run shell commands" } },
+      {
+        name: "TerminalSession",
+        label: { zh: "交互式终端会话", en: "Interactive terminal sessions" },
+      },
       { name: "Read", label: { zh: "读取文件", en: "Read files" } },
       { name: "Edit", label: { zh: "修改文件", en: "Edit files" } },
       { name: "Write", label: { zh: "写入文件", en: "Write files" } },
@@ -104,6 +108,10 @@ export const TOOL_CATALOG: readonly ToolCatalogGroup[] = [
       { name: "Skill", label: { zh: "调用技能", en: "Invoke skills" } },
       { name: "SessionTitle", label: { zh: "维护会话标题", en: "Maintain the session title" } },
       { name: "NotifyUser", label: { zh: "发送通知", en: "Send notifications" } },
+      {
+        name: "SendUserMessage",
+        label: { zh: "发送消息给用户", en: "Send messages to the user" },
+      },
       { name: "MemorySearch", label: { zh: "查询个人记忆", en: "Search personal memory" } },
       {
         name: "LocalMemoryRecall",
