@@ -20,7 +20,7 @@
 
 ## 界面布局与多窗口
 
-主窗口从左到右四个分区：对话列表 | 对话区 | 文件列表（files/changes） | 多标签文件编辑器（最右侧独立分区）。
+主窗口从左到右四个分区：对话列表 | 对话区 | 文件列表（files/changes/history） | 多标签文件编辑器（最右侧独立分区）。
 
 - 对话区不承载会话标签页，切换会话只走左侧列表；打开文件与 diff 都在最右侧编辑器区分标签展示，编辑器区宽度可拖拽、可折叠，打开文件自动展开。
 - 多窗口：会话窗口（`?ctx=chat&engine=…&sessionId=…&workspacePath=…`）与独立编辑器窗口（`?ctx=editor&filePath=…`）由 Rust 命令 `open_chat_window` / `open_editor_window` 创建（`src-tauri/src/windows.rs`，label 前缀 `chat-` / `editor-`，重复打开同一目标聚焦已有窗口）；入口在会话列表行的悬停按钮 / 右键菜单，编辑器标签可拖到窗口边缘松手拖出。
