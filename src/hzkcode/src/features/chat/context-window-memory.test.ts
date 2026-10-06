@@ -141,4 +141,66 @@ describe("context window memory", () => {
       }),
     ).toBe(500_000);
   });
+
+  it("uses the channel-configured default until a session override replaces it", () => {
+    // A channel ships a 900000 auto-compact window: with no session override
+    // the gauge must show it, not the model report or the guess.
+    expect(
+      resolveContextMax({
+        usage: {
+          input_tokens: 10,
+          total_tokens: 10,
+          model_context_window: 200_000,
+        },
+        engine: "claude",
+        model: "deepseek-v4.1-flash",
+        catalogWindow: 200_000,
+        defaultWindow: 900_000,
+      }),
+    ).toBe(900_000);
+
+    // A session override still wins over the channel default.
+    expect(
+      resolveContextMax({
+        usage: undefined,
+        engine: "claude",
+        model: "deepseek-v4.1-flash",
+        defaultWindow: 900_000,
+        overrideWindow: 450_000,
+      }),
+    ).toBe(450_000);
+
+    // Resetting the override (null) falls back to the channel default.
+    expect(
+      resolveContextMax({
+        usage: undefined,
+        engine: "claude",
+        model: "deepseek-v4.1-flash",
+        defaultWindow: 900_000,
+        overrideWindow: null,
+      }),
+    ).toBe(900_000);
+
+    // No channel default (null or non-positive): the usual chain applies.
+    expect(
+      resolveContextMax({
+        usage: {
+          input_tokens: 10,
+          total_tokens: 10,
+          model_context_window: 1_000_000,
+        },
+        engine: "claude",
+        model: "x",
+        defaultWindow: null,
+      }),
+    ).toBe(1_000_000);
+    expect(
+      resolveContextMax({
+        usage: undefined,
+        engine: "claude",
+        model: "x",
+        defaultWindow: 0,
+      }),
+    ).toBe(ASSUMED_CONTEXT_WINDOW);
+  });
 });

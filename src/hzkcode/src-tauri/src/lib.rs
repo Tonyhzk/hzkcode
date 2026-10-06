@@ -275,6 +275,7 @@ pub fn run() {
             plugins::market::plugin_check_updates,
             // engine
             engine::send_message,
+            engine::default_auto_compact_window,
             engine::interrupt_session,
             engine::answer_question,
             engine::answer_permission,

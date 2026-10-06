@@ -1934,6 +1934,79 @@ async fn run_reader(stdout: ChildStdout, ctx: RunContext) {
     ctx.core.sink.flush();
 }
 
+/// The auto-compact window a send runs with when the session carries no
+/// override: the app feature env (`cliEnv`) first, then the selected channel's
+/// env, which wins — the same layering prepare_launch applies — then whatever
+/// the process itself inherited (children keep inheriting it). None means
+/// nothing is configured on the app side.
+#[tauri::command]
+pub fn default_auto_compact_window(engine: String, provider_id: Option<String>) -> Option<u64> {
+    let settings = crate::settings::read_settings().unwrap_or_default();
+    let feature = crate::settings::feature_env(&settings);
+    let provider_id = provider_id.filter(|s| !s.trim().is_empty());
+    let channel = crate::config::resolve_provider(&engine, provider_id.as_deref())
+        .ok()
+        .flatten()
+        .and_then(|provider| crate::provider_files::channel_env(&engine, &provider).ok())
+        .unwrap_or_default();
+    resolve_default_window(&feature, &channel).or_else(|| {
+        std::env::var("HZKCODE_AUTO_COMPACT_WINDOW")
+            .ok()
+            .and_then(|value| parse_window_amount(&value))
+    })
+}
+
+/// The channel env wins over the feature env; a blank, zero or invalid value
+/// counts as absent. Mirrors the launch layering (feature env first, then the
+/// channel).
+fn resolve_default_window(
+    feature_env: &[(String, String)],
+    channel_env: &std::collections::HashMap<String, String>,
+) -> Option<u64> {
+    channel_env
+        .get("HZKCODE_AUTO_COMPACT_WINDOW")
+        .and_then(|value| parse_window_amount(value))
+        .or_else(|| {
+            feature_env
+                .iter()
+                .find(|(key, _)| key == "HZKCODE_AUTO_COMPACT_WINDOW")
+                .and_then(|(_, value)| parse_window_amount(value))
+        })
+}
+
+/// Mirrors /maxtokens' /^[1-9]\d*$/ gate: a positive integer or nothing.
+fn parse_window_amount(raw: &str) -> Option<u64> {
+    let value: u64 = raw.trim().parse().ok()?;
+    (value > 0).then_some(value)
+}
+
+#[cfg(test)]
+mod default_window_tests {
+    use super::resolve_default_window;
+    use std::collections::HashMap;
+
+    #[test]
+    fn channel_value_wins_over_the_feature_env() {
+        let feature = vec![(
+            "HZKCODE_AUTO_COMPACT_WINDOW".to_string(),
+            "500000".to_string(),
+        )];
+        let mut channel = HashMap::new();
+        // No channel value: the feature env stands.
+        assert_eq!(resolve_default_window(&feature, &channel), Some(500_000));
+        // The channel's own value wins.
+        channel.insert("HZKCODE_AUTO_COMPACT_WINDOW".into(), "900000".into());
+        assert_eq!(resolve_default_window(&feature, &channel), Some(900_000));
+        // Blank, zero or junk values count as absent.
+        for raw in [" ", "0", "abc", "-1", "1.5"] {
+            channel.insert("HZKCODE_AUTO_COMPACT_WINDOW".into(), raw.into());
+            assert_eq!(resolve_default_window(&feature, &channel), Some(500_000));
+        }
+        // Nothing anywhere.
+        assert_eq!(resolve_default_window(&[], &HashMap::new()), None);
+    }
+}
+
 #[tauri::command]
 pub async fn send_message(
     state: tauri::State<'_, crate::AppState>,

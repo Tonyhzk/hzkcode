@@ -727,6 +727,13 @@ export const ipc = {
   }) => invoke<SendResult>("send_message", args),
   interruptSession: (sessionId: string) =>
     invoke<boolean>("interrupt_session", { sessionId }),
+  /** The auto-compact window the app/channel config would inject when the
+   *  session carries no override (read-only; no credentials are returned). */
+  defaultAutoCompactWindow: (engine: string, providerId?: string | null) =>
+    invoke<number | null>("default_auto_compact_window", {
+      engine,
+      providerId: providerId ?? null,
+    }),
   listEngines: () => invoke<EngineInfo[]>("list_engines"),
   /** Persist a clipboard image to app home; returns its absolute path so it
    * can flow through the same path-based image pipeline as picked files. */

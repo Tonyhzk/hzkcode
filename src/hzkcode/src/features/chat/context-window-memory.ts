@@ -56,7 +56,8 @@ export function recallContextWindow(
 }
 
 /** The gauge's denominator: the session's /maxtokens-style override wins (it
- *  is the effective window the CLI runs with), then a live report, then the
+ *  is the effective window the CLI runs with), then the app/channel-configured
+ *  default window (also injected); otherwise a live report, then the
  *  remembered window, then the model catalog, then the shared last-resort
  *  guess. */
 export function resolveContextMax(opts: {
@@ -66,9 +67,15 @@ export function resolveContextMax(opts: {
   catalogWindow?: number | null;
   /** Session context-window override (the composer's 上下文窗口 control). */
   overrideWindow?: number | null;
+  /** App/channel-configured auto-compact window (跟随默认). */
+  defaultWindow?: number | null;
 }): number {
   const override = opts.overrideWindow;
   if (typeof override === "number" && override > 0) return override;
+  const channelDefault = opts.defaultWindow;
+  if (typeof channelDefault === "number" && channelDefault > 0) {
+    return channelDefault;
+  }
   return (
     parseUsage(opts.usage)?.contextWindow ||
     recallContextWindow(opts.engine, opts.model) ||

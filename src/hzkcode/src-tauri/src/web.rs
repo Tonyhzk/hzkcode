@@ -990,6 +990,12 @@ struct SendMessageArgs {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct DefaultAutoCompactWindowArgs {
+    engine: String,
+    provider_id: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SessionIdArgs {
     session_id: String,
 }
@@ -1411,6 +1417,13 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
             ser(crate::engine::interrupt_session(app.state(), a.session_id).await)
         }
         "list_engines" => ser(Ok(crate::engine::list_engines())),
+        "default_auto_compact_window" => {
+            let a: DefaultAutoCompactWindowArgs = parse_args(&raw)?;
+            ser(Ok(crate::engine::default_auto_compact_window(
+                a.engine,
+                a.provider_id,
+            )))
+        }
         "list_engine_models" => {
             let a: EngineArgs = parse_args(&raw)?;
             ser(
