@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
@@ -28,13 +28,12 @@ import { useBranchSwitcher } from "./use-branch-switcher";
 import { useComposerImages } from "./use-composer-images";
 import { useEngineModels } from "./use-engine-models";
 import { useTabModelDisplay } from "./use-tab-model-display";
-import { ipc, type EngineInfo, type Workspace } from "@/lib/ipc";
-import { listenSettingsChanged } from "@/lib/events";
+import { useDefaultAutoCompactWindow } from "./use-default-auto-compact-window";
+import type { EngineInfo, Workspace } from "@/lib/ipc";
 import { EmptyState } from "@/components/base/empty-state";
 import { parseUsage } from "../usage";
 import { rememberContextWindow, resolveContextMax } from "../context-window-memory";
 import { resolveSessionProvider } from "../store/stream";
-import { useTauriEvent } from "@/hooks/use-tauri-event";
 import { useWorkspaceUIHooks, workspaceAllowedEngines } from "../workspace-ui-bridge";
 
 
@@ -338,18 +337,10 @@ export const ChatConversation = memo(function ChatConversation({
   );
 
   const displayModel = displayModels[activeEngine];
-  // Channel/app-configured auto-compact window: the 跟随默认 denominator,
-  // matching what the engine actually runs with (read-only command; no
-  // credentials cross the boundary).
-  const [defaultWindow, setDefaultWindow] = useState<number | null>(null);
-  const readDefaultWindow = useCallback(() => {
-    void ipc
-      .defaultAutoCompactWindow(activeEngine, activeProviderId)
-      .then((value) => setDefaultWindow(typeof value === "number" ? value : null))
-      .catch(() => {});
-  }, [activeEngine, activeProviderId]);
-  useEffect(() => readDefaultWindow(), [readDefaultWindow]);
-  useTauriEvent(() => listenSettingsChanged(readDefaultWindow));
+  const defaultWindow = useDefaultAutoCompactWindow(
+    activeEngine,
+    activeProviderId,
+  );
   // The session's /maxtokens-style override (the composer's 上下文窗口
   // control) is the effective window and wins; otherwise the
   // conversation-reported window (Codex token_count, Claude's modelUsage)
