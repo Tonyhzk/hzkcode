@@ -55,14 +55,20 @@ export function recallContextWindow(
   }
 }
 
-/** The gauge's denominator: a live report wins, then the remembered window,
- *  then the model catalog, then the shared last-resort guess. */
+/** The gauge's denominator: the session's /maxtokens-style override wins (it
+ *  is the effective window the CLI runs with), then a live report, then the
+ *  remembered window, then the model catalog, then the shared last-resort
+ *  guess. */
 export function resolveContextMax(opts: {
   usage: unknown;
   engine: string;
   model?: string | null;
   catalogWindow?: number | null;
+  /** Session context-window override (the composer's 上下文窗口 control). */
+  overrideWindow?: number | null;
 }): number {
+  const override = opts.overrideWindow;
+  if (typeof override === "number" && override > 0) return override;
   return (
     parseUsage(opts.usage)?.contextWindow ||
     recallContextWindow(opts.engine, opts.model) ||

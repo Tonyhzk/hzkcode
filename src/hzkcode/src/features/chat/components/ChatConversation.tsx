@@ -244,6 +244,9 @@ export const ChatConversation = memo(function ChatConversation({
   const sessionUsage = useChatStore((s) =>
     key ? s.bySession[key]?.usage : undefined,
   );
+  const autoCompactWindow = useChatStore((s) =>
+    key ? (s.bySession[key]?.autoCompactWindow ?? null) : null,
+  );
   const hasSession = useChatStore((s) => key in s.bySession);
   const draft = useChatStore((s) => s.drafts[key] ?? "");
   const sendShortcut = useChatStore((s) => s.sendShortcut);
@@ -324,7 +327,9 @@ export const ChatConversation = memo(function ChatConversation({
   );
 
   const displayModel = displayModels[activeEngine];
-  // Conversation-reported window (Codex token_count, Claude's modelUsage)
+  // The session's /maxtokens-style override (the composer's 上下文窗口
+  // control) is the effective window and wins; otherwise the
+  // conversation-reported window (Codex token_count, Claude's modelUsage)
   // wins; a fresh session starts from the last window this engine+model was
   // seen reporting; the model catalog is the fallback for engines that never
   // report one, and the shared constant is the last resort.
@@ -335,6 +340,7 @@ export const ChatConversation = memo(function ChatConversation({
     catalogWindow: (catalogs[activeEngine]?.models ?? []).find(
       (m) => m.id === displayModel,
     )?.contextWindow,
+    overrideWindow: autoCompactWindow,
   });
   const observedWindow = parseUsage(sessionUsage)?.contextWindow;
   useEffect(() => {

@@ -56,6 +56,7 @@ import { ipc } from "@/lib/ipc";
 import { listenSettingsChanged } from "@/lib/events";
 import { sessionKey, useChatStore } from "@/features/chat/store";
 import { useTauriEvent } from "@/hooks/use-tauri-event";
+import { parseContextWindowDraft } from "@/features/chat/context-window-draft";
 import { ASSUMED_CONTEXT_WINDOW } from "@/features/chat/usage";
 import {
   usePromptCompletion,
@@ -487,6 +488,27 @@ function SessionToggles() {
     setWindowError(false);
   }, [isOpen, autoCompactWindow]);
 
+  // A typed value must not be silently dropped: closing the popover (a click
+  // outside lands the popover's dismiss) commits a valid, changed draft the
+  // same way Enter and 应用 do. Invalid drafts are still discarded.
+  const windowDraftRef = useRef(windowDraft);
+  windowDraftRef.current = windowDraft;
+  const autoCompactWindowRef = useRef(autoCompactWindow);
+  autoCompactWindowRef.current = autoCompactWindow;
+  const sessionKeyRef = useRef(sessionKeyValue);
+  sessionKeyRef.current = sessionKeyValue;
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+    if (!wasOpen || isOpen) return;
+    const key = sessionKeyRef.current;
+    if (!key) return;
+    const value = parseContextWindowDraft(windowDraftRef.current);
+    if (value == null || value === autoCompactWindowRef.current) return;
+    setSessionAutoCompactWindow(key, value);
+  }, [isOpen, setSessionAutoCompactWindow]);
+
   if (!active || !sessionKeyValue) return null;
 
   const selectProxy = (value: boolean | null) => {
@@ -499,15 +521,16 @@ function SessionToggles() {
   };
   // The CLI's /maxtokens as a control: a positive token count pinned on the
   // next sends; 恢复默认 clears the override (an empty draft fails validation
-  // rather than standing for the default).
+  // rather than standing for the default). Enter, 应用, and closing the
+  // popover after an edit all commit the same way.
   const applyWindow = () => {
-    const trimmed = windowDraft.trim();
-    if (!/^[1-9]\d*$/.test(trimmed) || !Number.isSafeInteger(Number(trimmed))) {
+    const value = parseContextWindowDraft(windowDraft);
+    if (value == null) {
       setWindowError(true);
       return;
     }
     setWindowError(false);
-    setSessionAutoCompactWindow(sessionKeyValue, Number(trimmed));
+    setSessionAutoCompactWindow(sessionKeyValue, value);
   };
   const resetWindow = () => {
     setWindowError(false);

@@ -97,4 +97,48 @@ describe("context window memory", () => {
       resolveContextMax({ usage: undefined, engine: "pi", model: "x" }),
     ).toBe(ASSUMED_CONTEXT_WINDOW);
   });
+
+  it("lets the session override win over every fallback", () => {
+    rememberContextWindow("claude", "default", 500_000);
+
+    // The /maxtokens-style override is the effective window: it beats the
+    // live report, the memory and the catalog alike.
+    expect(
+      resolveContextMax({
+        usage: {
+          input_tokens: 10,
+          total_tokens: 10,
+          model_context_window: 1_000_000,
+        },
+        engine: "claude",
+        model: "default",
+        catalogWindow: 200_000,
+        overrideWindow: 900_000,
+      }),
+    ).toBe(900_000);
+
+    // Clearing the override falls back to the normal chain.
+    expect(
+      resolveContextMax({
+        usage: {
+          input_tokens: 10,
+          total_tokens: 10,
+          model_context_window: 1_000_000,
+        },
+        engine: "claude",
+        model: "default",
+        overrideWindow: null,
+      }),
+    ).toBe(1_000_000);
+
+    // A non-positive override is ignored like an absent one.
+    expect(
+      resolveContextMax({
+        usage: undefined,
+        engine: "claude",
+        model: "default",
+        overrideWindow: 0,
+      }),
+    ).toBe(500_000);
+  });
 });
