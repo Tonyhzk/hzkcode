@@ -53,6 +53,17 @@ pub struct RemoteInfo {
     pub push_url: Option<String>,
 }
 
+/// Raw (unmasked) remote URLs for the edit form. Fetched only when the form
+/// opens, so the always-visible surfaces never carry credentials.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteUrls {
+    pub url: String,
+    /// Set only when pushing goes somewhere other than `url`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub push_url: Option<String>,
+}
+
 /// Compact status for a directory that is itself a Git worktree root,
 /// rendered inline in the file tree. Unlike `GitStatus` it carries no file
 /// paths or diff stats — only the branch plus change counts.
@@ -788,6 +799,24 @@ pub fn git_remote(path: String) -> Result<Option<RemoteInfo>, String> {
         url: mask_remote_url(&url),
         push_url,
     }))
+}
+
+/// The raw origin URLs, fetched only when the user opens the edit form: the
+/// prefill must be the real address (a masked value submitted as-is would
+/// corrupt the stored credential), while `git_remote` keeps masked URLs for
+/// every always-visible surface.
+#[tauri::command]
+pub fn git_remote_raw(path: String) -> Result<Option<RemoteUrls>, String> {
+    let repo = open_repo(&path)?;
+    let Ok(remote) = repo.find_remote("origin") else {
+        return Ok(None);
+    };
+    let url = remote.url().unwrap_or_default().to_string();
+    let push_url = remote
+        .pushurl()
+        .filter(|push| *push != url)
+        .map(str::to_string);
+    Ok(Some(RemoteUrls { url, push_url }))
 }
 
 /// Bind (or re-point) the `origin` remote. `push_url` is explicit: `Some("")`
@@ -1642,6 +1671,43 @@ mod tests {
         assert_eq!(info.push_url.as_deref(), Some("ssh://git@push.example.com/x.git"));
 
         assert!(git_remote_set(path, "   ".into(), None).is_err());
+    }
+
+    #[test]
+    fn raw_remote_urls_back_the_edit_form() {
+        let scratch = Scratch::new();
+        let repo_path = scratch.0.join("repo");
+        Repository::init(&repo_path).unwrap();
+        let path = repo_path.to_string_lossy().into_owned();
+
+        assert!(git_remote_raw(path.clone()).unwrap().is_none());
+
+        git_remote_set(
+            path.clone(),
+            "https://user:tok@git.example.com/x.git".into(),
+            None,
+        )
+        .unwrap();
+        // The prefill must be the real credential-bearing URL...
+        let raw = git_remote_raw(path.clone()).unwrap().unwrap();
+        assert_eq!(raw.url, "https://user:tok@git.example.com/x.git");
+        assert_eq!(raw.push_url, None);
+        // ...while the always-visible surface stays masked.
+        assert_eq!(
+            git_remote(path.clone()).unwrap().unwrap().url,
+            "https://***@git.example.com/x.git"
+        );
+
+        {
+            let repo = Repository::open(&repo_path).unwrap();
+            repo.remote_set_pushurl("origin", Some("ssh://git@push.example.com/x.git"))
+                .unwrap();
+        }
+        let raw = git_remote_raw(path).unwrap().unwrap();
+        assert_eq!(
+            raw.push_url.as_deref(),
+            Some("ssh://git@push.example.com/x.git")
+        );
     }
 
     #[test]

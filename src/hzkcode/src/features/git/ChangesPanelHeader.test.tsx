@@ -1,8 +1,13 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ipc } from "@/lib/ipc";
 import i18n from "@/lib/i18n";
 import { ChangesPanelHeader } from "./ChangesPanelHeader";
+
+vi.mock("@/lib/ipc", () => ({
+  ipc: { gitRemoteRaw: vi.fn() },
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -29,6 +34,8 @@ describe("ChangesPanelHeader remote row", () => {
   let root: Root;
 
   beforeEach(() => {
+    vi.mocked(ipc.gitRemoteRaw).mockReset();
+    vi.mocked(ipc.gitRemoteRaw).mockResolvedValue(null);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -131,6 +138,27 @@ describe("ChangesPanelHeader remote row", () => {
       },
     });
     expect(container.textContent).toContain("https://***@mirror.example.com/y.git");
+  });
+
+  it("prefills the edit form with the raw current addresses", async () => {
+    vi.mocked(ipc.gitRemoteRaw).mockResolvedValue({
+      url: "https://user:tok@git.example.com/x.git",
+      pushUrl: "ssh://git@push.example.com/x.git",
+    });
+    await render({
+      remote: {
+        name: "origin",
+        url: "https://***@git.example.com/x.git",
+        pushUrl: "ssh://git@push.example.com/x.git",
+      },
+    });
+
+    await openForm(i18n.t("git.editRemote"));
+    // The prefill arrives with the async fetch.
+    await act(async () => {});
+    const inputs = textInputs();
+    expect(inputs[0].value).toBe("https://user:tok@git.example.com/x.git");
+    expect(inputs[1].value).toBe("ssh://git@push.example.com/x.git");
   });
 
   it("offers an explicit separate push URL, starting unchecked when one exists", async () => {

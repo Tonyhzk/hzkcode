@@ -1846,6 +1846,10 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
             let a: PathArgs = parse_args(&raw)?;
             ser(crate::git::git_remote(a.path))
         }
+        "git_remote_raw" => {
+            let a: PathArgs = parse_args(&raw)?;
+            ser(crate::git::git_remote_raw(a.path))
+        }
         "git_remote_set" => {
             let a: GitRemoteSetArgs = parse_args(&raw)?;
             ser(crate::git::git_remote_set(a.path, a.url, a.push_url))

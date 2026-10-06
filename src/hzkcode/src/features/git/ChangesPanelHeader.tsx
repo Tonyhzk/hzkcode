@@ -16,7 +16,7 @@ import {
   DropdownPopover,
   DropdownTrigger,
 } from "@/components/base/dropdown/dropdown";
-import { type BranchInfo, type RemoteInfo } from "@/lib/ipc";
+import { ipc, type BranchInfo, type RemoteInfo } from "@/lib/ipc";
 import { cx } from "@/utils/cx";
 import { useGitStore } from "./store";
 
@@ -245,6 +245,7 @@ export function ChangesPanelHeader({
       )}
       {!notRepo && (
         <RemoteRow
+          workspacePath={workspacePath}
           remote={remote}
           saving={pending.remote === true}
           onSave={onSaveRemote}
@@ -271,12 +272,16 @@ export function ChangesPanelHeader({
  *  URL (plus the separate push URL when one is set) and an 编辑/绑定 entry
  *  that opens an inline form. The form is explicit about the push target: a
  *  checkbox keeps it equal to the fetch URL, unchecking offers a separate
- *  one (blank keeps the current configuration). */
+ *  one (blank keeps the current configuration). Opening the form prefills
+ *  the raw (unmasked) addresses — fetched only then — so editing starts from
+ *  the real values instead of a masked display string. */
 function RemoteRow({
+  workspacePath,
   remote,
   saving,
   onSave,
 }: {
+  workspacePath: string;
   remote: RemoteInfo | null | undefined;
   saving: boolean;
   onSave: (url: string, pushUrl: string | null) => Promise<boolean>;
@@ -374,6 +379,21 @@ function RemoteRow({
     // instead of being silently dropped.
     setPushSame(!remote?.pushUrl);
     setEditing(true);
+    // Prefill with the raw (unmasked) addresses, fetched only for the form:
+    // submitting the masked display value as-is would corrupt the stored
+    // credential.
+    void ipc
+      .gitRemoteRaw(workspacePath)
+      .then((raw) => {
+        if (!raw) return;
+        const { url, pushUrl } = raw;
+        // Don't clobber anything typed while the fetch was in flight.
+        setDraft((prev) => (prev.length === 0 ? url : prev));
+        if (pushUrl) {
+          setPushDraft((prev) => (prev.length === 0 ? pushUrl : prev));
+        }
+      })
+      .catch(() => {});
   };
 
   return (

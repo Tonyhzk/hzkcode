@@ -497,6 +497,13 @@ export interface RemoteInfo {
   url: string;
   pushUrl?: string;
 }
+
+/** Raw (unmasked) origin URLs for the edit-form prefill; fetched only when
+ *  the form opens. `pushUrl` is set only when pushing goes elsewhere. */
+export interface RemoteUrls {
+  url: string;
+  pushUrl?: string;
+}
 export interface AppMetrics {
   /** Resident memory of the app process, bytes. */
   memoryBytes: number;
@@ -1005,6 +1012,9 @@ export const ipc = {
   gitCommitFileDiff: (path: string, hash: string, file: string) =>
     invoke<string>("git_commit_file_diff", { path, hash, file }),
   gitRemote: (path: string) => invoke<RemoteInfo | null>("git_remote", { path }),
+  /** Raw URLs for the edit-form prefill; the masked `gitRemote` stays the
+   *  only source for always-visible surfaces. */
+  gitRemoteRaw: (path: string) => invoke<RemoteUrls | null>("git_remote_raw", { path }),
   /** `pushUrl`: "" clears a separate push URL (push follows fetch), a value
    *  sets one, null/absent keeps the current configuration. */
   gitRemoteSet: (path: string, url: string, pushUrl?: string | null) =>
