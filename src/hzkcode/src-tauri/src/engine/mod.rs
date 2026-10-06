@@ -1115,13 +1115,16 @@ fn prepare_launch(
     }
     // Session context-window override (the CLI's /maxtokens writes this same
     // variable for its own process lifetime — the GUI send is the process).
+    // Set after the channel env: an explicit session choice must beat the
+    // channel's own HZKCODE_AUTO_COMPACT_WINDOW, and the staging overlay
+    // re-applies the same value at the last layer (see claude_channel::stage).
+    for (key, value) in &channel_env {
+        built.command.env(key, value);
+    }
     if let Some(tokens) = req.auto_compact_window {
         built
             .command
             .env("HZKCODE_AUTO_COMPACT_WINDOW", tokens.to_string());
-    }
-    for (key, value) in &channel_env {
-        built.command.env(key, value);
     }
     let configured = match (engine, provider.as_ref()) {
         ("claude", Some(provider)) => claude_channel::apply(&mut built, provider, &channel_env, &req),

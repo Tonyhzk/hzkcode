@@ -78,6 +78,7 @@ pub(super) fn apply(
         provider,
         env,
         req.model.as_deref(),
+        req.auto_compact_window,
         &crate::paths::app_home().join("claude-staging"),
     )
 }
@@ -95,6 +96,7 @@ fn stage(
     provider: &Value,
     env: &HashMap<String, String>,
     model: Option<&str>,
+    session_window: Option<u64>,
     directory: &Path,
 ) -> Result<(), String> {
     let mut settings = Map::new();
@@ -115,6 +117,17 @@ fn stage(
         env.iter()
             .map(|(key, value)| (key.clone(), Value::String(value.clone()))),
     );
+    // An explicit session context window (the composer's /maxtokens control)
+    // is the last word at this layer: the channel may carry its own
+    // HZKCODE_AUTO_COMPACT_WINDOW, but the session's choice must win — the CLI
+    // applies this overlay's env after the process env. Without a session
+    // value the channel's own entry stands untouched.
+    if let Some(tokens) = session_window {
+        overlay.insert(
+            "HZKCODE_AUTO_COMPACT_WINDOW".into(),
+            Value::String(tokens.to_string()),
+        );
+    }
     settings.insert("env".into(), Value::Object(overlay));
     // An explicit model rides the overlay; without one, "default" (the CLI's
     // own alias) masks any native settings.json model so the isolated channel
@@ -169,6 +182,41 @@ mod tests {
     }
 
     #[test]
+    fn session_window_wins_in_the_staged_overlay() {
+        let directory = std::env::temp_dir().join(format!(
+            "hzkcode-channel-stage-test-{}",
+            std::process::id()
+        ));
+        let provider = serde_json::json!({});
+        let env = HashMap::from([
+            ("HZKCODE_MODEL".into(), "relay-model".into()),
+            ("HZKCODE_AUTO_COMPACT_WINDOW".into(), "777".into()),
+        ]);
+
+        // An explicit session window (the composer's /maxtokens control) beats
+        // the channel's own value at the overlay layer, which the CLI applies
+        // after the process environment.
+        let mut with_session = built();
+        stage(&mut with_session, &provider, &env, None, Some(123456), &directory).unwrap();
+        let staged = serde_json::from_slice::<Value>(
+            &std::fs::read(with_session.cleanup_files.last().unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(staged["env"]["HZKCODE_AUTO_COMPACT_WINDOW"], "123456");
+
+        // Without a session override the channel's own entry stands.
+        let mut channel_only = built();
+        stage(&mut channel_only, &provider, &env, None, None, &directory).unwrap();
+        let staged = serde_json::from_slice::<Value>(
+            &std::fs::read(channel_only.cleanup_files.last().unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(staged["env"]["HZKCODE_AUTO_COMPACT_WINDOW"], "777");
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
     fn channel_models_never_resolve_through_native_aliases() {
         let provider = serde_json::json!({"model": "sonnet", "settingsConfig": {"model": "haiku"}});
         let env = HashMap::from([
@@ -216,7 +264,7 @@ mod tests {
                 "apiKeyHelper": "/bin/evil-helper",
                 "permissions": {"allow": ["Bash(rm:*)"]}}});
             let env = crate::provider_files::channel_env("claude", &provider).unwrap();
-            stage(command, &provider, &env, Some("selected-model"), &directory).unwrap();
+            stage(command, &provider, &env, Some("selected-model"), None, &directory).unwrap();
             let path = &command.cleanup_files[0];
             let settings: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
             assert_eq!(
@@ -269,6 +317,7 @@ mod tests {
             &serde_json::json!({"baseUrl": "https://x.invalid", "apiKey": "k"}),
             &HashMap::new(),
             None,
+            None,
             &directory,
         )
         .unwrap();
@@ -278,7 +327,7 @@ mod tests {
         super::super::cleanup_staged_files(&no_model.cleanup_files);
 
         let mut failed = built();
-        assert!(stage(&mut failed, &Value::Null, &HashMap::new(), None, &native).is_err());
+        assert!(stage(&mut failed, &Value::Null, &HashMap::new(), None, None, &native).is_err());
         assert!(failed.cleanup_files.is_empty());
         assert_eq!(std::fs::read_to_string(&native).unwrap(), original);
         std::fs::remove_file(native).unwrap();
