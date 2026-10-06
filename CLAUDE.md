@@ -47,6 +47,7 @@
 - 运行时解析顺序：设置页自定义路径 → 内置二进制 → 系统 PATH；命中内置时设置页版本行显示「内置」，且不提供 npm / 官方脚本的一键安装入口（随应用一起更新）。
 - 引擎配置根目录：`~/.hzkcode`（`HZKCODE_CONFIG_DIR` 可覆盖），与单独安装的 hzkcode CLI 共用同一份配置与会话数据，因此可以同时安装使用；GUI 不再读写 `~/.claude` 与 `CLAUDE_CONFIG_DIR`。
 - 提供商与 API Key 由界面管理：渠道配置存在应用自己的配置里，会话启动时以环境变量注入子进程，不依赖用户 shell 配置；变量名只用 CLI 自己的 `HZKCODE_*`（`HZKCODE_BASE_URL` / `HZKCODE_API_KEY` / `HZKCODE_MODEL` / `HZKCODE_DEFAULT_HIGH|MID|LOW_MODEL` / `HZKCODE_MAX_THINKING_TOKENS` 等），不再出现上游 `ANTHROPIC_*`、`CLAUDE_CODE_*` 拼写。注入前会清掉父进程继承的同名变量，选中具体渠道时同时设置 `HZKCODE_PROVIDER_MANAGED_BY_HOST=1`，CLI 自己的 `~/.hzkcode/settings.json` 只作为「官方配置」渠道使用。
+- CLI 能力缺口处理：GUI 需求需要 CLI 源码改动才能实现时，不在本仓库改动 CLI 源码；先跳过该项、继续其余工作，完成时把需要 CLI 修改的内容汇总成清单（行为要求与涉及的源码位置）交付；用户先在 `hzk-code-agent` 仓库完成并更新内置二进制后，再做 GUI 侧适配。
 
 ## 品牌与标识约定
 
