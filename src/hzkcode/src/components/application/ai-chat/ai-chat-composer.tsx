@@ -498,7 +498,8 @@ function SessionToggles() {
     setIsOpen(false);
   };
   // The CLI's /maxtokens as a control: a positive token count pinned on the
-  // next sends; an empty draft (or 恢复默认) falls back to the default window.
+  // next sends; 恢复默认 clears the override (an empty draft fails validation
+  // rather than standing for the default).
   const applyWindow = () => {
     const trimmed = windowDraft.trim();
     if (!/^[1-9]\d*$/.test(trimmed) || !Number.isSafeInteger(Number(trimmed))) {
