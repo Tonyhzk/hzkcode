@@ -16,7 +16,7 @@ import {
   DropdownPopover,
   DropdownTrigger,
 } from "@/components/base/dropdown/dropdown";
-import { type BranchInfo } from "@/lib/ipc";
+import { type BranchInfo, type RemoteInfo } from "@/lib/ipc";
 import { cx } from "@/utils/cx";
 import { useGitStore } from "./store";
 
@@ -28,6 +28,12 @@ interface ChangesPanelHeaderProps {
   ahead: number | undefined;
   behind: number | undefined;
   branches: BranchInfo[] | undefined;
+  /** The origin remote; null = none bound, undefined = still loading. */
+  remote: RemoteInfo | null | undefined;
+  /** Binds or re-points origin; resolves true once persisted. `pushUrl` is
+   *  the explicit push choice: "" follows the fetch URL, a value replaces it,
+   *  null keeps the current configuration. */
+  onSaveRemote: (url: string, pushUrl: string | null) => Promise<boolean>;
   pending: Record<string, true>;
   /** First error to surface: a failed action, else the last refresh failure. */
   error: string | null;
@@ -43,6 +49,8 @@ export function ChangesPanelHeader({
   ahead,
   behind,
   branches,
+  remote,
+  onSaveRemote,
   pending,
   error,
   run,
@@ -235,6 +243,13 @@ export function ChangesPanelHeader({
           </Button>
         </form>
       )}
+      {!notRepo && (
+        <RemoteRow
+          remote={remote}
+          saving={pending.remote === true}
+          onSave={onSaveRemote}
+        />
+      )}
       {error && (
         <div role="alert" className="flex items-center gap-2">
           <p className="min-w-0 flex-1 break-words text-xs text-text-error-primary">{error}</p>
@@ -247,6 +262,156 @@ export function ChangesPanelHeader({
             ×
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** The origin line under the branch picker: the (credential-masked) fetch
+ *  URL (plus the separate push URL when one is set) and an 编辑/绑定 entry
+ *  that opens an inline form. The form is explicit about the push target: a
+ *  checkbox keeps it equal to the fetch URL, unchecking offers a separate
+ *  one (blank keeps the current configuration). */
+function RemoteRow({
+  remote,
+  saving,
+  onSave,
+}: {
+  remote: RemoteInfo | null | undefined;
+  saving: boolean;
+  onSave: (url: string, pushUrl: string | null) => Promise<boolean>;
+}) {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [pushDraft, setPushDraft] = useState("");
+  const [pushSame, setPushSame] = useState(true);
+
+  if (editing) {
+    return (
+      <form
+        className="flex flex-col gap-1"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const url = draft.trim();
+          if (url.length === 0 || saving) return;
+          // Explicit push choice: same-URL clears a separate push URL, a
+          // typed one replaces it, an empty one while unchecked keeps the
+          // current configuration.
+          const push = pushSame ? "" : pushDraft.trim() ? pushDraft.trim() : null;
+          void onSave(url, push).then((ok) => {
+            if (ok) {
+              setEditing(false);
+              setDraft("");
+              setPushDraft("");
+            }
+          });
+        }}
+      >
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={t("git.remoteUrlPlaceholder")}
+          className={cx(
+            "h-8 min-w-0 rounded-lg border border-border-button-default px-2",
+            "text-body-medium text-text-primary placeholder:text-text-placeholder",
+            "outline-none focus:border-border-focus-ring",
+          )}
+        />
+        <label className="flex items-center gap-1.5 px-0.5 text-xs text-text-secondary">
+          <input
+            type="checkbox"
+            checked={pushSame}
+            onChange={(e) => setPushSame(e.target.checked)}
+            className="size-3.5"
+          />
+          {t("git.pushSameAsUrl")}
+        </label>
+        {!pushSame && (
+          <input
+            value={pushDraft}
+            onChange={(e) => setPushDraft(e.target.value)}
+            placeholder={t("git.pushUrlPlaceholder")}
+            className={cx(
+              "h-8 min-w-0 rounded-lg border border-border-button-default px-2",
+              "text-body-medium text-text-primary placeholder:text-text-placeholder",
+              "outline-none focus:border-border-focus-ring",
+            )}
+          />
+        )}
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            size="small"
+            type="submit"
+            disabled={draft.trim().length === 0 || saving}
+          >
+            {t("common.confirm")}
+          </Button>
+          <Button
+            size="small"
+            variant="ghost"
+            onClick={() => {
+              setEditing(false);
+              setDraft("");
+              setPushDraft("");
+            }}
+          >
+            {t("common.cancel")}
+          </Button>
+        </div>
+      </form>
+    );
+  }
+
+  // Still loading: keep the row reserved but quiet.
+  if (remote === undefined) return <div className="h-5" />;
+
+  const openForm = () => {
+    setDraft("");
+    setPushDraft("");
+    // A separate push URL flips the checkbox so the choice is visible
+    // instead of being silently dropped.
+    setPushSame(!remote?.pushUrl);
+    setEditing(true);
+  };
+
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5 px-0.5">
+      <div className="flex min-w-0 items-center gap-1">
+        {remote ? (
+          <>
+            <span className="min-w-0 truncate text-xs text-text-tertiary" title={remote.url}>
+              {remote.name} · {remote.url}
+            </span>
+            <button
+              type="button"
+              onClick={openForm}
+              className="shrink-0 cursor-pointer text-xs text-text-secondary hover:text-text-primary"
+            >
+              {t("git.editRemote")}
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="text-xs text-text-tertiary">{t("git.noRemote")}</span>
+            <button
+              type="button"
+              onClick={openForm}
+              className="shrink-0 cursor-pointer text-xs text-text-secondary hover:text-text-primary"
+            >
+              {t("git.bindRemote")}
+            </button>
+          </>
+        )}
+      </div>
+      {remote?.pushUrl && (
+        <span
+          className="min-w-0 truncate text-caption-1-medium text-text-tertiary"
+          title={remote.pushUrl}
+        >
+          {t("git.pushUrl")} · {remote.pushUrl}
+        </span>
       )}
     </div>
   );

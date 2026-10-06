@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import FolderSymlink from "lucide-react/dist/esm/icons/folder-symlink";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch";
+import History from "lucide-react/dist/esm/icons/history";
 import i18n from "@/lib/i18n";
 import {
   compareByOrder,
@@ -10,6 +11,7 @@ import {
 } from "@hzkcode/plugin-sdk";
 import { FilesPanel } from "@/features/files/FilesPanel";
 import { ChangesPanel } from "@/features/git/ChangesPanel";
+import { HistoryPanel } from "@/features/git/HistoryPanel";
 
 /**
  * Builtin right-panel tabs, registered through the same extension-point
@@ -22,6 +24,10 @@ import { ChangesPanel } from "@/features/git/ChangesPanel";
  *  exactly as it was inlined in ChatSidePanel. */
 const ChangesTab = ({ workspacePath }: { workspacePath: string }) => (
   <ChangesPanel key={workspacePath} workspacePath={workspacePath} className="w-full" />
+);
+
+const HistoryTab = ({ workspacePath }: { workspacePath: string }) => (
+  <HistoryPanel key={workspacePath} workspacePath={workspacePath} className="w-full" />
 );
 
 panelTabRegistry.register({
@@ -37,6 +43,13 @@ panelTabRegistry.register({
   icon: GitBranch,
   order: 1,
   component: ChangesTab,
+});
+panelTabRegistry.register({
+  id: "history",
+  label: () => i18n.t("git.history"),
+  icon: History,
+  order: 2,
+  component: HistoryTab,
 });
 
 /** Registry entries in display order (compareByOrder: undefined order sorts

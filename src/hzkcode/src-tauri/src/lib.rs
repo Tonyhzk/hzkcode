@@ -355,6 +355,11 @@ pub fn run() {
             git::git_branches,
             git::git_checkout,
             git::git_create_branch,
+            git::git_log,
+            git::git_commit_files,
+            git::git_commit_file_diff,
+            git::git_remote,
+            git::git_remote_set,
             // open-app
             open_app::open_workspace_in,
             open_app::open_custom_program,

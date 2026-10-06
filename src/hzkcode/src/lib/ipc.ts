@@ -479,6 +479,24 @@ export interface BranchInfo {
   name: string;
   isCurrent: boolean;
 }
+
+/** One commit row of the history panel. */
+export interface CommitInfo {
+  hash: string;
+  shortHash: string;
+  summary: string;
+  author: string;
+  /** Commit time, Unix seconds. */
+  time: number;
+}
+
+/** The `origin` remote; URLs are already credential-masked by the backend.
+ *  `pushUrl` is set only when pushing goes somewhere other than `url`. */
+export interface RemoteInfo {
+  name: string;
+  url: string;
+  pushUrl?: string;
+}
 export interface AppMetrics {
   /** Resident memory of the app process, bytes. */
   memoryBytes: number;
@@ -980,6 +998,17 @@ export const ipc = {
     invoke<void>("git_checkout", { path, branch }),
   gitCreateBranch: (path: string, name: string) =>
     invoke<void>("git_create_branch", { path, name }),
+  gitLog: (path: string, limit: number, skip: number) =>
+    invoke<CommitInfo[]>("git_log", { path, limit, skip }),
+  gitCommitFiles: (path: string, hash: string) =>
+    invoke<GitFileEntry[]>("git_commit_files", { path, hash }),
+  gitCommitFileDiff: (path: string, hash: string, file: string) =>
+    invoke<string>("git_commit_file_diff", { path, hash, file }),
+  gitRemote: (path: string) => invoke<RemoteInfo | null>("git_remote", { path }),
+  /** `pushUrl`: "" clears a separate push URL (push follows fetch), a value
+   *  sets one, null/absent keeps the current configuration. */
+  gitRemoteSet: (path: string, url: string, pushUrl?: string | null) =>
+    invoke<void>("git_remote_set", { path, url, pushUrl: pushUrl ?? null }),
   // open-app
   openWorkspaceIn: (path: string, options: { appName: string; args?: string[] }) =>
     invoke<void>("open_workspace_in", { path, app: options.appName, args: options.args ?? [] }),

@@ -32,15 +32,18 @@ export function DiffView({
   // (stage/unstage flips its list membership, edits move add/del counts).
   // Depending on the whole `status` object reloaded the diff on every
   // background poll refresh — a new object each time — even when this file
-  // was untouched.
-  const entry = findStatusEntry(status, target);
+  // was untouched. Commit diffs don't track the working-tree status row at
+  // all — only the target identity decides when they reload.
+  const entry = target.commit ? undefined : findStatusEntry(status, target);
   const entrySig = entrySignature(entry);
 
   useEffect(() => {
     let cancelled = false;
     setError(null);
-    ipc
-      .gitDiff(workspacePath, target.file, target.staged)
+    const load = target.commit
+      ? ipc.gitCommitFileDiff(workspacePath, target.commit, target.file)
+      : ipc.gitDiff(workspacePath, target.file, target.staged);
+    load
       .then((text) => {
         if (!cancelled) setDiffText(text);
       })
@@ -50,7 +53,7 @@ export function DiffView({
     return () => {
       cancelled = true;
     };
-  }, [workspacePath, target.file, target.staged, entrySig]);
+  }, [workspacePath, target.file, target.staged, target.commit, entrySig]);
 
   const { lines, truncated } = useMemo<{ lines: AnnotatedLine[] | null; truncated: boolean }>(() => {
     if (diffText === null) return { lines: null, truncated: false };
@@ -70,7 +73,12 @@ export function DiffView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <DiffViewHeader file={target.file} staged={target.staged} onBack={onBack} />
+      <DiffViewHeader
+        file={target.file}
+        staged={target.staged}
+        commit={target.commit}
+        onBack={onBack}
+      />
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto" data-selectable>
         <DiffContent
           error={error}
@@ -84,14 +92,16 @@ export function DiffView({
   );
 }
 
-/** Back button + file path + staged/unstaged label above the diff. */
+/** Back button + file path + staged/unstaged (or commit) label above the diff. */
 function DiffViewHeader({
   file,
   staged,
+  commit,
   onBack,
 }: {
   file: string;
   staged: boolean;
+  commit?: string;
   onBack: () => void;
 }) {
   const { t } = useTranslation();
@@ -110,7 +120,11 @@ function DiffViewHeader({
         {file}
       </span>
       <span className="shrink-0 text-xs text-text-tertiary">
-        {staged ? t("git.staged") : t("git.unstaged")}
+        {commit
+          ? `${t("git.commit")} ${commit.slice(0, 7)}`
+          : staged
+            ? t("git.staged")
+            : t("git.unstaged")}
       </span>
     </div>
   );

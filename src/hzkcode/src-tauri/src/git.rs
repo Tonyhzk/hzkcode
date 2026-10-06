@@ -29,6 +29,30 @@ pub struct GitStatus {
     pub behind: Option<usize>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitInfo {
+    pub hash: String,
+    pub short_hash: String,
+    pub summary: String,
+    pub author: String,
+    /// Commit time, Unix seconds.
+    pub time: i64,
+}
+
+/// The `origin` remote as shown to the UI. URLs are masked in Rust so the
+/// UI never receives an embedded credential.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteInfo {
+    pub name: String,
+    pub url: String,
+    /// Set only when the remote pushes to a different URL than it fetches
+    /// (`remote.<name>.pushurl`); also credential-masked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub push_url: Option<String>,
+}
+
 /// Compact status for a directory that is itself a Git worktree root,
 /// rendered inline in the file tree. Unlike `GitStatus` it carries no file
 /// paths or diff stats — only the branch plus change counts.
@@ -451,6 +475,40 @@ pub async fn git_status(path: String) -> Result<GitStatus, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Recent commits of the checked-out branch, newest first. `skip` pages
+/// through history; an unborn HEAD (no commits yet) is an empty list rather
+/// than an error.
+fn git_log_blocking(path: &str, limit: usize, skip: usize) -> Result<Vec<CommitInfo>, String> {
+    let repo = open_repo(path)?;
+    let mut walk = repo.revwalk().map_err(|e| e.to_string())?;
+    walk.set_sorting(git2::Sort::TIME)
+        .map_err(|e| e.to_string())?;
+    if walk.push_head().is_err() {
+        return Ok(Vec::new());
+    }
+    let mut commits = Vec::new();
+    for oid in walk.skip(skip).take(limit) {
+        let oid = oid.map_err(|e| e.to_string())?;
+        let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+        let hash = oid.to_string();
+        commits.push(CommitInfo {
+            short_hash: hash.chars().take(7).collect(),
+            hash,
+            summary: commit.summary().unwrap_or_default().to_string(),
+            author: commit.author().name().unwrap_or_default().to_string(),
+            time: commit.time().seconds(),
+        });
+    }
+    Ok(commits)
+}
+
+#[tauri::command]
+pub async fn git_log(path: String, limit: usize, skip: usize) -> Result<Vec<CommitInfo>, String> {
+    tauri::async_runtime::spawn_blocking(move || git_log_blocking(&path, limit, skip))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub fn git_diff(path: String, file: String, staged: bool) -> Result<String, String> {
     let repo = open_repo(&path)?;
@@ -474,6 +532,88 @@ pub fn git_diff(path: String, file: String, staged: bool) -> Result<String, Stri
     })
     .map_err(|e| e.to_string())?;
     Ok(text)
+}
+
+/// Files one commit touched, against its first parent (the root commit
+/// diffs against the empty tree), with per-file line counts.
+fn commit_files_blocking(path: &str, hash: &str) -> Result<Vec<GitFileEntry>, String> {
+    let repo = open_repo(path)?;
+    let oid = git2::Oid::from_str(hash).map_err(|e| e.to_string())?;
+    let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+    let tree = commit.tree().map_err(|e| e.to_string())?;
+    let parent_tree = commit.parent(0).ok().and_then(|parent| parent.tree().ok());
+    let mut diff = repo
+        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+        .map_err(|e| e.to_string())?;
+    let counts = diff_line_counts(&mut diff);
+    let mut files = Vec::new();
+    diff.foreach(
+        &mut |delta, _| {
+            let path = delta
+                .new_file()
+                .path()
+                .or_else(|| delta.old_file().path())
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let status = match delta.status() {
+                git2::Delta::Added => "added",
+                git2::Delta::Deleted => "deleted",
+                git2::Delta::Renamed => "renamed",
+                git2::Delta::Copied => "copied",
+                git2::Delta::Typechange => "typechange",
+                _ => "modified",
+            };
+            let (additions, deletions) = counts.get(&path).copied().unwrap_or((0, 0));
+            files.push(GitFileEntry {
+                status: status.to_string(),
+                additions: Some(additions),
+                deletions: Some(deletions),
+                path,
+            });
+            true
+        },
+        None,
+        None,
+        None,
+    )
+    .map_err(|e| e.to_string())?;
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(files)
+}
+
+#[tauri::command]
+pub fn git_commit_files(path: String, hash: String) -> Result<Vec<GitFileEntry>, String> {
+    commit_files_blocking(&path, &hash)
+}
+
+/// Unified diff of one file inside one commit, against its first parent.
+fn commit_file_diff_blocking(path: &str, hash: &str, file: &str) -> Result<String, String> {
+    let repo = open_repo(path)?;
+    let oid = git2::Oid::from_str(hash).map_err(|e| e.to_string())?;
+    let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+    let tree = commit.tree().map_err(|e| e.to_string())?;
+    let parent_tree = commit.parent(0).ok().and_then(|parent| parent.tree().ok());
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(file);
+    let diff = repo
+        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))
+        .map_err(|e| e.to_string())?;
+    let mut text = String::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let origin = line.origin();
+        if origin == '+' || origin == '-' || origin == ' ' {
+            text.push(origin);
+        }
+        text.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
+        true
+    })
+    .map_err(|e| e.to_string())?;
+    Ok(text)
+}
+
+#[tauri::command]
+pub fn git_commit_file_diff(path: String, hash: String, file: String) -> Result<String, String> {
+    commit_file_diff_blocking(&path, &hash, &file)
 }
 
 #[tauri::command]
@@ -604,9 +744,112 @@ fn remote_callbacks(config: git2::Config) -> git2::RemoteCallbacks<'static> {
     callbacks
 }
 
+/// Mask credentials embedded in a remote URL before it leaves Rust: http(s)
+/// userinfo is replaced entirely (a bare http username can be a token), other
+/// schemes keep the username but hide a `:secret` password. The scp-like
+/// `git@host:path` form carries no secret and passes through.
+fn mask_remote_url(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_string();
+    };
+    let authority_end = rest.find('/').unwrap_or(rest.len());
+    let authority = &rest[..authority_end];
+    let Some(at) = authority.find('@') else {
+        return url.to_string();
+    };
+    let userinfo = &authority[..at];
+    let host = &authority[at + 1..];
+    let masked = if scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https") {
+        "***".to_string()
+    } else if let Some((user, _password)) = userinfo.split_once(':') {
+        format!("{user}:***")
+    } else {
+        return url.to_string();
+    };
+    format!("{scheme}://{masked}@{host}{}", &rest[authority_end..])
+}
+
+/// The `origin` remote with its URLs masked; `None` when no origin is bound.
+#[tauri::command]
+pub fn git_remote(path: String) -> Result<Option<RemoteInfo>, String> {
+    let repo = open_repo(&path)?;
+    let Ok(remote) = repo.find_remote("origin") else {
+        return Ok(None);
+    };
+    let url = remote.url().unwrap_or_default().to_string();
+    // Only surfaces when it actually differs — pushing goes to the pushurl,
+    // so the UI must not pretend the fetch URL is the push target.
+    let push_url = remote
+        .pushurl()
+        .filter(|push| *push != url)
+        .map(mask_remote_url);
+    Ok(Some(RemoteInfo {
+        name: remote.name().unwrap_or("origin").to_string(),
+        url: mask_remote_url(&url),
+        push_url,
+    }))
+}
+
+/// Bind (or re-point) the `origin` remote. `push_url` is explicit: `Some("")`
+/// drops any separate push URL (push follows fetch), `Some(url)` sets one,
+/// `None` leaves whatever is configured untouched.
+#[tauri::command]
+pub fn git_remote_set(
+    path: String,
+    url: String,
+    push_url: Option<String>,
+) -> Result<(), String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err("remote url must not be empty".to_string());
+    }
+    let repo = open_repo(&path)?;
+    let result = match repo.find_remote("origin") {
+        Ok(remote) => {
+            match push_url.as_deref().map(str::trim) {
+                Some("") => {
+                    if remote.pushurl().is_some() {
+                        repo.remote_set_pushurl("origin", None)
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+                Some(push) => {
+                    repo.remote_set_pushurl("origin", Some(push))
+                        .map_err(|e| e.to_string())?;
+                }
+                None => {}
+            }
+            repo.remote_set_url("origin", trimmed)
+                .map_err(|e| e.to_string())
+        }
+        Err(_) => {
+            let created = repo
+                .remote("origin", trimmed)
+                .map(|_| ())
+                .map_err(|e| e.to_string())?;
+            if let Some(push) = push_url.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+                repo.remote_set_pushurl("origin", Some(push))
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(created)
+        }
+    };
+    result
+}
+
 fn push_options(config: git2::Config) -> git2::PushOptions<'static> {
+    let mut callbacks = remote_callbacks(config);
+    // libgit2 only checks per-reference statuses when this callback is set;
+    // without it a server-side rejection (protected branch, pre-receive hook
+    // exit) would silently pass as success — and the tracking ref would lie.
+    callbacks.push_update_reference(|refname, status| match status {
+        None => Ok(()),
+        Some(message) => Err(git2::Error::from_str(&format!(
+            "push rejected by the server for {refname}: {message}"
+        ))),
+    });
     let mut opts = git2::PushOptions::new();
-    opts.remote_callbacks(remote_callbacks(config));
+    opts.remote_callbacks(callbacks);
     opts
 }
 
@@ -616,25 +859,60 @@ fn fetch_options(config: git2::Config) -> git2::FetchOptions<'static> {
     opts
 }
 
+fn git_push_blocking(path: &str) -> Result<(), String> {
+    let repo = open_repo(path)?;
+    let branch = current_branch_name(&repo)?;
+    // Freeze the tip being pushed: the network exchange takes real time and
+    // HEAD may advance (or switch branches) before it returns. Pushing the
+    // captured OID and recording that same OID keeps the tracking ref on the
+    // commit that actually landed.
+    let pushed = repo
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(|e| e.to_string())?
+        .id();
+    let mut remote = repo
+        .find_remote("origin")
+        .map_err(|e| format!("no origin remote: {e}"))?;
+    let config = repo.config().map_err(|e| e.to_string())?;
+    let mut opts = push_options(config);
+    remote
+        .push(&[format!("{pushed}:refs/heads/{branch}")], Some(&mut opts))
+        .map_err(map_remote_error)?;
+    // The push landed: record where it went so ahead/behind and pull follow
+    // the same target (the `git push -u` behavior). Best-effort — the push
+    // itself already succeeded.
+    let _ = record_pushed_upstream(&repo, &branch, pushed);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn git_push(path: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let repo = open_repo(&path)?;
-        let branch = current_branch_name(&repo)?;
-        let mut remote = repo
-            .find_remote("origin")
-            .map_err(|e| format!("no origin remote: {e}"))?;
-        let config = repo.config().map_err(|e| e.to_string())?;
-        let mut opts = push_options(config);
-        remote
-            .push(
-                &[format!("refs/heads/{branch}:refs/heads/{branch}")],
-                Some(&mut opts),
-            )
-            .map_err(map_remote_error)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || git_push_blocking(&path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Point `refs/remotes/origin/<branch>` at the pushed commit and record the
+/// branch's upstream, so status/pull track the push target.
+fn record_pushed_upstream(
+    repo: &Repository,
+    branch: &str,
+    pushed: git2::Oid,
+) -> Result<(), String> {
+    repo.reference(
+        &format!("refs/remotes/origin/{branch}"),
+        pushed,
+        true,
+        "update after push",
+    )
+    .map_err(|e| e.to_string())?;
+    let mut local = repo
+        .find_branch(branch, git2::BranchType::Local)
+        .map_err(|e| e.to_string())?;
+    local
+        .set_upstream(Some(&format!("origin/{branch}")))
+        .map_err(|e| e.to_string())
 }
 
 /// Files the fast-forward would touch that also carry local modifications —
@@ -685,8 +963,11 @@ fn git_pull_blocking(path: &str) -> Result<(), String> {
         .map_err(|e| format!("no origin remote: {e}"))?;
     let config = repo.config().map_err(|e| e.to_string())?;
     let mut opts = fetch_options(config);
+    // The explicit refspec also refreshes the remote-tracking ref, so
+    // ahead/behind keeps comparing against the branch's actual upstream.
+    let refspec = format!("refs/heads/{branch}:refs/remotes/origin/{branch}");
     remote
-        .fetch(std::slice::from_ref(&branch), Some(&mut opts), None)
+        .fetch(&[refspec], Some(&mut opts), None)
         .map_err(map_remote_error)?;
     let fetch_head = repo
         .find_reference("FETCH_HEAD")
@@ -842,6 +1123,31 @@ mod tests {
     }
 
     fn commit_file(repo: &Repository, relative: &str, content: &str) {
+        let signature = git2::Signature::now("test", "test@example.com").unwrap();
+        commit_file_signed(repo, relative, content, "init", &signature);
+    }
+
+    /// Commit with a chosen message and timestamp — history tests need
+    /// distinct times (Sort::TIME ties are not ordered).
+    fn commit_file_msg(
+        repo: &Repository,
+        relative: &str,
+        content: &str,
+        message: &str,
+        when: i64,
+    ) {
+        let signature =
+            git2::Signature::new("test", "test@example.com", &git2::Time::new(when, 0)).unwrap();
+        commit_file_signed(repo, relative, content, message, &signature);
+    }
+
+    fn commit_file_signed(
+        repo: &Repository,
+        relative: &str,
+        content: &str,
+        message: &str,
+        signature: &git2::Signature,
+    ) {
         let workdir = repo.workdir().unwrap();
         std::fs::write(workdir.join(relative), content).unwrap();
         let mut index = repo.index().unwrap();
@@ -849,10 +1155,9 @@ mod tests {
         index.write().unwrap();
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
-        let signature = git2::Signature::now("test", "test@example.com").unwrap();
         let parent = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
         let parents: Vec<&git2::Commit> = parent.iter().collect();
-        repo.commit(Some("HEAD"), &signature, &signature, "init", &tree, &parents)
+        repo.commit(Some("HEAD"), signature, signature, message, &tree, &parents)
             .unwrap();
     }
 
@@ -1133,5 +1438,323 @@ mod tests {
         let status = git_status_blocking(repo_path.to_str().unwrap()).unwrap();
         assert_eq!(status.ahead, None, "status={status:?}");
         assert_eq!(status.behind, None, "status={status:?}");
+    }
+
+    #[test]
+    fn log_lists_commits_newest_first_with_paging() {
+        let scratch = Scratch::new();
+        let repo_path = scratch.0.join("repo");
+        let repo = Repository::init(&repo_path).unwrap();
+        commit_file_msg(&repo, "a.txt", "one\n", "first", 1_700_000_000);
+        commit_file_msg(&repo, "a.txt", "two\n", "second", 1_700_000_100);
+        commit_file_msg(&repo, "a.txt", "three\n", "third", 1_700_000_200);
+
+        let page = git_log_blocking(repo_path.to_str().unwrap(), 2, 0).unwrap();
+        assert_eq!(page.len(), 2);
+        assert_eq!(page[0].summary, "third");
+        assert_eq!(page[1].summary, "second");
+        assert_eq!(page[0].author, "test");
+        assert_eq!(page[0].time, 1_700_000_200);
+        assert_eq!(page[0].short_hash.len(), 7);
+        assert!(page[0].hash.starts_with(&page[0].short_hash));
+
+        let rest = git_log_blocking(repo_path.to_str().unwrap(), 2, 2).unwrap();
+        assert_eq!(rest.len(), 1);
+        assert_eq!(rest[0].summary, "first");
+    }
+
+    #[test]
+    fn log_on_an_unborn_branch_is_empty() {
+        let scratch = Scratch::new();
+        let repo_path = scratch.0.join("empty");
+        Repository::init(&repo_path).unwrap();
+
+        let commits = git_log_blocking(repo_path.to_str().unwrap(), 50, 0).unwrap();
+        assert!(commits.is_empty());
+    }
+
+    #[test]
+    fn commit_files_and_diff_read_against_the_parent() {
+        let scratch = Scratch::new();
+        let repo_path = scratch.0.join("repo");
+        let repo = Repository::init(&repo_path).unwrap();
+        commit_file_msg(&repo, "a.txt", "one\n", "first", 1_700_000_000);
+        commit_file_msg(&repo, "a.txt", "two\n", "second", 1_700_000_100);
+        commit_file_msg(&repo, "b.txt", "new\n", "third", 1_700_000_200);
+        let path = repo_path.to_str().unwrap();
+
+        let logs = git_log_blocking(path, 10, 0).unwrap();
+        let newest = commit_files_blocking(path, &logs[0].hash).unwrap();
+        assert_eq!(newest.len(), 1);
+        assert_eq!(newest[0].path, "b.txt");
+        assert_eq!(newest[0].status, "added");
+        assert_eq!(newest[0].additions, Some(1));
+        assert_eq!(newest[0].deletions, Some(0));
+
+        // The mid commit rewrote one line of a.txt.
+        let mid = commit_files_blocking(path, &logs[1].hash).unwrap();
+        assert_eq!(mid.len(), 1);
+        assert_eq!(mid[0].status, "modified");
+        assert_eq!(mid[0].additions, Some(1));
+        assert_eq!(mid[0].deletions, Some(1));
+
+        // The root commit has no parent: everything reads as added.
+        let root = commit_files_blocking(path, &logs[2].hash).unwrap();
+        assert_eq!(root.len(), 1);
+        assert_eq!(root[0].path, "a.txt");
+        assert_eq!(root[0].status, "added");
+
+        let diff = commit_file_diff_blocking(path, &logs[1].hash, "a.txt").unwrap();
+        assert!(diff.contains("-one"), "diff={diff}");
+        assert!(diff.contains("+two"), "diff={diff}");
+    }
+
+    #[test]
+    fn commit_files_include_deleted_entries() {
+        let scratch = Scratch::new();
+        let repo_path = scratch.0.join("repo");
+        let repo = Repository::init(&repo_path).unwrap();
+        commit_file_msg(&repo, "a.txt", "one\ntwo\n", "first", 1_700_000_000);
+
+        // Delete a.txt in a second commit.
+        std::fs::remove_file(repo_path.join("a.txt")).unwrap();
+        let mut index = repo.index().unwrap();
+        index.remove_path(Path::new("a.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let signature =
+            git2::Signature::new("test", "test@example.com", &git2::Time::new(1_700_000_100, 0))
+                .unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.commit(Some("HEAD"), &signature, &signature, "remove a", &tree, &[&parent])
+            .unwrap();
+
+        let path = repo_path.to_str().unwrap();
+        let logs = git_log_blocking(path, 10, 0).unwrap();
+        let files = commit_files_blocking(path, &logs[0].hash).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.txt");
+        assert_eq!(files[0].status, "deleted");
+        assert_eq!(files[0].deletions, Some(2), "files={files:?}");
+    }
+
+    #[test]
+    fn remote_bind_update_and_mask() {
+        let scratch = Scratch::new();
+        let repo_path = scratch.0.join("repo");
+        Repository::init(&repo_path).unwrap();
+        let path = repo_path.to_string_lossy().into_owned();
+
+        assert!(git_remote(path.clone()).unwrap().is_none());
+
+        git_remote_set(
+            path.clone(),
+            "  https://example.com/team/repo.git  ".into(),
+            None,
+        )
+        .unwrap();
+        let bound = git_remote(path.clone()).unwrap().unwrap();
+        assert_eq!(bound.name, "origin");
+        assert_eq!(bound.url, "https://example.com/team/repo.git");
+        assert_eq!(bound.push_url, None);
+
+        // Credentials never leave Rust: the userinfo is masked.
+        git_remote_set(
+            path.clone(),
+            "https://user:tok@git.example.com/x.git".into(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            git_remote(path.clone()).unwrap().unwrap().url,
+            "https://***@git.example.com/x.git"
+        );
+
+        // Re-pointing updates the same remote; scp-like URLs pass through.
+        git_remote_set(path.clone(), "git@github.com:Team/repo.git".into(), None).unwrap();
+        assert_eq!(
+            git_remote(path.clone()).unwrap().unwrap().url,
+            "git@github.com:Team/repo.git"
+        );
+
+        // Other schemes keep the username but hide a password; a bare SSH
+        // username is not a secret.
+        git_remote_set(
+            path.clone(),
+            "ssh://user:tok@git.example.com/x.git".into(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            git_remote(path.clone()).unwrap().unwrap().url,
+            "ssh://user:***@git.example.com/x.git"
+        );
+        git_remote_set(path.clone(), "ssh://git@github.com/Team/repo.git".into(), None).unwrap();
+        assert_eq!(
+            git_remote(path.clone()).unwrap().unwrap().url,
+            "ssh://git@github.com/Team/repo.git"
+        );
+
+        // A separate push URL is surfaced (masked) only while it differs.
+        {
+            let repo = Repository::open(&repo_path).unwrap();
+            repo.remote_set_pushurl("origin", Some("https://old:pw@mirror.example.com/x.git"))
+                .unwrap();
+        }
+        let info = git_remote(path.clone()).unwrap().unwrap();
+        assert_eq!(
+            info.push_url.as_deref(),
+            Some("https://***@mirror.example.com/x.git")
+        );
+
+        // push_url: None keeps it, Some("") drops it, Some(url) replaces it.
+        git_remote_set(path.clone(), "https://example.com/keep.git".into(), None).unwrap();
+        assert_eq!(
+            git_remote(path.clone()).unwrap().unwrap().push_url.as_deref(),
+            Some("https://***@mirror.example.com/x.git")
+        );
+        git_remote_set(
+            path.clone(),
+            "https://example.com/drop.git".into(),
+            Some(String::new()),
+        )
+        .unwrap();
+        let info = git_remote(path.clone()).unwrap().unwrap();
+        assert_eq!(info.url, "https://example.com/drop.git");
+        assert_eq!(info.push_url, None);
+        assert_eq!(
+            Repository::open(&repo_path)
+                .unwrap()
+                .find_remote("origin")
+                .unwrap()
+                .pushurl(),
+            None
+        );
+        git_remote_set(
+            path.clone(),
+            "https://example.com/final.git".into(),
+            Some("  ssh://git@push.example.com/x.git  ".into()),
+        )
+        .unwrap();
+        let info = git_remote(path.clone()).unwrap().unwrap();
+        assert_eq!(info.url, "https://example.com/final.git");
+        assert_eq!(info.push_url.as_deref(), Some("ssh://git@push.example.com/x.git"));
+
+        assert!(git_remote_set(path, "   ".into(), None).is_err());
+    }
+
+    #[test]
+    fn push_records_the_upstream_it_pushed_to() {
+        let scratch = Scratch::new();
+        let origin_path = scratch.0.join("origin.git");
+        Repository::init_bare(&origin_path).unwrap();
+
+        let local_path = scratch.0.join("local");
+        let local = Repository::init(&local_path).unwrap();
+        commit_file_msg(&local, "a.txt", "one\n", "first", 1_700_000_000);
+        let branch = current_branch_name(&local).unwrap();
+        local
+            .remote("origin", origin_path.to_str().unwrap())
+            .unwrap();
+        let path = local_path.to_str().unwrap();
+
+        // No upstream yet: the ahead/behind indicator stays hidden.
+        assert_eq!(git_status_blocking(path).unwrap().ahead, None);
+
+        git_push_blocking(path).unwrap();
+
+        // The push landed on origin and the local branch now tracks it.
+        let origin = Repository::open(&origin_path).unwrap();
+        let pushed = origin
+            .find_reference(&format!("refs/heads/{branch}"))
+            .unwrap()
+            .target();
+        assert_eq!(pushed, local.head().unwrap().target());
+        assert_eq!(
+            local
+                .find_reference(&format!("refs/remotes/origin/{branch}"))
+                .unwrap()
+                .target(),
+            pushed
+        );
+        let status = git_status_blocking(path).unwrap();
+        assert_eq!(status.ahead, Some(0), "status={status:?}");
+        assert_eq!(status.behind, Some(0), "status={status:?}");
+    }
+
+    #[test]
+    fn pushed_upstream_records_the_captured_tip_not_the_current_head() {
+        let scratch = Scratch::new();
+        let repo_path = scratch.0.join("repo");
+        let repo = Repository::init(&repo_path).unwrap();
+        commit_file_msg(&repo, "a.txt", "one\n", "first", 1_700_000_000);
+        // set_upstream validates against a configured remote.
+        repo.remote("origin", "https://example.com/team/repo.git")
+            .unwrap();
+        let branch = current_branch_name(&repo).unwrap();
+        let pushed = repo.head().unwrap().peel_to_commit().unwrap().id();
+        // A second commit moves HEAD — what a mid-push commit would do.
+        commit_file_msg(&repo, "a.txt", "two\n", "second", 1_700_000_100);
+
+        record_pushed_upstream(&repo, &branch, pushed).unwrap();
+
+        assert_eq!(
+            repo.find_reference(&format!("refs/remotes/origin/{branch}"))
+                .unwrap()
+                .target(),
+            Some(pushed)
+        );
+        // The branch really is one commit ahead of what was pushed.
+        let status = git_status_blocking(repo_path.to_str().unwrap()).unwrap();
+        assert_eq!(status.ahead, Some(1), "status={status:?}");
+        assert_eq!(status.behind, Some(0), "status={status:?}");
+    }
+
+    #[test]
+    fn rejected_push_reports_failure_and_keeps_no_upstream() {
+        let scratch = Scratch::new();
+        let origin_path = scratch.0.join("origin");
+        let origin = Repository::init(&origin_path).unwrap();
+        commit_file(&origin, "a.txt", "base\n");
+
+        let local_path = scratch.0.join("local");
+        let local = Repository::init(&local_path).unwrap();
+        // Diverged history: the push is a non-fast-forward, which the
+        // receiving side rejects.
+        commit_file_msg(&local, "b.txt", "divergent\n", "local", 1_700_000_000);
+        let branch = current_branch_name(&local).unwrap();
+        local.remote("origin", origin_path.to_str().unwrap()).unwrap();
+        let path = local_path.to_str().unwrap();
+
+        assert!(git_push_blocking(path).is_err());
+        // Nothing pretends the push landed.
+        assert!(local
+            .find_reference(&format!("refs/remotes/origin/{branch}"))
+            .is_err());
+        let status = git_status_blocking(path).unwrap();
+        assert_eq!(status.ahead, None, "status={status:?}");
+    }
+
+    #[test]
+    fn pull_refreshes_the_tracking_ref() {
+        let scratch = Scratch::new();
+        let origin_path = scratch.0.join("origin");
+        let origin = Repository::init(&origin_path).unwrap();
+        commit_file(&origin, "a.txt", "base\n");
+        let local_path = scratch.0.join("local");
+        let local = Repository::clone(origin_path.to_str().unwrap(), &local_path).unwrap();
+        let branch = current_branch_name(&local).unwrap();
+
+        commit_file(&origin, "a.txt", "remote\n");
+        git_pull_blocking(local_path.to_str().unwrap()).unwrap();
+
+        assert_eq!(
+            local
+                .find_reference(&format!("refs/remotes/origin/{branch}"))
+                .unwrap()
+                .target(),
+            origin.head().unwrap().target()
+        );
     }
 }

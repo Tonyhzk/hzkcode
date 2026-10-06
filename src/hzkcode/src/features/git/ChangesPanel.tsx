@@ -1,17 +1,14 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import Plus from "lucide-react/dist/esm/icons/plus";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
-import Minus from "lucide-react/dist/esm/icons/minus";
-import { Focusable } from "react-aria-components";
-import { Tooltip, TooltipContent } from "@/components/base/tooltip/tooltip";
-import { type GitFileEntry, type GitStatus } from "@/lib/ipc";
+import { ipc, type GitFileEntry, type GitStatus, type RemoteInfo } from "@/lib/ipc";
 import { errorText } from "@/lib/errors";
 import { cx } from "@/utils/cx";
 import { useGitStore } from "./store";
 import { ChangesPanelHeader } from "./ChangesPanelHeader";
 import { CommitFooter } from "./CommitFooter";
+import { FileRow } from "./FileRow";
 
 export function ChangesPanel({
   workspacePath,
@@ -35,26 +32,57 @@ export function ChangesPanel({
     void useGitStore.getState().loadBranches(workspacePath);
   }, [workspacePath]);
 
-  /** Runs a mutating action: tracks busy state, surfaces errors inline. */
-  const run = useCallback((key: string, action: () => Promise<unknown>) => {
-    setPending((p) => ({ ...p, [key]: true }));
-    setActionError(null);
-    void action()
-      .catch((err: unknown) => setActionError(errorText(err)))
-      .finally(() => {
-        setPending((p) => {
-          const next = { ...p };
-          delete next[key];
-          return next;
+  // The origin remote line under the branch picker; undefined until read.
+  const [remote, setRemote] = useState<RemoteInfo | null | undefined>(undefined);
+  const loadRemote = useCallback(() => {
+    ipc
+      .gitRemote(workspacePath)
+      .then((info) => setRemote(info))
+      .catch(() => setRemote(null));
+  }, [workspacePath]);
+  useEffect(() => {
+    loadRemote();
+  }, [loadRemote]);
+
+  /** Runs a mutating action: tracks busy state, surfaces errors inline.
+   *  Resolves true on success so callers can close their inline forms. */
+  const run = useCallback(
+    (key: string, action: () => Promise<unknown>): Promise<boolean> => {
+      setPending((p) => ({ ...p, [key]: true }));
+      setActionError(null);
+      return action()
+        .then(() => true)
+        .catch((err: unknown) => {
+          setActionError(errorText(err));
+          return false;
+        })
+        .finally(() => {
+          setPending((p) => {
+            const next = { ...p };
+            delete next[key];
+            return next;
+          });
         });
-      });
-  }, []);
+    },
+    [],
+  );
   /** Dismiss the header error: the failed action's error, else the store's
    * last refresh failure. */
   const dismissError = useCallback(() => {
     setActionError(null);
     useGitStore.getState().clearError(workspacePath);
   }, [workspacePath]);
+
+  const saveRemote = useCallback(
+    async (url: string, pushUrl: string | null) => {
+      const ok = await run("remote", () =>
+        ipc.gitRemoteSet(workspacePath, url, pushUrl),
+      );
+      if (ok) loadRemote();
+      return ok;
+    },
+    [run, workspacePath, loadRemote],
+  );
 
   const stage = useCallback(
     (files: string[]) =>
@@ -88,6 +116,8 @@ export function ChangesPanel({
       ahead={status?.ahead}
       behind={status?.behind}
       branches={branches}
+      remote={remote}
+      onSaveRemote={saveRemote}
       pending={pending}
       error={actionError ?? refreshError}
       run={run}
@@ -190,14 +220,6 @@ function ChangesSummary({ status }: { status: GitStatus }) {
   );
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  M: "text-status-yellow-text",
-  A: "text-state-success-text",
-  D: "text-text-error-primary",
-  R: "text-status-purple-text",
-  C: "text-status-blue-text",
-};
-
 interface GroupSectionProps {
   title: string;
   entries: GitFileEntry[];
@@ -279,93 +301,3 @@ const GroupSection = memo(function GroupSection({
   );
 });
 
-interface FileRowProps {
-  entry: GitFileEntry;
-  actionLabel: string;
-  actionKind: "stage" | "unstage";
-  /** Untracked group: show the "New" badge like the template panel. */
-  isNew?: boolean;
-  onAction: (path: string) => void;
-  onOpen: (path: string) => void;
-  actionBusy: boolean;
-}
-
-const FileRow = memo(function FileRow({
-  entry,
-  actionLabel,
-  actionKind,
-  isNew = false,
-  onAction,
-  onOpen,
-  actionBusy,
-}: FileRowProps) {
-  const { t } = useTranslation();
-  const raw = entry.status.replace("?", "").trim().charAt(0).toUpperCase();
-  const letter = raw.length > 0 ? raw : "?";
-  const sepIdx = Math.max(entry.path.lastIndexOf("/"), entry.path.lastIndexOf("\\"));
-  const dirPart = sepIdx > 0 ? entry.path.slice(0, sepIdx + 1) : "";
-  const filePart = sepIdx >= 0 ? entry.path.slice(sepIdx + 1) : entry.path;
-  return (
-    <li className="group flex items-center gap-2 px-3 py-1 hover:bg-background-secondary-hover">
-      <span
-        className={cx(
-          "w-4 shrink-0 text-center font-mono text-xs",
-          STATUS_COLOR[letter] ?? "text-text-tertiary",
-        )}
-      >
-        {letter}
-      </span>
-      <Tooltip>
-        <Focusable>
-          <button
-            type="button"
-            onClick={() => onOpen(entry.path)}
-            className="flex min-w-0 flex-1 items-baseline text-left font-mono text-xs"
-          >
-            {/* Directory truncates from the left (…/foo/bar) so the filename
-                — the most important part — is always fully visible; the tooltip
-                below shows the full path on hover. */}
-            {dirPart && (
-              <span dir="rtl" className="min-w-0 truncate text-left text-text-tertiary">
-                <bdo dir="ltr">{dirPart}</bdo>
-              </span>
-            )}
-            <span className="shrink-0 text-text-primary">{filePart}</span>
-          </button>
-        </Focusable>
-        <TooltipContent className="break-all font-mono">{entry.path}</TooltipContent>
-      </Tooltip>
-      {entry.additions !== undefined && (
-        <span className="shrink-0 text-xs text-state-success-text">+{entry.additions}</span>
-      )}
-      {entry.deletions !== undefined && entry.deletions > 0 && (
-        <span className="shrink-0 text-xs text-text-error-primary">−{entry.deletions}</span>
-      )}
-      {isNew && (
-        <span className="shrink-0 rounded-sm bg-background-tertiary-default px-1 py-px text-caption-1-medium text-text-secondary">
-          {t("git.newFile")}
-        </span>
-      )}
-      <button
-        type="button"
-        disabled={actionBusy}
-        onClick={() => onAction(entry.path)}
-        aria-label={actionLabel}
-        title={actionLabel}
-        className={cx(
-          "shrink-0 rounded p-0.5 text-foreground-icon-secondary opacity-0",
-          // Reveal on row hover AND on keyboard focus (same contract as the
-          // file-tree mention button).
-          "group-hover:opacity-100 focus-visible:opacity-100 hover:bg-background-tertiary-hover",
-          "disabled:text-foreground-icon-disabled",
-        )}
-      >
-        {actionKind === "stage" ? (
-          <Plus aria-hidden className="size-4" />
-        ) : (
-          <Minus aria-hidden className="size-4" />
-        )}
-      </button>
-    </li>
-  );
-});

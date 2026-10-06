@@ -1280,6 +1280,34 @@ struct GitCreateBranchArgs {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct GitLogArgs {
+    path: String,
+    limit: usize,
+    skip: usize,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GitCommitHashArgs {
+    path: String,
+    hash: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GitCommitFileArgs {
+    path: String,
+    hash: String,
+    file: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GitRemoteSetArgs {
+    path: String,
+    url: String,
+    #[serde(default)]
+    push_url: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct OpenWorkspaceArgs {
     path: String,
     app: Option<String>,
@@ -1801,6 +1829,26 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
         "git_create_branch" => {
             let a: GitCreateBranchArgs = parse_args(&raw)?;
             ser(crate::git::git_create_branch(a.path, a.name))
+        }
+        "git_log" => {
+            let a: GitLogArgs = parse_args(&raw)?;
+            ser(crate::git::git_log(a.path, a.limit, a.skip).await)
+        }
+        "git_commit_files" => {
+            let a: GitCommitHashArgs = parse_args(&raw)?;
+            ser(crate::git::git_commit_files(a.path, a.hash))
+        }
+        "git_commit_file_diff" => {
+            let a: GitCommitFileArgs = parse_args(&raw)?;
+            ser(crate::git::git_commit_file_diff(a.path, a.hash, a.file))
+        }
+        "git_remote" => {
+            let a: PathArgs = parse_args(&raw)?;
+            ser(crate::git::git_remote(a.path))
+        }
+        "git_remote_set" => {
+            let a: GitRemoteSetArgs = parse_args(&raw)?;
+            ser(crate::git::git_remote_set(a.path, a.url, a.push_url))
         }
         // open-app
         "open_workspace_in" => {

@@ -5,10 +5,14 @@ import { useFilesStore } from "@/features/files/store";
 
 const TTL_MS = 30_000;
 
-/** A file whose diff is shown: staged (index vs HEAD) or unstaged/untracked. */
+/** A file whose diff is shown: staged (index vs HEAD), unstaged/untracked
+ *  (workdir vs index), or one file inside a commit (`commit` set — `staged`
+ *  is ignored then). */
 export interface DiffTarget {
   file: string;
   staged: boolean;
+  /** Commit hash: diff the file inside that commit against its parent. */
+  commit?: string;
 }
 
 function isNotARepo(err: unknown): boolean {
@@ -30,6 +34,9 @@ interface GitStore {
   branchesByWorkspace: Record<string, BranchInfo[] | undefined>;
   /** epoch ms of last successful/failed fetch per workspace (TTL bookkeeping) */
   fetchedAtByWorkspace: Record<string, number>;
+  /** Bumped whenever the workspace's local history may have moved (commit /
+   *  pull / checkout); the history panel re-reads on it. */
+  historyRevisionByWorkspace: Record<string, number>;
   /** Diff open in the center area; null = center shows chat/files. */
   diffView: { workspacePath: string; target: DiffTarget } | null;
   openDiff: (workspacePath: string, target: DiffTarget) => void;
@@ -84,12 +91,23 @@ export const useGitStore = create<GitStore>((set, get) => {
     }
   };
 
+  /** Local history may have moved (commit / pull / checkout / branch switch):
+   *  signal the history panel to re-read. */
+  const bumpHistory = (workspacePath: string) =>
+    set((s) => ({
+      historyRevisionByWorkspace: {
+        ...s.historyRevisionByWorkspace,
+        [workspacePath]: (s.historyRevisionByWorkspace[workspacePath] ?? 0) + 1,
+      },
+    }));
+
   return {
     statusByWorkspace: {},
     notRepoByWorkspace: {},
     errorByWorkspace: {},
     branchesByWorkspace: {},
     fetchedAtByWorkspace: {},
+    historyRevisionByWorkspace: {},
     diffView: null,
 
     openDiff: (workspacePath, target) => set({ diffView: { workspacePath, target } }),
@@ -160,18 +178,27 @@ export const useGitStore = create<GitStore>((set, get) => {
       runMutation(workspacePath, () => ipc.gitStage(workspacePath, files)) as Promise<void>,
     unstage: (workspacePath, files) =>
       runMutation(workspacePath, () => ipc.gitUnstage(workspacePath, files)) as Promise<void>,
-    commit: (workspacePath, message) =>
-      runMutation(workspacePath, () => ipc.gitCommit(workspacePath, message)) as Promise<string>,
+    commit: async (workspacePath, message) => {
+      const oid = (await runMutation(workspacePath, () =>
+        ipc.gitCommit(workspacePath, message),
+      )) as string;
+      bumpHistory(workspacePath);
+      return oid;
+    },
     push: (workspacePath) =>
       runMutation(workspacePath, () => ipc.gitPush(workspacePath)) as Promise<void>,
-    pull: (workspacePath) =>
-      runMutation(workspacePath, () => ipc.gitPull(workspacePath)) as Promise<void>,
+    pull: async (workspacePath) => {
+      await runMutation(workspacePath, () => ipc.gitPull(workspacePath));
+      bumpHistory(workspacePath);
+    },
     checkout: async (workspacePath, branch) => {
       await runMutation(workspacePath, () => ipc.gitCheckout(workspacePath, branch));
+      bumpHistory(workspacePath);
       await get().loadBranches(workspacePath);
     },
     createBranch: async (workspacePath, name) => {
       await runMutation(workspacePath, () => ipc.gitCreateBranch(workspacePath, name));
+      bumpHistory(workspacePath);
       await get().loadBranches(workspacePath);
     },
   };
