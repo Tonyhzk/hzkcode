@@ -39,6 +39,7 @@ read -r line
 printf '%s' "$HZKCODE_DEV_CALLER_CWD" > env-probe.txt
 printf '%s' "$HZKCODE_PROXY_ENABLED" > env-proxy.txt
 printf '%s' "$HZKCODE_ENABLE_SECOND_BRAIN" > env-brain.txt
+printf '%s' "$HZKCODE_AUTO_COMPACT_WINDOW" > env-window.txt
 echo '{"type":"system","subtype":"init","session_id":"fake-session-123"}'
 echo '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello "}}}'
 echo '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"from fake"}}}'
@@ -134,6 +135,7 @@ async fn send_message_streams_events_end_to_end() {
         None,
         Some(false),
         Some(true),
+        Some(123456),
     )
     .await
     .expect("send_message must succeed");
@@ -212,6 +214,11 @@ async fn send_message_streams_events_end_to_end() {
         std::fs::read_to_string(workspace.join("env-brain.txt")).unwrap(),
         "1"
     );
+    // And the session context-window override (the CLI's /maxtokens pin).
+    assert_eq!(
+        std::fs::read_to_string(workspace.join("env-window.txt")).unwrap(),
+        "123456"
+    );
 
     // Process registry drained after exit.
     assert!(app
@@ -257,6 +264,7 @@ sleep 60
         workspace.to_string_lossy().to_string(),
         None,
         "hi".to_string(),
+        None,
         None,
         None,
         None,

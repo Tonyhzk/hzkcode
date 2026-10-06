@@ -1,5 +1,10 @@
 # 更新日志
 
+## [Unreleased]
+
+- 会话开关新增「上下文窗口」（对齐内置 CLI 3.1.0 的 `/maxtokens`，别名 `/maxctx`）：对话输入区的会话开关弹层增加数值输入与「应用 / 恢复默认」，随每次发送向子进程注入 `HZKCODE_AUTO_COMPACT_WINDOW`（正整数校验、Rust 边界拒绝 0 值；留空或恢复默认＝跟随应用/Shell 默认），设置从下一次发送起生效，语义与 CLI 的「仅当前会话、不写配置」一致
+- `SendRequest.auto_compact_window` 全链路同步（tauri 命令 / web 桥接 / `engine` 单测与 `send_path` 端到端环境探针断言 123456 注入），store 单测断言发送参数随会话状态覆盖、默认为 null
+
 ## [3.1.0-1] - 2026-10-05
 
 - 内置 CLI 升级到 3.1.0：源码快照更新为 `0_Reference/hzk-code-agent-3.1.0-39d129e4`（fork 仓库 tag `v3.1.0`、commit `39d129e4`）；二进制槽位 `src/hzkcode/src-tauri/binaries/hzkcode` 替换为 3.1.0 构建产物（`0_Release/3.1.0/hzkcode-3.1.0-macos-arm64`，旧 3.0.0 二进制备份到 `.delete/20261005054341/`），`--version` 自报 3.1.0、哈希与源产物一致

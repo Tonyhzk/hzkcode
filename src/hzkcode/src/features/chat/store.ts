@@ -544,6 +544,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
         proxyEnabled: get().bySession[key]?.proxyEnabled ?? null,
         // Session second-brain switch (the CLI's /second-brain).
         secondBrainEnabled: get().bySession[key]?.secondBrainEnabled ?? null,
+        // Session context-window override (the CLI's /maxtokens): null keeps
+        // the app/shell default for this send.
+        autoCompactWindow: get().bySession[key]?.autoCompactWindow ?? null,
       });
       // Record the identity only after the send landed: a failed spawn or a
       // permission denial keeps the previous value, so the retry still
@@ -1592,6 +1595,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
     /** Per-session second-brain switch (the CLI's /second-brain on|off). */
     setSessionSecondBrain: (key, value) => {
       patchSession(set, key, { secondBrainEnabled: value });
+    },
+
+    /** Per-session context-window override (the CLI's /maxtokens): a positive
+     *  token count pinned on every send; null 跟随默认。 */
+    setSessionAutoCompactWindow: (key, value) => {
+      patchSession(set, key, { autoCompactWindow: value });
     },
 
     /** Fork the conversation at one message (the CLI's /branch): the host

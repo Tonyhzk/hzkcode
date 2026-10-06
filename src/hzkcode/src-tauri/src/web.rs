@@ -984,6 +984,9 @@ struct SendMessageArgs {
     /// Per-session second-brain switch (see
     /// engine::SendRequest::second_brain_enabled).
     second_brain_enabled: Option<bool>,
+    /// Per-session context-window override (see
+    /// engine::SendRequest::auto_compact_window).
+    auto_compact_window: Option<u64>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1399,6 +1402,7 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
                 a.run_id,
                 a.proxy_enabled,
                 a.second_brain_enabled,
+                a.auto_compact_window,
             )
             .await)
         }

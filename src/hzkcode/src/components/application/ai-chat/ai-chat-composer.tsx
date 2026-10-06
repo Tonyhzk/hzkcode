@@ -25,6 +25,7 @@ import {
   type ContextSegment,
   type UsageLimit,
 } from "@/components/application/agent-limits/agent-limits-card";
+import { Input } from "@/components/base/input/input";
 import { Tooltip, TooltipContent } from "@/components/base/tooltip/tooltip";
 import { ProjectFolderMenu } from "@/components/application/ai-chat/project-folder-menu";
 import {
@@ -452,8 +453,17 @@ function SessionToggles() {
     const key = sessionKey(a.engine, a.sessionId, a.workspacePath);
     return s.bySession[key]?.secondBrainEnabled ?? null;
   });
+  const autoCompactWindow = useChatStore((s) => {
+    const a = s.active;
+    if (!a) return null;
+    const key = sessionKey(a.engine, a.sessionId, a.workspacePath);
+    return s.bySession[key]?.autoCompactWindow ?? null;
+  });
   const setSessionProxy = useChatStore((s) => s.setSessionProxy);
   const setSessionSecondBrain = useChatStore((s) => s.setSessionSecondBrain);
+  const setSessionAutoCompactWindow = useChatStore(
+    (s) => s.setSessionAutoCompactWindow,
+  );
 
   // The address the CLI reads for `HZKCODE_PROXY_ENABLED=1` (模型配置 → 功能
   // 开关 → 会话代理地址 already writes this key).
@@ -467,6 +477,16 @@ function SessionToggles() {
   useEffect(() => read(), [read]);
   useTauriEvent(() => listenSettingsChanged(read));
 
+  // Draft for the context-window input: re-synced when the popover opens and
+  // whenever the stored override changes.
+  const [windowDraft, setWindowDraft] = useState("");
+  const [windowError, setWindowError] = useState(false);
+  useEffect(() => {
+    if (!isOpen) return;
+    setWindowDraft(autoCompactWindow == null ? "" : String(autoCompactWindow));
+    setWindowError(false);
+  }, [isOpen, autoCompactWindow]);
+
   if (!active || !sessionKeyValue) return null;
 
   const selectProxy = (value: boolean | null) => {
@@ -476,6 +496,22 @@ function SessionToggles() {
   const selectBrain = (value: boolean | null) => {
     setSessionSecondBrain(sessionKeyValue, value);
     setIsOpen(false);
+  };
+  // The CLI's /maxtokens as a control: a positive token count pinned on the
+  // next sends; an empty draft (or 恢复默认) falls back to the default window.
+  const applyWindow = () => {
+    const trimmed = windowDraft.trim();
+    if (!/^[1-9]\d*$/.test(trimmed) || !Number.isSafeInteger(Number(trimmed))) {
+      setWindowError(true);
+      return;
+    }
+    setWindowError(false);
+    setSessionAutoCompactWindow(sessionKeyValue, Number(trimmed));
+  };
+  const resetWindow = () => {
+    setWindowError(false);
+    setSessionAutoCompactWindow(sessionKeyValue, null);
+    setWindowDraft("");
   };
   const proxyUsable = isUsableSessionProxyUrl(address);
   const proxyOptions: { value: boolean | null; label: string; disabled?: boolean }[] = [
@@ -532,7 +568,9 @@ function SessionToggles() {
           aria-label={t("chat.sessionToggles")}
           className={cx(
             "flex cursor-pointer items-center rounded-full p-1.5 outline-none transition-colors duration-150 ease focus-visible:ring-2 focus-visible:ring-border-focus-ring",
-            proxyEnabled === true || secondBrainEnabled === true
+            proxyEnabled === true ||
+            secondBrainEnabled === true ||
+            autoCompactWindow != null
               ? "text-notification-success-foreground"
               : proxyEnabled === false || secondBrainEnabled === false
                 ? "text-foreground-icon-secondary"
@@ -589,6 +627,56 @@ function SessionToggles() {
             <span className="min-w-0 flex-1 truncate">{t("chat.secondBrain")}</span>
           </div>
           {renderOptions(brainOptions, secondBrainEnabled, selectBrain)}
+          <div className="flex items-center gap-2.5 border-t border-border-primary-default px-2 pt-1.5 text-body-medium text-text-tertiary">
+            <span className="min-w-0 flex-1 truncate">{t("chat.sessionContextWindow")}</span>
+          </div>
+          <div className="flex items-center gap-1 px-2">
+            <Input
+              size="small"
+              className="min-w-0"
+              aria-label={t("chat.sessionContextWindow")}
+              placeholder={t("chat.sessionContextWindowPlaceholder")}
+              value={windowDraft}
+              onChange={(next) => {
+                setWindowDraft(next);
+                setWindowError(false);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  applyWindow();
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={applyWindow}
+              className="shrink-0 cursor-pointer rounded-md px-1.5 py-1 text-caption-1-medium text-text-link-default outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+            >
+              {t("chat.sessionContextWindowApply")}
+            </button>
+          </div>
+          <div className="flex items-center gap-2 px-2 pb-0.5">
+            <span
+              className={cx(
+                "min-w-0 flex-1 truncate text-caption-1-regular",
+                windowError ? "text-foreground-icon-error" : "text-text-tertiary",
+              )}
+            >
+              {windowError
+                ? t("chat.sessionContextWindowInvalid")
+                : t("chat.sessionContextWindowHint")}
+            </span>
+            <button
+              type="button"
+              onClick={resetWindow}
+              disabled={autoCompactWindow == null}
+              className="shrink-0 cursor-pointer text-caption-1-medium text-text-link-default outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring disabled:cursor-default disabled:text-text-tertiary disabled:no-underline"
+            >
+              {t("chat.sessionContextWindowReset")}
+            </button>
+          </div>
         </AriaDialog>
       </AriaPopover>
     </AriaDialogTrigger>

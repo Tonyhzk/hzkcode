@@ -177,6 +177,8 @@ export interface ChatStore {
   setSessionProxy: (key: string, value: boolean | null) => void;
   /** Per-session second-brain switch (null 跟随默认). */
   setSessionSecondBrain: (key: string, value: boolean | null) => void;
+  /** Per-session context-window override (the CLI's /maxtokens; null 跟随默认). */
+  setSessionAutoCompactWindow: (key: string, value: number | null) => void;
   /** Enqueue a message on the active session while a turn streams. */
   queueMessage: (text: string, images: string[]) => void;
   /** Drop a queued message from the active session. */

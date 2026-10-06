@@ -75,6 +75,11 @@ pub struct SendRequest {
     /// the command writes the same `HZKCODE_ENABLE_SECOND_BRAIN` variable the
     /// service reads at startup, so pinning it per send is the equivalent.
     pub second_brain_enabled: Option<bool>,
+    /// Per-session context-window override (the CLI's `/maxtokens`): the
+    /// command writes the same `HZKCODE_AUTO_COMPACT_WINDOW` variable the
+    /// auto-compact pipeline reads per check — session-only, never persisted.
+    /// Some(tokens) pins it for this send; None keeps the app/shell default.
+    pub auto_compact_window: Option<u64>,
 }
 
 pub struct BuiltCommand {
@@ -1013,6 +1018,7 @@ fn prepare_launch(
     agent_tools: Option<Vec<String>>,
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
+    auto_compact_window: Option<u64>,
 ) -> Result<Launch, String> {
     let engine_impl = engine_by_id(engine).ok_or_else(|| format!("unknown engine: {engine}"))?;
     // Channel settings apply to this child below; the program's own files
@@ -1068,6 +1074,7 @@ fn prepare_launch(
         }),
         proxy_enabled,
         second_brain_enabled,
+        auto_compact_window,
     };
     let bin = engine_bin(&settings, engine);
     let mut built = engine_impl.build_command(&req, &bin)?;
@@ -1105,6 +1112,13 @@ fn prepare_launch(
             "HZKCODE_ENABLE_SECOND_BRAIN",
             if enabled { "1" } else { "0" },
         );
+    }
+    // Session context-window override (the CLI's /maxtokens writes this same
+    // variable for its own process lifetime — the GUI send is the process).
+    if let Some(tokens) = req.auto_compact_window {
+        built
+            .command
+            .env("HZKCODE_AUTO_COMPACT_WINDOW", tokens.to_string());
     }
     for (key, value) in &channel_env {
         built.command.env(key, value);
@@ -1935,6 +1949,7 @@ pub async fn send_message(
     run_id: Option<String>,
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
+    auto_compact_window: Option<u64>,
 ) -> Result<SendResult, String> {
     send_message_inner(
         &state,
@@ -1953,6 +1968,7 @@ pub async fn send_message(
         run_id,
         proxy_enabled,
         second_brain_enabled,
+        auto_compact_window,
     )
     .await
 }
@@ -1978,12 +1994,17 @@ pub async fn send_message_inner(
     run_id: Option<String>,
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
+    auto_compact_window: Option<u64>,
 ) -> Result<SendResult, String> {
     let run_id = run_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     if run_id.is_empty() || run_id.len() > 128
         || !run_id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
     {
         return Err("invalid run id".into());
+    }
+    // Mirrors /maxtokens' /^[1-9]\d*$/ validation: zero is not a window.
+    if auto_compact_window == Some(0) {
+        return Err("invalid context window: must be a positive integer".into());
     }
     // Reserve the run id atomically, before the first await: a contains_key
     // check here with the registry insert after spawn would let two
@@ -2036,6 +2057,7 @@ pub async fn send_message_inner(
         run_id,
         proxy_enabled,
         second_brain_enabled,
+        auto_compact_window,
         killed,
         reader_abort,
     )
@@ -2068,6 +2090,7 @@ async fn send_reserved(
     run_id: String,
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
+    auto_compact_window: Option<u64>,
     killed: Arc<std::sync::atomic::AtomicBool>,
     reader_abort: Arc<std::sync::OnceLock<tokio::task::AbortHandle>>,
 ) -> Result<SendResult, String> {
@@ -2090,6 +2113,7 @@ async fn send_reserved(
         agent_tools,
         proxy_enabled,
         second_brain_enabled,
+        auto_compact_window,
     )?;
 
     // WSL 远程工作区:引擎进程经 ssh 在发行版内执行(见 wsl_transport)。
@@ -2399,6 +2423,7 @@ mod permission_tests {
             agent_tools: None,
             proxy_enabled: None,
             second_brain_enabled: None,
+            auto_compact_window: None,
         }
     }
 

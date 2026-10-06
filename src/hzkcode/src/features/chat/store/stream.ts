@@ -34,6 +34,9 @@ export interface SessionState {
   /** Per-session second-brain switch (the CLI's /second-brain): pins
    *  HZKCODE_ENABLE_SECOND_BRAIN per send; null 跟随功能开关的默认. */
   secondBrainEnabled?: boolean | null;
+  /** Per-session context-window override (the CLI's /maxtokens): pins
+   *  HZKCODE_AUTO_COMPACT_WINDOW per send; null 跟随默认. */
+  autoCompactWindow?: number | null;
   /** Slash commands the CLI announced for this session (the headless init
    *  message's `slash_commands`); the composer's built-in group reads them. */
   availableCommands?: string[];
@@ -69,6 +72,7 @@ export const EMPTY_SESSION: SessionState = {
   activeProvider: null,
   proxyEnabled: null,
   secondBrainEnabled: null,
+  autoCompactWindow: null,
   availableCommands: [],
   usage: null,
   turnUsage: null,

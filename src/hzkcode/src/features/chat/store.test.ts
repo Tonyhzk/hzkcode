@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ipc, type SessionMeta } from "@/lib/ipc";
-import { setPluginSessionEffort, useChatStore } from "./store";
+import { sessionKey, setPluginSessionEffort, useChatStore } from "./store";
 import { OPEN_TABS_KEY } from "./store/persistence";
 import { EMPTY_SESSION } from "./store/stream";
 
@@ -106,7 +106,23 @@ describe("per-session composer selection", () => {
 
     await useChatStore.getState().send("hi", []);
     expect(vi.mocked(ipc.sendMessage)).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "kimi-k3", effort: null }),
+      expect.objectContaining({
+        model: "kimi-k3",
+        effort: null,
+        autoCompactWindow: null,
+      }),
+    );
+  });
+
+  it("the session context-window override rides the send payload", async () => {
+    useChatStore.setState({ activeEngine: "omp", models: { omp: "kimi-k3" } });
+    useChatStore.getState().startNewChat(WS);
+    const key = sessionKey("omp", null, WS);
+    useChatStore.getState().setSessionAutoCompactWindow(key, 123456);
+
+    await useChatStore.getState().send("hi", []);
+    expect(vi.mocked(ipc.sendMessage)).toHaveBeenCalledWith(
+      expect.objectContaining({ autoCompactWindow: 123456 }),
     );
   });
 

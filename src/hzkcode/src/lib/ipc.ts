@@ -720,6 +720,10 @@ export const ipc = {
     /** Per-session second-brain switch (the CLI's /second-brain): pins
      *  HZKCODE_ENABLE_SECOND_BRAIN; null keeps the default. */
     secondBrainEnabled?: boolean | null;
+    /** Per-session context-window override (the CLI's /maxtokens): pins
+     *  HZKCODE_AUTO_COMPACT_WINDOW (the auto-compact limit); null keeps the
+     *  app/shell default. */
+    autoCompactWindow?: number | null;
   }) => invoke<SendResult>("send_message", args),
   interruptSession: (sessionId: string) =>
     invoke<boolean>("interrupt_session", { sessionId }),
