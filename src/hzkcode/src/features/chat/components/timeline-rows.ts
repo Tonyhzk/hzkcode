@@ -142,23 +142,38 @@ export function rowKey(row: TimelineRow): string | number {
   return row.kind === "msg" ? row.message.seq : `process-${row.firstSeq}`;
 }
 
-/** Branch target uuid per message row (the CLI's /branch semantics): a reply
- *  forks inclusively of itself, so it targets its own transcript entry; a
- *  user prompt forks right before it, so it targets the reply it follows.
- *  Rows whose entry cannot be resolved (only a first prompt has none) are
- *  absent — the branch icon hides for them. */
-export function branchTargets(rows: TimelineRow[]): Map<string | number, string> {
+/** Branch target uuid per message row (the CLI's /branch semantics): every
+ *  message targets its own transcript entry — the backend forks inclusively
+ *  of a reply and right before a prompt, so branching at a prompt ends the
+ *  fork on the reply it follows. The session's very first prompt gets no
+ *  target: the fork would be empty. Rows without a resolvable entry (a
+ *  just-sent prompt echoes locally and only gains its uuid once the session
+ *  is re-read) are absent too — the branch icon hides for them. When earlier
+ *  history exists beyond the loaded window, the head prompt is not "first"
+ *  and keeps its target. */
+export function branchTargets(
+  rows: TimelineRow[],
+  hasEarlier = false,
+): Map<string | number, string> {
   const targets = new Map<string | number, string>();
-  let previousReply: string | null = null;
+  let firstChatKey: string | number | null = null;
+  for (const row of rows) {
+    if (row.kind !== "msg") continue;
+    const role = row.message.role;
+    if (role !== "user" && role !== "assistant") continue;
+    firstChatKey = rowKey(row);
+    break;
+  }
   for (const row of rows) {
     if (row.kind !== "msg") continue;
     const uuid = row.message.uuid;
-    if (row.message.role === "assistant" && uuid) {
-      previousReply = uuid;
-      targets.set(rowKey(row), uuid);
-    } else if (row.message.role === "user" && previousReply) {
-      targets.set(rowKey(row), previousReply);
+    if (!uuid) continue;
+    const role = row.message.role;
+    if (role !== "assistant" && role !== "user") continue;
+    if (role === "user" && !hasEarlier && rowKey(row) === firstChatKey) {
+      continue;
     }
+    targets.set(rowKey(row), uuid);
   }
   return targets;
 }

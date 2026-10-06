@@ -29,7 +29,10 @@ const TURN_SUM = {
   model_context_window: 1_000_000,
 };
 
-function deps(refreshSessionUsage?: (key: string) => Promise<void>): EngineEventDeps {
+function deps(
+  refreshSessionUsage?: (key: string) => Promise<void>,
+  refreshSessionUuids?: (key: string) => Promise<void>,
+): EngineEventDeps {
   return {
     set: useChatStore.setState,
     get: useChatStore.getState,
@@ -37,6 +40,7 @@ function deps(refreshSessionUsage?: (key: string) => Promise<void>): EngineEvent
     markUnseenIfBackground: () => {},
     upsertSessionMeta: () => {},
     refreshSessionUsage,
+    refreshSessionUuids,
   };
 }
 
@@ -110,5 +114,54 @@ describe("a settled turn re-reads the live occupancy from session history", () =
 
     vi.advanceTimersByTime(400);
     expect(refresh).toHaveBeenCalledWith(KEY);
+  });
+
+  it("backfills just-sent prompt uuids once a claude turn settles", () => {
+    const refreshUuids = vi.fn(async () => {});
+
+    handleEngineEvents(
+      [ev("run-4", 3, { usage: { ...TURN_SUM } })],
+      deps(undefined, refreshUuids),
+    );
+
+    // Same flush delay as the usage re-read.
+    expect(refreshUuids).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(400);
+    expect(refreshUuids).toHaveBeenCalledWith(KEY);
+  });
+
+  it("backfills prompt uuids even when the turn was interrupted", () => {
+    const refreshUuids = vi.fn(async () => {});
+    useChatStore.setState({
+      bySession: { [KEY]: { ...EMPTY_SESSION, interrupted: true } },
+    });
+
+    handleEngineEvents(
+      [ev("run-5", 3, { usage: { ...TURN_SUM } })],
+      deps(undefined, refreshUuids),
+    );
+
+    vi.advanceTimersByTime(400);
+    expect(refreshUuids).toHaveBeenCalledWith(KEY);
+  });
+
+  it("backfills prompt uuids after a failed turn", () => {
+    const refreshUuids = vi.fn(async () => {});
+
+    handleEngineEvents(
+      [
+        {
+          runId: "run-6",
+          sessionId: "sess-1",
+          engine: "claude",
+          seq: 4,
+          kind: "error" as const,
+          data: "boom",
+        },
+      ],
+      deps(undefined, refreshUuids),
+    );
+
+    expect(refreshUuids).toHaveBeenCalledWith(KEY);
   });
 });

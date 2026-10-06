@@ -3,6 +3,7 @@ import { ipc, type SessionMeta } from "@/lib/ipc";
 import { sessionKey, setPluginSessionEffort, useChatStore } from "./store";
 import { OPEN_TABS_KEY } from "./store/persistence";
 import { EMPTY_SESSION } from "./store/stream";
+import { branchTargets, buildRows, rowKey } from "./components/timeline-rows";
 
 vi.mock("@/lib/ipc", () => ({
   ipc: {
@@ -172,6 +173,290 @@ describe("stop during an in-flight send", () => {
     // sendPrompt saw the interrupted flag once the ids materialized and
     // killed the run that Stop could not reach.
     expect(vi.mocked(ipc.interruptSession)).toHaveBeenCalledWith("run-9");
+  });
+});
+
+describe("refreshSessionUuids backfills prompt uuids", () => {
+  beforeEach(resetStore);
+
+  it("stamps a just-sent prompt so it can branch without a session reload", async () => {
+    const tab = { engine: "claude", sessionId: "sess-uuid", workspacePath: WS };
+    const key = "claude/sess-uuid";
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [key]: {
+          ...EMPTY_SESSION,
+          messages: [
+            { seq: 0, role: "assistant", text: "earlier", ts: null, uuid: "a0" },
+            { seq: 1, role: "user", text: "hi", ts: null },
+            { seq: 2, role: "assistant", text: "hello", ts: null, uuid: "a1" },
+          ],
+        },
+      },
+    });
+    vi.mocked(ipc.loadSessionPage).mockResolvedValueOnce({
+      messages: [
+        { seq: 0, role: "assistant", text: "earlier", ts: null, uuid: "a0" },
+        { seq: 1, role: "user", text: "hi", ts: null, uuid: "u1" },
+        { seq: 2, role: "assistant", text: "hello", ts: null, uuid: "a1" },
+      ],
+      nextBefore: null,
+      subagentHistory: [],
+    } as any);
+
+    await useChatStore.getState().refreshSessionUuids(key);
+
+    const messages = useChatStore.getState().bySession[key].messages;
+    expect(messages[1].uuid).toBe("u1");
+    // The prompt resolves a branch target right away — no reload, no switch.
+    const rows = buildRows(messages);
+    expect(branchTargets(rows).get(rowKey(rows[1]))).toBe("u1");
+  });
+
+  it("drops a read that resolves after the session changed underneath it", async () => {
+    const tab = { engine: "claude", sessionId: "sess-race", workspacePath: WS };
+    const key = "claude/sess-race";
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [key]: {
+          ...EMPTY_SESSION,
+          messages: [{ seq: 1, role: "user", text: "hi", ts: null }],
+        },
+      },
+    });
+    const history = Promise.withResolvers<any>();
+    vi.mocked(ipc.loadSessionPage).mockReturnValueOnce(history.promise);
+    const refreshing = useChatStore.getState().refreshSessionUuids(key);
+    // The session goes away while the read is in flight.
+    useChatStore.setState({ bySession: {} });
+    history.resolve({
+      messages: [{ seq: 1, role: "user", text: "hi", ts: null, uuid: "u1" }],
+      nextBefore: null,
+      subagentHistory: [],
+    });
+    await refreshing;
+    expect(useChatStore.getState().bySession[key]).toBeUndefined();
+  });
+
+  it("reads older pages when a busy turn pushed the prompt past the newest page", async () => {
+    const tab = { engine: "claude", sessionId: "sess-page", workspacePath: WS };
+    const key = "claude/sess-page";
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [key]: {
+          ...EMPTY_SESSION,
+          messages: [
+            { seq: 0, role: "assistant", text: "earlier", ts: null, uuid: "a0" },
+            { seq: 1, role: "user", text: "hi", ts: null },
+            { seq: 2, role: "assistant", text: "busy", ts: null, uuid: "a2" },
+          ],
+        },
+      },
+    });
+    // Newest page: the turn's tool rows from the prompt onward — no user
+    // entry on this page at all.
+    vi.mocked(ipc.loadSessionPage).mockResolvedValueOnce({
+      messages: [
+        { seq: 99, role: "tool", text: "…", ts: null },
+        { seq: 100, role: "assistant", text: "busy", ts: null, uuid: "a2" },
+      ],
+      nextBefore: 42,
+      subagentHistory: [],
+    } as any);
+    // The older page carries the prompt itself.
+    vi.mocked(ipc.loadSessionPage).mockResolvedValueOnce({
+      messages: [{ seq: 1, role: "user", text: "hi", ts: null, uuid: "u1" }],
+      nextBefore: null,
+      subagentHistory: [],
+    } as any);
+
+    await useChatStore.getState().refreshSessionUuids(key);
+
+    expect(ipc.loadSessionPage).toHaveBeenLastCalledWith(
+      "claude",
+      "sess-page",
+      100,
+      42,
+    );
+    const messages = useChatStore.getState().bySession[key].messages;
+    expect(messages[1].uuid).toBe("u1");
+  });
+
+  it("aligns repeated prompts from the newest end, not the earliest match", async () => {
+    const tab = { engine: "claude", sessionId: "sess-dup", workspacePath: WS };
+    const key = "claude/sess-dup";
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [key]: {
+          ...EMPTY_SESSION,
+          messages: [
+            { seq: 0, role: "assistant", text: "earlier", ts: null, uuid: "a0" },
+            { seq: 1, role: "user", text: "再来一次", ts: null },
+            { seq: 2, role: "assistant", text: "one", ts: null, uuid: "a1" },
+            { seq: 3, role: "user", text: "再来一次", ts: null, uuid: "u2" },
+          ],
+        },
+      },
+    });
+    // An even older prompt with the same text sits before the two entries —
+    // matching from the front would steal it for the pending row.
+    vi.mocked(ipc.loadSessionPage).mockResolvedValueOnce({
+      messages: [
+        { seq: 1, role: "user", text: "再来一次", ts: null, uuid: "u0" },
+        { seq: 2, role: "user", text: "再来一次", ts: null, uuid: "u1" },
+        { seq: 3, role: "user", text: "再来一次", ts: null, uuid: "u2" },
+      ],
+      nextBefore: null,
+      subagentHistory: [],
+    } as any);
+
+    await useChatStore.getState().refreshSessionUuids(key);
+
+    const messages = useChatStore.getState().bySession[key].messages;
+    expect(messages[1].uuid).toBe("u1");
+    expect(messages[3].uuid).toBe("u2");
+  });
+
+  it("does not let a pending prompt take a uuid bound to an older twin", async () => {
+    const tab = { engine: "claude", sessionId: "sess-twin", workspacePath: WS };
+    const key = "claude/sess-twin";
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [key]: {
+          ...EMPTY_SESSION,
+          messages: [
+            { seq: 1, role: "user", text: "继续", ts: null, uuid: "u-old" },
+            { seq: 3, role: "assistant", text: "ok", ts: null, uuid: "a1" },
+            { seq: 5, role: "user", text: "继续", ts: null },
+          ],
+        },
+      },
+    });
+    // The file still only carries the older twin — the new prompt has not
+    // been flushed (the engine died before writing it).
+    vi.mocked(ipc.loadSessionPage).mockResolvedValueOnce({
+      messages: [{ seq: 1, role: "user", text: "继续", ts: null, uuid: "u-old" }],
+      nextBefore: null,
+      subagentHistory: [],
+    } as any);
+
+    await useChatStore.getState().refreshSessionUuids(key);
+
+    const messages = useChatStore.getState().bySession[key].messages;
+    expect(messages[2].uuid).toBeUndefined();
+  });
+
+  it("does not match a prompt to an entry that merely contains it", async () => {
+    const tab = { engine: "claude", sessionId: "sess-contains", workspacePath: WS };
+    const key = "claude/sess-contains";
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [key]: {
+          ...EMPTY_SESSION,
+          messages: [
+            { seq: 0, role: "assistant", text: "earlier", ts: null, uuid: "a0" },
+            { seq: 1, role: "user", text: "继续", ts: null },
+          ],
+        },
+      },
+    });
+    vi.mocked(ipc.loadSessionPage).mockResolvedValueOnce({
+      messages: [
+        { seq: 1, role: "user", text: "我们继续吧", ts: null, uuid: "u0" },
+      ],
+      nextBefore: null,
+      subagentHistory: [],
+    } as any);
+
+    await useChatStore.getState().refreshSessionUuids(key);
+
+    const messages = useChatStore.getState().bySession[key].messages;
+    expect(messages[1].uuid).toBeUndefined();
+  });
+
+  it("retries briefly when the prompt has not landed in the file yet", async () => {
+    const tab = { engine: "claude", sessionId: "sess-late", workspacePath: WS };
+    const key = "claude/sess-late";
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [key]: {
+          ...EMPTY_SESSION,
+          messages: [
+            { seq: 0, role: "assistant", text: "earlier", ts: null, uuid: "a0" },
+            { seq: 1, role: "user", text: "hi", ts: null },
+          ],
+        },
+      },
+    });
+    // First read: the engine has not flushed the prompt yet.
+    vi.mocked(ipc.loadSessionPage).mockResolvedValueOnce({
+      messages: [
+        { seq: 0, role: "assistant", text: "earlier", ts: null, uuid: "a0" },
+      ],
+      nextBefore: null,
+      subagentHistory: [],
+    } as any);
+    // Second read (after the brief retry): the prompt is there.
+    vi.mocked(ipc.loadSessionPage).mockResolvedValueOnce({
+      messages: [
+        { seq: 0, role: "assistant", text: "earlier", ts: null, uuid: "a0" },
+        { seq: 1, role: "user", text: "hi", ts: null, uuid: "u1" },
+      ],
+      nextBefore: null,
+      subagentHistory: [],
+    } as any);
+
+    await useChatStore.getState().refreshSessionUuids(key);
+
+    const messages = useChatStore.getState().bySession[key].messages;
+    expect(messages[1].uuid).toBe("u1");
+  });
+
+  it("skips a match whose row text changed while the read was in flight", async () => {
+    const tab = { engine: "claude", sessionId: "sess-text", workspacePath: WS };
+    const key = "claude/sess-text";
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [key]: {
+          ...EMPTY_SESSION,
+          messages: [{ seq: 1, role: "user", text: "hi", ts: null }],
+        },
+      },
+    });
+    const history = Promise.withResolvers<any>();
+    vi.mocked(ipc.loadSessionPage).mockReturnValueOnce(history.promise);
+    const refreshing = useChatStore.getState().refreshSessionUuids(key);
+    useChatStore.setState({
+      bySession: {
+        [key]: {
+          ...EMPTY_SESSION,
+          messages: [{ seq: 1, role: "user", text: "changed", ts: null }],
+        },
+      },
+    });
+    history.resolve({
+      messages: [{ seq: 1, role: "user", text: "hi", ts: null, uuid: "u1" }],
+      nextBefore: null,
+      subagentHistory: [],
+    });
+    await refreshing;
+    expect(useChatStore.getState().bySession[key].messages[0].uuid).toBeUndefined();
   });
 });
 

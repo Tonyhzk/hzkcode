@@ -191,7 +191,7 @@ describe("retry affordance on the bottom message", () => {
 });
 
 describe("branch targets and affordance", () => {
-  it("maps replies to themselves and prompts to the reply before them", () => {
+  it("targets replies and prompts at their own transcript entry", () => {
     const messages: Message[] = [
       { seq: 1, role: "user", text: "hi", ts: null, uuid: "u1" },
       { seq: 2, role: "assistant", text: "hello", ts: null, uuid: "a1" },
@@ -206,10 +206,27 @@ describe("branch targets and affordance", () => {
       )!;
       return targets.get(rowKey(row));
     };
+    // The session's first prompt keeps no icon: a fork in front of it would
+    // be empty.
     expect(bySeq(1)).toBeUndefined();
     expect(bySeq(2)).toBe("a1");
-    expect(bySeq(3)).toBe("a1");
+    expect(bySeq(3)).toBe("u2");
     expect(bySeq(4)).toBe("a2");
+  });
+
+  it("keeps the window's first prompt target when earlier history exists", () => {
+    // Paged load: the window starts mid-conversation, so the head prompt
+    // must keep its own-uuid target even with no reply before it.
+    const messages: Message[] = [
+      { seq: 9, role: "user", text: "older", ts: null, uuid: "u9" },
+      { seq: 10, role: "assistant", text: "ok", ts: null, uuid: "a9" },
+    ];
+    const rows = buildRows(messages);
+    const targets = branchTargets(rows, true);
+    const head = rows.find(
+      (r) => r.kind === "msg" && r.message.seq === 9,
+    )!;
+    expect(targets.get(rowKey(head))).toBe("u9");
   });
 
   let container: HTMLDivElement;
@@ -243,6 +260,25 @@ describe("branch targets and affordance", () => {
     expect(buttons).toHaveLength(2);
     await act(async () => buttons[1].click());
     expect(onBranch).toHaveBeenCalledWith("a1");
+  });
+
+  it("renders a branch button on a user message and hands over its own uuid", async () => {
+    const onBranch = vi.fn();
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={{ seq: 1, role: "user", text: "hi", ts: null, uuid: "u1" }}
+          workspacePath="/ws"
+          turnFinal
+          branchTarget="u1"
+          onBranch={onBranch}
+        />,
+      );
+    });
+    const buttons = container.querySelectorAll<HTMLButtonElement>("button");
+    expect(buttons).toHaveLength(2);
+    await act(async () => buttons[1].click());
+    expect(onBranch).toHaveBeenCalledWith("u1");
   });
 
   it("hides the branch button without a resolvable target", async () => {

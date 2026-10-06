@@ -204,4 +204,6 @@ export interface ChatStore {
   compactContext: (key?: string) => Promise<void>;
   /** Re-fetch the latest token usage from session history for the current session. */
   refreshSessionUsage: (key?: string) => Promise<void>;
+  /** Backfill engine uuids onto just-sent prompts from session history. */
+  refreshSessionUuids: (key?: string) => Promise<void>;
 }

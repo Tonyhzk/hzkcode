@@ -49,6 +49,7 @@ export interface EngineEventDeps {
   upsertSessionMeta: (meta: SessionMeta) => void;
   /** Re-fetch the latest token usage from session history for the given session key. */
   refreshSessionUsage?: (key: string) => Promise<void>;
+  refreshSessionUuids?: (key: string) => Promise<void>;
 }
 
 /** Collapse whitespace and cap a prompt for use as a session title. */
@@ -683,6 +684,9 @@ function onError(
   dropRunUsage(event.runId);
   deps.markUnseenIfBackground(key);
   void deps.refreshSessionUsage?.(key).catch(() => {});
+  // A failed turn still owns its prompt in the transcript: backfill the uuid
+  // so the row can branch without waiting for a session reload.
+  void deps.refreshSessionUuids?.(key).catch(() => {});
   // An error settles the turn exactly like done does — the messages typed
   // behind it are the user's next step, and parking them here left the queue
   // stuck until it was sent or cleared by hand. A stop is still the user's
@@ -1257,6 +1261,12 @@ function onDone(event: EngineEventPayload, key: string, deps: EngineEventDeps) {
       }, 400);
     }
   }
+  // The prompt lands in the transcript as soon as the engine writes it — a
+  // stop or a failed turn does not erase it, and the branch affordance must
+  // not depend on a successful reply. Backfill its uuid either way.
+  setTimeout(() => {
+    deps.refreshSessionUuids?.(key)?.catch(() => {});
+  }, 400);
 }
 
 /** Ledger the turn's own report when it never reported live (claude sends one

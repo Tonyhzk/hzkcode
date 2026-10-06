@@ -10,6 +10,7 @@ import {
 import type { EffortLevel } from "@/components/application/ai-chat/cli-menu";
 import { pruneMentionIndex } from "@/components/application/ai-chat/mention-files";
 import { pruneSlashCommands } from "@/components/application/ai-chat/slash-commands";
+import { stripAgentBlock } from "./components/agent-block";
 import { listenEngineEvents, listenSessionsChanged } from "@/lib/events";
 import { errorText } from "@/lib/errors";
 import { writeStored } from "@/lib/storage";
@@ -135,6 +136,17 @@ function loadHistoryPage(
   return beforeSeq === undefined
     ? ipc.loadSessionPage(engine, sessionId, limit)
     : ipc.loadSessionPage(engine, sessionId, limit, beforeSeq);
+}
+
+/** Whether a transcript prompt entry and the local echo hold the same text:
+ *  the file carries the agent block a send appended (history parsing keeps
+ *  it), so compare after stripping it — and by equality, since containment
+ *  would let a short "继续" match any old prompt carrying the word. */
+function textsAlign(historyText: string, localText: string): boolean {
+  return (
+    stripAgentBlock(historyText).text.trim() ===
+    stripAgentBlock(localText).text.trim()
+  );
 }
 
 export const useChatStore = create<ChatStore>((set, get) => {
@@ -780,6 +792,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
               markUnseenIfBackground,
               upsertSessionMeta: (meta) => upsertSessionMetaInto(set, meta),
               refreshSessionUsage: (k) => get().refreshSessionUsage(k),
+              refreshSessionUuids: (k) => get().refreshSessionUuids(k),
             }),
           ),
         ),
@@ -2006,6 +2019,158 @@ export const useChatStore = create<ChatStore>((set, get) => {
         }
       } catch (error) {
         console.error("Failed to refresh session usage:", error);
+      }
+    },
+
+    /** Backfill the engine's uuids onto just-sent prompts. The local echo
+     *  carries none, so without this the branch affordance stays hidden on
+     *  the newest rows until the session is re-read. Once a turn settles,
+     *  walk the session's user rows against the freshly flushed transcript —
+     *  bound rows pin the walk, pending rows take an exactly-aligned entry.
+     *  Only user rows are backfilled (replies take theirs from the engine's
+     *  message_uuid event); matches apply by seq with a text check so a
+     *  stale read can never stamp a session that has changed underneath. */
+    refreshSessionUuids: async (key?: string) => {
+      const { active, openTabs } = get();
+      const targetKey =
+        key ??
+        (active
+          ? sessionKey(active.engine, active.sessionId, active.workspacePath)
+          : "");
+      if (!targetKey) return;
+      const targetTab = openTabs.find(
+        (t) => sessionKey(t.engine, t.sessionId, t.workspacePath) === targetKey,
+      );
+      const slashIdx = targetKey.indexOf("/");
+      const engine = targetTab?.engine ?? targetKey.slice(0, slashIdx);
+      const sessionId = targetTab?.sessionId ?? targetKey.slice(slashIdx + 1);
+      if (targetKey.startsWith("new:") || slashIdx < 1 || !engine || !sessionId) return;
+      const session = get().bySession[targetKey];
+      if (!session) return;
+      if (!session.messages.some((m) => m.role === "user" && !m.uuid)) return;
+      try {
+        const workspace = targetTab?.workspacePath ?? "";
+        // uuids already bound to local rows — a pending free row may never
+        // take one of these, or the newest twin of a repeated prompt would
+        // steal the older row's uuid when its own entry has not reached the
+        // file yet. Such a miss keeps counting as unresolved, so the retry
+        // loop keeps waiting for the real entry.
+        const bound = new Set(
+          session.messages
+            .filter((m) => m.role === "user" && m.uuid)
+            .map((m) => m.uuid!),
+        );
+        // Walk the session's user rows against the transcript in time order:
+        // rows that already hold a uuid pin the walk (a repeated prompt can
+        // never take an earlier entry's uuid), and a pending row only takes
+        // an entry whose text aligns exactly.
+        const findMatches = (candidates: SessionPage["messages"]) => {
+          const matches: { seq: number; text: string; uuid: string }[] = [];
+          // Walk both lists from their newest ends: the tails are the
+          // freshest state and align most reliably, and a bound row pins the
+          // walk so a repeated prompt can never take an earlier entry's uuid.
+          // A pending row only takes an entry whose text aligns exactly —
+          // containment would let a short "继续" match any old prompt
+          // carrying the word.
+          let cursor = candidates.length - 1;
+          for (let k = session.messages.length - 1; k >= 0; k -= 1) {
+            const message = session.messages[k];
+            if (message.role !== "user") continue;
+            if (message.uuid) {
+              let pinned = -1;
+              for (let i = cursor; i >= 0; i -= 1) {
+                if (candidates[i].uuid === message.uuid) {
+                  pinned = i;
+                  break;
+                }
+              }
+              if (pinned >= 0) cursor = pinned - 1;
+              continue;
+            }
+            for (let i = cursor; i >= 0; i -= 1) {
+              const candidate = candidates[i];
+              if (
+                candidate.uuid &&
+                !bound.has(candidate.uuid) &&
+                textsAlign(candidate.text, message.text)
+              ) {
+                matches.push({
+                  seq: message.seq,
+                  text: message.text,
+                  uuid: candidate.uuid,
+                });
+                cursor = i - 1;
+                break;
+              }
+            }
+          }
+          return matches;
+        };
+        const collect = (messages: SessionPage["messages"]) =>
+          messages.filter((m) => m.role === "user" && m.uuid);
+        const missing = () =>
+          session.messages.some(
+            (m) =>
+              m.role === "user" &&
+              !m.uuid &&
+              !matches.some((match) => match.seq === m.seq),
+          );
+        // A tool-heavy turn can pack hundreds of transcript rows between the
+        // prompt and EOF; keep walking older pages while anything is
+        // unmatched, capped so a pathological session cannot read forever.
+        const MAX_PAGES = 5;
+        // The engine may still be flushing (a stop right after send, or a
+        // fresh error): retry briefly, like the usage re-read does, so a
+        // prompt that lands in the file a moment later is not lost forever.
+        const MAX_ROUNDS = 3;
+        let matches: { seq: number; text: string; uuid: string }[] = [];
+        for (let round = 0; round < MAX_ROUNDS; round += 1) {
+          let page = await loadHistoryPage(engine, sessionId, workspace, 100);
+          let candidates = collect(page.messages);
+          matches = findMatches(candidates);
+          for (
+            let pages = 1;
+            missing() && page.nextBefore != null && pages < MAX_PAGES;
+            pages += 1
+          ) {
+            page = await loadHistoryPage(
+              engine,
+              sessionId,
+              workspace,
+              100,
+              page.nextBefore,
+            );
+            candidates = [...collect(page.messages), ...candidates];
+            matches = findMatches(candidates);
+          }
+          if (!missing()) break;
+          if (round < MAX_ROUNDS - 1) {
+            const wait = Promise.withResolvers<void>();
+            setTimeout(wait.resolve, 300);
+            await wait.promise;
+          }
+        }
+        if (matches.length === 0) return;
+        set((s) => {
+          const cur = s.bySession[targetKey];
+          if (!cur) return {};
+          let changed = false;
+          const messages = cur.messages.map((message) => {
+            if (message.uuid) return message;
+            const hit = matches.find(
+              (m) => m.seq === message.seq && m.text === message.text,
+            );
+            if (!hit) return message;
+            changed = true;
+            return { ...message, uuid: hit.uuid };
+          });
+          if (!changed) return {};
+          return {
+            bySession: { ...s.bySession, [targetKey]: { ...cur, messages } },
+          };
+        });
+      } catch (error) {
+        console.error("Failed to refresh session uuids:", error);
       }
     },
   };

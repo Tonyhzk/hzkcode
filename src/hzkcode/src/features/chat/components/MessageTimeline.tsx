@@ -403,9 +403,9 @@ export const MessageRow = memo(function MessageRow({
   /** Retry affordance (the terminal's `//`): wired on the timeline's last
    *  message only, so a mid-history bubble never shows it. */
   onRetry?: () => void;
-  /** Branch affordance (the CLI's /branch): the transcript uuid the fork
-   *  should end at — the row's own entry for a reply, the previous reply
-   *  for a user prompt. Absent when the row cannot resolve one. */
+  /** Branch affordance (the CLI's /branch): the row's own transcript uuid —
+   *  the fork includes a reply and forks right before a prompt. Absent when
+   *  the row cannot resolve one. */
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;
 }) {
@@ -521,8 +521,13 @@ export const MessageTimeline = memo(function MessageTimeline({
     return null;
   }, [rows]);
   // Branch target per message row (the CLI's /branch semantics); rows
-  // without a resolvable transcript entry get no icon.
-  const branchTargetByRow = useMemo(() => branchTargets(rows), [rows]);
+  // without a resolvable transcript entry get no icon, and a fork in front
+  // of the session's very first prompt would be empty — no icon there either
+  // unless earlier pages exist beyond the loaded window.
+  const branchTargetByRow = useMemo(
+    () => branchTargets(rows, Boolean(session.nextBefore)),
+    [rows, session.nextBefore],
+  );
   // Live stream rows are ordinary rows that grow in place; the only extra
   // tail item is the turn-status indicator below them.
   // The tail indicator stays mounted AND visible for the whole turn — a
