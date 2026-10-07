@@ -45,6 +45,15 @@ export interface EnvField {
    *  "toggle" = on/off switch writing "1" / unset. */
   kind: "text" | "number" | "select" | "toggle";
   options?: readonly string[];
+  /** select: option value → i18n label key. Present for labeled picks (the
+   *  model-tier default); a stored value outside `options` then renders as
+   *  the custom option — a free-text model id with its own 1M switch. */
+  optionLabelKeys?: Record<string, string>;
+  /** select: allow a value beyond `options` through the custom option. */
+  allowCustom?: boolean;
+  /** select: the option shown while nothing is stored (also what an unset
+   *  value resolves to). */
+  emptyShows?: string;
   labelKey: string;
   hintKey?: string;
   placeholderKey?: string;
@@ -84,12 +93,21 @@ export const CLAUDE_ENV_GROUPS: readonly {
     titleKey: "settings.cliGroupModels",
     fields: [
       {
+        // Tier picker, not a raw id: the default is one of the configured
+        // tiers or a custom model; nothing stored shows (and resolves as)
+        // the mid tier.
         envKey: "HZKCODE_MODEL",
-        kind: "text",
+        kind: "select",
+        options: ["haiku", "sonnet", "opus"],
+        optionLabelKeys: {
+          haiku: "settings.cliFieldLowModel",
+          sonnet: "settings.cliFieldMidModel",
+          opus: "settings.cliFieldHighModel",
+        },
+        allowCustom: true,
+        emptyShows: "sonnet",
         labelKey: "settings.cliFieldDefaultModel",
         hintKey: "settings.cliFieldDefaultModelHint",
-        placeholderKey: "settings.cliFieldModelPlaceholder",
-        oneM: true,
       },
       {
         envKey: "HZKCODE_DEFAULT_HIGH_MODEL",

@@ -30,6 +30,8 @@ import type { ProviderForm } from "./useProviderForm";
 const FETCH_DATALIST_ID = "cli-provider-fetched-models";
 /** Sentinel for "leave the variable unset" in the select controls. */
 const UNSET_OPTION_ID = "__unset__";
+/** Sentinel option that reveals the free-text model input (labeled selects). */
+const CUSTOM_OPTION_ID = "__custom__";
 
 /** Brand mark for a preset button: explicit per-preset assets keep relay
  *  providers distinct from the model they happen to serve by default. */
@@ -302,6 +304,9 @@ export function EnvFieldControl({
   grouped?: boolean;
 }) {
   const { t } = useTranslation();
+  // The labeled-select branch's 自定义 state: the select must keep showing
+  // 自定义 even while the free-text id is still empty.
+  const [customMode, setCustomMode] = useState(false);
   const hint = field.hintKey ? t(field.hintKey) : undefined;
   if (field.kind === "toggle") {
     const on = value.trim() === "1";
@@ -321,6 +326,86 @@ export function EnvFieldControl({
           isSelected={on}
           onChange={(next) => onChange(next ? "1" : "")}
         />
+      </div>
+    );
+  }
+  if (field.kind === "select" && field.optionLabelKeys) {
+    // Tier picker (the channel's default model): labeled options over the
+    // tier aliases; a stored value outside them — or an explicit 自定义
+    // pick — reveals the free-text model input with its 1M switch.
+    const options = field.options ?? [];
+    const labelKeys = field.optionLabelKeys;
+    const stored = value.trim();
+    const isCustom =
+      !!field.allowCustom &&
+      (customMode || (stored !== "" && !options.includes(stored)));
+    const selectedKey = isCustom
+      ? CUSTOM_OPTION_ID
+      : options.includes(stored)
+        ? stored
+        : (field.emptyShows ?? options[0] ?? UNSET_OPTION_ID);
+    return (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-body-medium text-text-secondary">
+          {t(field.labelKey)}
+        </span>
+        <Select
+          aria-label={t(field.labelKey)}
+          selectedKey={selectedKey}
+          onSelectionChange={(key) => {
+            const next = String(key);
+            if (next === CUSTOM_OPTION_ID) {
+              setCustomMode(true);
+              // Never carry a tier alias over as the custom id text; a value
+              // that already is a custom id stays in the input.
+              if (options.includes(stored)) onChange("");
+              return;
+            }
+            setCustomMode(false);
+            onChange(next);
+          }}
+        >
+          {options.map((option) => {
+            const labelKey = labelKeys[option];
+            return (
+              <SelectItem key={option} id={option}>
+                {labelKey ? t(labelKey) : option}
+              </SelectItem>
+            );
+          })}
+          {field.allowCustom && (
+            <SelectItem key={CUSTOM_OPTION_ID} id={CUSTOM_OPTION_ID}>
+              {t("settings.cliFieldCustomModel")}
+            </SelectItem>
+          )}
+        </Select>
+        {isCustom && (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-end gap-1.5">
+              <span className="text-body-2-regular text-text-tertiary">
+                {t("settings.cliField1m")}
+              </span>
+              <Switch
+                size="sm"
+                aria-label={`${t(field.labelKey)}: ${t("settings.cliField1m")}`}
+                isSelected={has1mSuffix(value)}
+                isDisabled={value.trim() === ""}
+                onChange={(next) =>
+                  onChange(next ? with1mSuffix(value) : without1mSuffix(value))
+                }
+              />
+            </div>
+            <Input
+              size="small"
+              list={FETCH_DATALIST_ID}
+              aria-label={t(field.labelKey)}
+              placeholder={field.placeholderKey ? t(field.placeholderKey) : undefined}
+              value={value}
+              onChange={onChange}
+            />
+          </div>
+        )}
+        {hint && <p className="text-body-2-regular text-text-tertiary">{hint}</p>}
       </div>
     );
   }

@@ -27,7 +27,9 @@ import { ErrorBanner } from "./ErrorBanner";
 import { useBranchSwitcher } from "./use-branch-switcher";
 import { useComposerImages } from "./use-composer-images";
 import { useEngineModels } from "./use-engine-models";
-import { useTabModelDisplay } from "./use-tab-model-display";
+import { useTabDisplayProviders, useTabModelDisplay } from "./use-tab-model-display";
+import { useSessionModelRepair } from "./use-session-model-repair";
+import { findChannelDefault } from "../store/channel-defaults";
 import { useDefaultAutoCompactWindow } from "./use-default-auto-compact-window";
 import type { EngineInfo, Workspace } from "@/lib/ipc";
 import { EmptyState } from "@/components/base/empty-state";
@@ -274,6 +276,7 @@ export const ChatConversation = memo(function ChatConversation({
     setModel,
     setProvider,
     pinModels,
+    repairSessionModel,
     loadEarlier,
     removeQueued,
     sendQueuedNow,
@@ -284,6 +287,7 @@ export const ChatConversation = memo(function ChatConversation({
       setModel: s.setModel,
       setProvider: s.setProvider,
       pinModels: s.pinModels,
+      repairSessionModel: s.repairSessionModel,
       loadEarlier: s.loadEarlier,
       removeQueued: s.removeQueued,
       sendQueuedNow: s.sendQueuedNow,
@@ -315,12 +319,10 @@ export const ChatConversation = memo(function ChatConversation({
     dismissImageError,
   } = useComposerImages();
 
-  const { displayModels, displayEfforts, displayProviders } = useTabModelDisplay({
+  const displayProviders = useTabDisplayProviders({
     active,
     activeEngine,
     sessionKey: key,
-    models,
-    efforts,
     providers,
   });
 
@@ -328,6 +330,8 @@ export const ChatConversation = memo(function ChatConversation({
     catalogs,
     modelsByEngine,
     channelsByEngine,
+    sessionIdsByEngine,
+    readyEngines,
     refresh: refreshModels,
     pendingEngines,
   } = useEngineModels(engines, models, pinModels, displayProviders, active?.workspacePath);
@@ -335,6 +339,31 @@ export const ChatConversation = memo(function ChatConversation({
     () => Object.keys(pendingEngines),
     [pendingEngines],
   );
+
+  // Channel default picks (per engine + channel) filled by the store when
+  // the CLI config loads, so display and send resolve the same value.
+  const channelDefaults = useChatStore((s) => s.channelDefaults);
+  const { displayModels, displayEfforts } = useTabModelDisplay({
+    active,
+    activeEngine,
+    sessionKey: key,
+    models,
+    efforts,
+    channelDefault: findChannelDefault(
+      channelDefaults,
+      activeEngine,
+      displayProviders[activeEngine],
+    ),
+  });
+  // A model override the channel no longer serves would surface as the
+  // engine name in the model slot; drop it so the channel default takes over.
+  useSessionModelRepair({
+    active,
+    activeEngine,
+    sessionIds: sessionIdsByEngine,
+    ready: readyEngines,
+    repair: repairSessionModel,
+  });
 
   const displayModel = displayModels[activeEngine];
   const defaultWindow = useDefaultAutoCompactWindow(

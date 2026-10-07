@@ -11,7 +11,6 @@ import {
   moveStreamingFlag,
   patchSession,
   resolveSessionEffort,
-  resolveSessionModel,
   rememberSettledRun,
   routeRun,
   runRouting,
@@ -100,10 +99,11 @@ export function upsertSessionMetaInto(
   });
 }
 
-/** Effective model for event-stamped rows: the session's activeModel wins,
- * followed by the owning tab's per-tab override, then the session's own
- * history, then the engine default — the same resolveSessionModel the send
- * path uses, so a row can never claim a model the turn did not run. */
+/** Effective model for event-stamped rows: the session's runtime model record
+ * wins — what the turn actually reported running — followed by the owning
+ * tab's pick and the engine default. The tab pick is read LAST among the
+ * per-session sources on purpose: it changes mid-turn when the user switches
+ * models, and a running turn's rows must not claim the next turn's choice. */
 function stampedModel(
   deps: EngineEventDeps,
   engine: string,
@@ -113,9 +113,7 @@ function stampedModel(
   const tab = s.openTabs.find(
     (t) => sessionKey(t.engine, t.sessionId, t.workspacePath) === key,
   );
-  return (
-    resolveSessionModel(tab, s.bySession[key], s.models[engine]) || null
-  );
+  return s.bySession[key]?.activeModel || tab?.model || s.models[engine] || null;
 }
 
 /** Effective reasoning effort for event-stamped rows. Native-session state

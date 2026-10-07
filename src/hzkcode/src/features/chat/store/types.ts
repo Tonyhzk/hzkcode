@@ -26,6 +26,11 @@ export interface ChatStore {
   efforts: Record<string, EffortLevel>;
   /** Per-engine model override ("" = CLI/provider default), persisted in app settings. */
   models: Record<string, string>;
+  /** Per-engine, per-channel default pick (the channel's configured default
+   *  model, else its tier ladder), computed from the CLI config on load.
+   *  In-memory only: display and send resolve through it so a session
+   *  without an explicit pick runs what its channel is configured to serve. */
+  channelDefaults: Record<string, Record<string, string>>;
   /** Per-engine default channel (settings `current`). New chats and sessions
    *  that never recorded one fall back to this; spawn injects env, never
    *  writes the CLI's own config file. */
@@ -114,6 +119,15 @@ export interface ChatStore {
   /** persist=false keeps the update session-scoped (remote-catalog resets
    *  must not rewrite the persisted default for local workspaces). */
   pinModels: (updates: Record<string, string>, persist?: boolean) => Promise<void>;
+  /** Drop a dead per-tab model override: the tab names a model its channel
+   *  no longer serves, and the resolution must fall through to the channel
+   *  default instead of the engine-name placeholder. */
+  repairSessionModel: (
+    engine: string,
+    sessionId: string | null,
+    workspacePath: string,
+    staleStamp: string,
+  ) => void;
   setThreadLimit: (limit: number) => void;
   /** Create a named sidebar group; throws on empty/duplicate names. */
   createWorkspaceGroup: (name: string) => Promise<WorkspaceGroup | null>;

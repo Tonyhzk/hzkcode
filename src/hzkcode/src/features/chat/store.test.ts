@@ -37,6 +37,8 @@ function resetStore() {
     active: null,
     activeEngine: "claude",
     models: { omp: "kimi-k3" },
+    channelDefaults: {},
+    providers: {},
     efforts: {},
     bySession: {},
     streamingByKey: {},
@@ -728,13 +730,14 @@ describe("model selection is per session", () => {
     expect(useChatStore.getState().active?.model).toBe("glm-5.3-flash");
   });
 
-  it("continues a session on the model that session actually ran", async () => {
+  it("rounds the send over the session's channel default, not its transcript", async () => {
     const a = sess("s-a");
     useChatStore.setState({
       activeEngine: "omp",
       openTabs: [a],
       active: a,
       models: { omp: "kimi-k3" },
+      channelDefaults: { omp: { __local_settings_json__: "chan-pick" } },
       bySession: {
         "omp/s-a": {
           ...EMPTY_SESSION,
@@ -747,13 +750,13 @@ describe("model selection is per session", () => {
 
     await useChatStore.getState().send("next", []);
 
-    // Not the engine default: the conversation keeps its own model.
+    // 转录里的历史模型不再参与解析：无分区选择时发送走本会话渠道的默认。
     expect(vi.mocked(ipc.sendMessage)).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "glm-5.3-flash" }),
+      expect.objectContaining({ model: "chan-pick" }),
     );
   });
 
-  it("prefers the session's reported model over its history", async () => {
+  it("does not send the session's reported model either", async () => {
     const a = sess("s-a");
     useChatStore.setState({
       activeEngine: "omp",
@@ -772,8 +775,9 @@ describe("model selection is per session", () => {
     });
 
     await useChatStore.getState().send("next", []);
+    // 引擎上报只作运行记录；渠道默认未配置时落回存储的引擎默认。
     expect(vi.mocked(ipc.sendMessage)).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gpt-5.6-luna" }),
+      expect.objectContaining({ model: "kimi-k3" }),
     );
   });
 

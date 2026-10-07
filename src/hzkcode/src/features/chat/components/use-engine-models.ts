@@ -5,13 +5,18 @@ import type { ChannelOption } from "@/components/application/ai-chat/engine-mode
 import { ipc, type CliConfig, type EngineCatalog, type EngineInfo } from "@/lib/ipc";
 import {
   CLI_CONFIG_CHANGED_EVENT,
-  isPseudoProvider,
-  providerCustomModels,
   providerEntries,
-  providerModel,
   PSEUDO_LOCAL,
   type EngineId,
 } from "@/features/settings/providers";
+import {
+  channelCustomModels,
+  channelSelectableIds,
+  channelTierModels,
+  configuredModel,
+  TIER_ENV_KEYS,
+  TIER_LABELS,
+} from "../store/channel-defaults";
 
 // Stable fallbacks: a fresh `{}` per render would re-run every effect and
 // memo keyed on `catalogs`/`pending` below.
@@ -27,94 +32,24 @@ export interface EngineModelsState {
   catalogs: Record<string, EngineCatalog>;
   modelsByEngine: Record<string, ModelOption[]>;
   channelsByEngine: Record<string, ChannelOption[]>;
+  /** Selectable ids per engine WITHOUT the current-value append — what the
+   *  channels can actually serve (the validity set for overrides). */
+  knownIdsByEngine: Record<string, Set<string>>;
+  /** Ids the ACTIVE session's channel can serve (that channel's default,
+   *  custom list and the catalog only) — the per-channel validity set for
+   *  tab overrides. */
+  sessionIdsByEngine: Record<string, Set<string>>;
+  /** Engines whose context has fully landed (channel config AND catalog) —
+   *  the trust gate for "not in the list" verdicts. */
+  readyEngines: Record<string, true>;
   refresh: () => Promise<void>;
   pendingEngines: Record<string, true>;
 }
 
 /** Provider configs and per-engine model catalogs feeding the CLI menu's
  * per-engine model flyouts, plus the pin effect that repairs unset or stale
- * stored model picks. */
-
-/** Raw record of a channel. `channelId` empty → engine `section.current`. */
-function channelRaw(
-  engineId: string,
-  cliConfig: CliConfig | null,
-  channelId?: string,
-): unknown {
-  const section = cliConfig?.[engineId as EngineId];
-  const id = (channelId || section?.current || "").trim();
-  if (!id || isPseudoProvider(id)) return undefined;
-  return section?.providers?.[id];
-}
-
-function configuredModel(
-  engineId: string,
-  cliConfig: CliConfig | null,
-  channelId?: string,
-): string {
-  const raw = channelRaw(engineId, cliConfig, channelId);
-  return raw ? providerModel(engineId as EngineId, raw).trim() : "";
-}
-
-/** Custom model ids of a channel record (`channelId` empty → engine default). */
-function channelCustomModels(
-  engineId: string,
-  cliConfig: CliConfig | null,
-  channelId?: string,
-): string[] {
-  return providerCustomModels(channelRaw(engineId, cliConfig, channelId));
-}
-
-/** Alias → channel env key: the picker's alias ids (opus/sonnet/haiku) run
- *  whichever model the active channel maps them to, so they must display
- *  that model instead of the bare alias name. */
-const TIER_ENV_KEYS: Record<string, string> = {
-  opus: "HZKCODE_DEFAULT_HIGH_MODEL",
-  sonnet: "HZKCODE_DEFAULT_MID_MODEL",
-  haiku: "HZKCODE_DEFAULT_LOW_MODEL",
-};
-
-/** Alias → the tier name the UI shows. The app speaks High/Mid/Low, matching
- *  the env variables; the CLI's own aliases (what --model accepts) stay
- *  opus/sonnet/haiku. */
-const TIER_LABELS: Record<string, string> = {
-  opus: "High",
-  sonnet: "Mid",
-  haiku: "Low",
-};
-
-/** Alias → configured model id of the channel (settingsConfig.env first,
- *  then the flat env shape — the same order providerModel reads). The
- *  "default" alias stands for the explicit default model, or the high tier
- *  when that is blank (the CLI's own "留空走高阶" fallback). */
-function channelTierModels(
-  engineId: string,
-  cliConfig: CliConfig | null,
-  channelId?: string,
-): Record<string, string> {
-  const raw = channelRaw(engineId, cliConfig, channelId);
-  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const settingsEnv = (o.settingsConfig as Record<string, unknown> | undefined)?.env;
-  const flatEnv = o.env;
-  const pick = (key: string): string => {
-    for (const source of [settingsEnv, flatEnv]) {
-      if (source && typeof source === "object") {
-        const value = (source as Record<string, unknown>)[key];
-        if (typeof value === "string" && value.trim()) return value.trim();
-      }
-    }
-    return "";
-  };
-  const out: Record<string, string> = {};
-  for (const [alias, key] of Object.entries(TIER_ENV_KEYS)) {
-    const value = pick(key);
-    if (value) out[alias] = value;
-  }
-  const modelDefault =
-    configuredModel(engineId, cliConfig, channelId) || out.opus;
-  if (modelDefault) out.default = modelDefault;
-  return out;
-}
+ * stored model picks. The channel-default pick math lives in
+ * `store/channel-defaults` (pure config reads, shared with the send path). */
 
 export function useEngineModels(
   engines: EngineInfo[],
@@ -226,18 +161,23 @@ export function useEngineModels(
         continue;
       }
       // Channel model leads (it is what the CLI would run unprompted), the
-      // backend catalog follows, then the channel's custom models, and the
-      // current-override append last so the selection never vanishes.
+      // backend catalog follows, then the channel's MAPPED TIER ALIASES —
+      // appended independently of the catalog so a failed/empty catalog
+      // probe still leaves the channel's configured tiers selectable (the
+      // channel default pick is one of these aliases) — then the custom
+      // models, and the current-override append last so the selection never
+      // vanishes.
+      const tierModels = channelTierModels(engine.id, cliConfig, providers[engine.id]);
       const known = [
         ...new Set([
           ...providerModels,
           ...catalog.map((m) => m.id),
+          ...Object.keys(TIER_ENV_KEYS).filter((alias) => tierModels[alias]),
           ...channelCustomModels(engine.id, cliConfig, providers[engine.id]),
           ...(current ? [current] : []),
         ]),
       ];
       const byId = new Map(catalog.map((m) => [m.id, m]));
-      const tierModels = channelTierModels(engine.id, cliConfig, providers[engine.id]);
       result[engine.id] = known.map((m) => {
         const entry = byId.get(m);
         // A capability alias displays "[tier]model" — the tier tag plus the
@@ -309,12 +249,39 @@ export function useEngineModels(
     }
     return result;
   }, [engines, cliConfig, t]);
+  // Engines whose context has fully landed (channel config AND catalog).
+  // Repair verdicts wait for both: before the config arrives the channel's
+  // custom models are unknown, and a valid pick would be judged dead.
+  const readyEngines = useMemo(() => {
+    const result: Record<string, true> = {};
+    if (!cliConfig) return result;
+    for (const engine of engines) {
+      if (catalogs[engine.id] !== undefined) result[engine.id] = true;
+    }
+    return result;
+  }, [engines, cliConfig, catalogs]);
+  // Ids the session's own channel can serve — the validity set for tab
+  // overrides (per-channel, no stored-value append; the picker's own list
+  // appends the stored value so the selection never vanishes, which would
+  // make a dead override look servable).
+  const sessionIdsByEngine = useMemo(() => {
+    const result: Record<string, Set<string>> = {};
+    for (const engine of engines) {
+      result[engine.id] = channelSelectableIds(
+        engine.id,
+        cliConfig,
+        providers[engine.id],
+        catalogs[engine.id],
+      );
+    }
+    return result;
+  }, [engines, cliConfig, catalogs, providers]);
   // No unset selection: it would hide which model actually runs. Pin it to
-  // the channel's configured model, else the first real tier — the CLI's
-  // hidden "default" row is skipped (it just falls back to the high tier
-  // anyway, and the picker is a three-tier list). A stored "default" is
-  // normalized to the explicit tier for the same reason, unless the channel
-  // sets an explicit default model (then it is its own answer). An
+  // the channel's configured model, else the mid tier (the app's default
+  // tier) — the CLI's hidden "default" row is skipped (it just falls back
+  // to that tier anyway, and the picker is a three-tier list). A stored
+  // "default" is normalized to the mid tier for the same reason, unless the
+  // channel sets an explicit default model (then it is its own answer). An
   // authoritative catalog also invalidates stale stored picks (leftovers
   // from older, broader catalogs) that the CLI's model flag cannot resolve.
   // All engines' pins are computed first and written in ONE store action:
@@ -330,9 +297,11 @@ export function useEngineModels(
       if (catalogs[engine.id]?.remote === true) continue;
       const stored = models[engine.id]?.trim();
       const explicitDefault = configuredModel(engine.id, cliConfig);
+      const catalogModels = catalogs[engine.id]?.models;
       const fallback =
         explicitDefault ||
-        catalogs[engine.id]?.models.find((m) => m.id !== "default")?.id ||
+        catalogModels?.find((m) => m.id === "sonnet")?.id ||
+        catalogModels?.find((m) => m.id !== "default")?.id ||
         channelCustomModels(engine.id, cliConfig)[0];
       if (!stored) {
         if (fallback) updates[engine.id] = fallback;
@@ -342,7 +311,7 @@ export function useEngineModels(
       // that the explicit default model is unknown, and normalizing early
       // would move a channel that sets one off its default.
       if (stored === "default" && cliConfig && !explicitDefault) {
-        updates[engine.id] = "opus";
+        updates[engine.id] = "sonnet";
         continue;
       }
       const catalog = catalogs[engine.id];
@@ -381,6 +350,9 @@ export function useEngineModels(
     catalogs,
     modelsByEngine,
     channelsByEngine,
+    knownIdsByEngine,
+    sessionIdsByEngine,
+    readyEngines,
     refresh,
     pendingEngines: pending,
   };

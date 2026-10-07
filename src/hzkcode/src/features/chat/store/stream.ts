@@ -85,29 +85,24 @@ export const EMPTY_SESSION: SessionState = {
 /** The model one session runs with, most specific first:
  *
  *  1. the tab's own pick (an explicit choice for this session),
- *  2. what the engine reported running for this session,
- *  3. the model this session's history was written with,
- *  4. the engine default (new chats, sessions with no history yet).
+ *  2. the channel's default model — what the channel the session spawns on
+ *     is configured to serve (see store/channel-defaults),
+ *  3. the engine default (pre-config only, while the channel context loads).
  *
- * Per session on purpose: two omp sessions may run different models, so the
- * picker, the send, and the stamped rows must all read the session's model —
- * an engine-wide default would make one session's pick leak into the other.
+ * Transcript history and engine-recorded models are deliberately not
+ * sources: a model the session ran under an old channel config may no longer
+ * exist, and resurrecting it sent dead ids the CLI could not resolve. Per
+ * session on purpose: two sessions may run different models, so the picker,
+ * the send, and the stamped rows all read the session's model.
  */
 export function resolveSessionModel(
   tab: { engine: string; model?: string } | null | undefined,
-  session: Pick<SessionState, "activeModel" | "messages"> | undefined,
+  channelDefault: string | undefined,
   engineDefault?: string,
 ): string | undefined {
   if (!tab) return engineDefault;
   if (tab.model) return tab.model;
-  if (session?.activeModel) return session.activeModel;
-  const messages = session?.messages;
-  if (messages) {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const model = messages[i].model;
-      if (model) return model;
-    }
-  }
+  if (channelDefault) return channelDefault;
   return engineDefault;
 }
 

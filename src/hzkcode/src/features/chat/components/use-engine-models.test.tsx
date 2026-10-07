@@ -207,12 +207,39 @@ describe("useEngineModels tier display names", () => {
     expect(byId.get("sonnet")?.description).toBeUndefined();
     expect(byId.get("opus")?.description).toBeUndefined();
     // The default alias has no explicit model configured, so it stands for
-    // the high tier (the CLI's "留空走高阶" fallback) and shows the bare
-    // model name (no tag: it is the hidden internal fallback).
-    expect(byId.get("default")?.label).toBe("deepseek-v4-pro[1m]");
+    // the mid tier (the app's default tier) and shows the bare model name
+    // (no tag: it is the hidden internal fallback).
+    expect(byId.get("default")?.label).toBe("deepseek-v4.1-flash[1m]");
     expect(byId.get("default")?.description).toBeUndefined();
     // Unmapped tiers keep the catalog presentation untouched.
     expect(byId.get("haiku")?.label).toBe("Haiku");
+  });
+
+  it("默认档存的是档位别名时解析成该档映射的模型", async () => {
+    // The dialog's default-model picker stores tier aliases; the default row
+    // must display the mapped model, not the bare "sonnet".
+    vi.mocked(ipc.listEngineModels).mockResolvedValue({
+      models: [{ id: "default", name: "Default" }],
+      authoritative: false,
+    } as unknown as EngineCatalog);
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      claude: {
+        current: "relay",
+        providers: {
+          relay: {
+            settingsConfig: {
+              env: {
+                HZKCODE_MODEL: "sonnet",
+                HZKCODE_DEFAULT_MID_MODEL: "deepseek-v4.1-flash[1m]",
+              },
+            },
+          },
+        },
+      },
+    } as never);
+    await show([engineInfo("claude", true)]);
+    const byId = new Map(latest.modelsByEngine.claude.map((m) => [m.id, m]));
+    expect(byId.get("default")?.label).toBe("deepseek-v4.1-flash[1m]");
   });
 
   it("默认档优先显示显式配置的模型，高阶层回退不遮住它", async () => {
@@ -269,13 +296,45 @@ describe("useEngineModels default normalization", () => {
     authoritative: false,
   };
 
-  it("回落时把 stored=default 归一化到 opus 档", async () => {
+  it("目录为空或缺失时，渠道已映射档位仍生成选项（标签用映射模型）", async () => {
+    // 探针返回空目录（或失败）时，档位别名不能从列表里消失：渠道默认
+    // 值就是这些别名，找到不它就会退回显示引擎名。
+    vi.mocked(ipc.listEngineModels).mockResolvedValue({
+      models: [],
+      authoritative: true,
+    } as unknown as EngineCatalog);
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      claude: {
+        current: "relay",
+        providers: {
+          relay: {
+            settingsConfig: {
+              env: {
+                HZKCODE_DEFAULT_HIGH_MODEL: "deepseek-v4-pro[1m]",
+                HZKCODE_DEFAULT_MID_MODEL: "deepseek-v4.1-flash[1m]",
+              },
+            },
+          },
+        },
+      },
+    } as never);
+    await show([engineInfo("claude", true)]);
+    const byId = new Map(latest.modelsByEngine.claude.map((m) => [m.id, m]));
+    expect(byId.get("sonnet")?.label).toBe("[Mid]deepseek-v4.1-flash[1m]");
+    expect(byId.get("opus")?.label).toBe("[High]deepseek-v4-pro[1m]");
+    expect(byId.get("haiku")).toBeUndefined();
+    // 就绪判定此时已成立（配置与目录都返回），档位别名也必须被判定为可服务。
+    expect(latest.readyEngines.claude).toBe(true);
+    expect(latest.sessionIdsByEngine.claude?.has("sonnet")).toBe(true);
+  });
+
+  it("回落时把 stored=default 归一化到中档档位", async () => {
     engines = [engineInfo("claude", true)];
     vi.mocked(ipc.listEngineModels).mockResolvedValue(
       CLAUDE_CATALOG as unknown as EngineCatalog,
     );
     const pinModels = vi.fn(async () => {});
-    // 渠道没有显式默认模型：default 即高阶层（留空走高阶），归一化让选择器
+    // 渠道没有显式默认模型：default 即中阶层（应用默认档），归一化让选择器
     // 能标出当前档位。
     vi.mocked(ipc.getCliConfig).mockResolvedValue({
       claude: {
@@ -288,7 +347,7 @@ describe("useEngineModels default normalization", () => {
       },
     } as never);
     await render({ models: { claude: "default" }, pinModels });
-    expect(pinModels).toHaveBeenCalledWith({ claude: "opus" });
+    expect(pinModels).toHaveBeenCalledWith({ claude: "sonnet" });
   });
 
   it("渠道配了显式默认模型时保持 default", async () => {
@@ -309,13 +368,33 @@ describe("useEngineModels default normalization", () => {
     expect(pinModels).not.toHaveBeenCalled();
   });
 
-  it("新会话没有 stored 时 pin 到第一个真实档位而非 default", async () => {
+  it("新会话没有 stored 时 pin 到中档档位而非 default", async () => {
     engines = [engineInfo("claude", true)];
     vi.mocked(ipc.listEngineModels).mockResolvedValue(
       CLAUDE_CATALOG as unknown as EngineCatalog,
     );
     const pinModels = vi.fn(async () => {});
     await render({ models: {}, pinModels });
-    expect(pinModels).toHaveBeenCalledWith({ claude: "opus" });
+    expect(pinModels).toHaveBeenCalledWith({ claude: "sonnet" });
+  });
+
+  it("就绪门槛要求渠道配置与目录都已加载", async () => {
+    engines = [engineInfo("claude", true)];
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(
+      CLAUDE_CATALOG as unknown as EngineCatalog,
+    );
+    // 目录先返回、渠道配置延迟：此时选择器的渠道自定义模型还不可知，
+    // 不能把合法选择判为失效（就绪前不做清理判定）。
+    const { promise: configGate, resolve: releaseConfig } =
+      Promise.withResolvers<unknown>();
+    vi.mocked(ipc.getCliConfig).mockReturnValue(configGate as never);
+    await render({ models: { claude: "claude-opus-5-5" }, pinModels: noopPin });
+    expect(latest.readyEngines).toEqual({});
+    await act(async () => {
+      releaseConfig({});
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(latest.readyEngines).toEqual({ claude: true });
   });
 });

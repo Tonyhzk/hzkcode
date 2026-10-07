@@ -32,7 +32,6 @@ function Probe() {
     sessionKey: key,
     models: {},
     efforts: (effortsInput ?? ENGINE_DEFAULT) as Record<string, EffortLevel>,
-    providers: {},
   });
   return (
     <span data-testid="effort">{displayEfforts[activeEngine] ?? ""}</span>

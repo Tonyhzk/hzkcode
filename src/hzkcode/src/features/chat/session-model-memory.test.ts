@@ -68,6 +68,8 @@ describe("a session's provider and model memory", () => {
       unseen: {},
       sessions: [],
       models: { omp: "千刀哥-cc/claude-opus-5" },
+      channelDefaults: {},
+      providers: {},
       bySession: {},
       streamingByKey: {},
     });
@@ -92,7 +94,7 @@ describe("a session's provider and model memory", () => {
     expect(useChatStore.getState().bySession[KEY]!.activeModel ?? null).toBeNull();
   });
 
-  it("remembers the resolved model on a send into an existing session", async () => {
+  it("sends the tab pick or the channel default, not the session's memory", async () => {
     const tab = { engine: "omp", sessionId: SID, workspacePath: WS };
     useChatStore.setState({
       sessions: [meta(SENT)],
@@ -103,8 +105,41 @@ describe("a session's provider and model memory", () => {
 
     await useChatStore.getState().send("继续", []);
 
-    expect(vi.mocked(ipc.rememberSessionModel)).toHaveBeenCalledWith("omp", SID, SENT);
-    expect(resolveSessionModel(tab, useChatStore.getState().bySession[KEY], "default/x")).toBe(SENT);
+    // 会话记忆（activeModel）不再参与模型解析：没有分区标签选择时走存储的
+    // 引擎默认（真实应用里是渠道默认，见 channelDefaults 用例）。
+    expect(vi.mocked(ipc.rememberSessionModel)).toHaveBeenCalledWith(
+      "omp",
+      SID,
+      "千刀哥-cc/claude-opus-5",
+    );
+    expect(resolveSessionModel(tab, undefined, "default/x")).toBe("default/x");
+  });
+
+  it("uses the default pick of the session's own channel on a send", async () => {
+    const tab = { engine: "omp", sessionId: SID, workspacePath: WS };
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: { [KEY]: { ...EMPTY_SESSION, activeProvider: "chan-b" } },
+      providers: { omp: "chan-a" },
+      channelDefaults: {
+        omp: {
+          "chan-a": "model-of-a",
+          "chan-b": "model-of-b",
+          __local_settings_json__: "bare-pick",
+        },
+      },
+    });
+
+    await useChatStore.getState().send("继续", []);
+
+    // 会话绑定 chan-b（引擎当前渠道是 chan-a）：发送必须用本会话渠道的
+    // 默认模型，后台队列发送与界面所在会话不同渠道时同一路径。
+    expect(vi.mocked(ipc.rememberSessionModel)).toHaveBeenCalledWith(
+      "omp",
+      SID,
+      "model-of-b",
+    );
   });
 
   it("remembers a brand-new session's model once the engine names it", async () => {

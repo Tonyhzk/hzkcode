@@ -49,6 +49,10 @@ import {
   settleLiveRows,
   untrackRun,
 } from "./store/stream";
+import {
+  computeChannelDefaults,
+  findChannelDefault,
+} from "./store/channel-defaults";
 import { mergeUsage, parseUsage } from "./usage";
 import {
   dropRunUsage,
@@ -440,16 +444,27 @@ export const useChatStore = create<ChatStore>((set, get) => {
         return;
       }
     }
-    // Resolve BEFORE the optimistic rows land: the patch below writes
-    // activeModel, and a resolver reading it afterwards would see its own
-    // write instead of the session's history.
-    // The session's own model, not the engine default: continuing a
-    // conversation keeps running the model that conversation uses. A pinned
-    // identity's model wins over both — the identity pins its own model (see
-    // the identity editor).
+    // The channel this send spawns on: the session's own channel, else the
+    // engine's current one. Hoisted so the model resolve below reads the
+    // same channel's default.
+    const provider =
+      resolveSessionProvider(
+        tab,
+        get().bySession[key],
+        get().providers[engine],
+      ) ?? null;
+    // The model the next turn runs: the session's explicit pick, else the
+    // default of the channel it spawns on — what that channel is configured
+    // to serve (transcript history is deliberately not a source; see
+    // resolveSessionModel). A pinned identity's model wins over both — the
+    // identity pins its own model (see the identity editor).
     const model =
       identityModel ||
-      resolveSessionModel(tab, get().bySession[key], get().models[engine]) ||
+      resolveSessionModel(
+        tab,
+        findChannelDefault(get().channelDefaults, engine, provider),
+        get().models[engine],
+      ) ||
       null;
     // Remember what this session runs, spelled as the picker spells it: the
     // engine's own transcript keeps only the bare model name, so this record
@@ -483,12 +498,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
         rememberEffortForRun(key, effort);
       }
     }
-    const provider =
-      resolveSessionProvider(
-        tab,
-        get().bySession[key],
-        get().providers[engine],
-      ) ?? null;
     if (provider) {
       if (tab.sessionId) {
         void ipc
@@ -763,6 +772,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     permission: readPermissionPref(),
     efforts: {},
     models: {},
+    channelDefaults: {},
     providers: {},
     threadLimit: 10,
     workspaceGroups: [],
@@ -885,7 +895,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
         .catch(() => {});
       ipc
         .getCliConfig?.()
-        ?.then((config) => set({ providers: engineCurrents(config) }))
+        ?.then((config) =>
+          set({
+            providers: engineCurrents(config),
+            channelDefaults: computeChannelDefaults(config),
+          }),
+        )
         .catch(() => {});
     },
 
@@ -947,7 +962,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
               ),
             }
           : {}),
-        ...(config ? { providers: engineCurrents(config) } : {}),
+        ...(config
+          ? {
+              providers: engineCurrents(config),
+              channelDefaults: computeChannelDefaults(config),
+            }
+          : {}),
       }));
       ensureUsableEngine(engines);
     },
@@ -1278,6 +1298,33 @@ export const useChatStore = create<ChatStore>((set, get) => {
         // back to its own history/model default again.
         stampActiveTab({ model: model || undefined });
       }
+    },
+    /** Drop a dead per-tab model override (the tab names a model its channel
+     *  no longer serves), so the resolution falls through to the channel
+     *  default instead of the engine-name placeholder. */
+    repairSessionModel: (engine, sessionId, workspacePath, staleStamp) => {
+      set((s) => {
+        const clear = (t: ActiveSession): ActiveSession =>
+          t.model === staleStamp ? { ...t, model: undefined } : t;
+        let changed = false;
+        const openTabs = s.openTabs.map((t) => {
+          if (!sameTab(t, engine, sessionId, workspacePath)) return t;
+          const next = clear(t);
+          if (next !== t) changed = true;
+          return next;
+        });
+        let active = s.active;
+        if (active && sameTab(active, engine, sessionId, workspacePath)) {
+          const next = clear(active);
+          if (next !== active) {
+            active = next;
+            changed = true;
+          }
+        }
+        if (!changed) return {};
+        persistTabs(openTabs, active);
+        return { openTabs, active };
+      });
     },
     setProvider: async (engine, providerId) => {
       const active = get().active;
