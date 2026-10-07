@@ -692,11 +692,12 @@ fn unique_branch_title(db: &crate::db::Db, base: &str) -> String {
     }
 }
 
-/// Fork the session at `target_uuid`, mirroring the CLI's /branch: main
-/// conversation entries up to and including an assistant target (a user
-/// target forks right before it), `sessionId` rewritten, the parent chain
-/// rebuilt, `forkedFrom` traceability added, and the aggregated
-/// content-replacement entry carried over.
+/// Fork the session at `target_uuid`: the main conversation entries up to
+/// and including the target (a reply or a user prompt are both kept),
+/// `sessionId` rewritten, the parent chain rebuilt, `forkedFrom`
+/// traceability added, and the aggregated content-replacement entry carried
+/// over. Keeping the prompt itself in a user-target fork is a deliberate GUI
+/// divergence from the CLI, whose /branch excludes it.
 fn branch_session_blocking(
     db: &crate::db::Db,
     engine: &str,
@@ -753,17 +754,11 @@ fn branch_session_blocking(
         .iter()
         .position(|entry| entry.get("uuid").and_then(Value::as_str) == Some(target_uuid))
         .ok_or_else(|| "所选消息已不可用，无法从此处创建分支".to_string())?;
-    // Assistant target: include that reply. Any other target (a user prompt):
-    // fork right before it, so the branch ends on the previous reply.
-    let branch_end = if main[target_index].get("type").and_then(Value::as_str) == Some("assistant")
-    {
-        target_index + 1
-    } else {
-        target_index
-    };
-    // A user prompt with nothing before it forks empty; the CLI lets a
-    // designated target produce an empty fork, so this is not an error.
-    let kept = &main[..branch_end];
+    // The fork includes the target entry itself: an assistant target keeps
+    // that reply, and a user prompt keeps the prompt — the branch carries the
+    // question, ready to be answered in the new session (a first prompt
+    // yields exactly that one entry, never an empty fork).
+    let kept = &main[..target_index + 1];
 
     let fork_id = uuid::Uuid::new_v4().to_string();
     let mut lines: Vec<String> = Vec::with_capacity(kept.len() + 2);
@@ -1626,7 +1621,7 @@ mod tests {
             .unwrap();
         assert_eq!(db_title.as_deref(), Some("接续测试 (分支)"));
 
-        // User target: forks right before the selected prompt.
+        // User target: the fork carries the prompt itself, ready to answer.
         let second = branch_session_blocking(&db, "claude", "src-1", "/ws", "u2").unwrap();
         assert_eq!(second.title.as_deref(), Some("接续测试 (分支 2)"));
         let text2 = std::fs::read_to_string(dir.join(format!("{}.jsonl", second.session_id))).unwrap();
@@ -1635,10 +1630,9 @@ mod tests {
             .filter_map(|l| serde_json::from_str::<Value>(l).ok())
             .filter_map(|e| e.get("uuid").and_then(Value::as_str).map(str::to_string))
             .collect();
-        assert_eq!(ids2, ["u1", "a1"]);
+        assert_eq!(ids2, ["u1", "a1", "u2"]);
 
-        // First prompt target: forks empty (a designated target may produce an
-        // empty fork, matching the CLI), keeping the inherited title only.
+        // First prompt target: exactly that one entry — never an empty fork.
         let third = branch_session_blocking(&db, "claude", "src-1", "/ws", "u1").unwrap();
         assert_eq!(third.title.as_deref(), Some("接续测试 (分支 3)"));
         let text3 = std::fs::read_to_string(dir.join(format!("{}.jsonl", third.session_id))).unwrap();
@@ -1650,7 +1644,7 @@ mod tests {
             .iter()
             .filter_map(|e| e.get("uuid").and_then(Value::as_str))
             .collect();
-        assert!(ids3.is_empty());
+        assert_eq!(ids3, ["u1"]);
         assert!(forked3.iter().any(|e| {
             e.get("type").and_then(Value::as_str) == Some("custom-title")
                 && e.get("customTitle").and_then(Value::as_str) == Some("接续测试 (分支 3)")

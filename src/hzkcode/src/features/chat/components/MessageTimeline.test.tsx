@@ -206,8 +206,8 @@ describe("branch targets and affordance", () => {
       )!;
       return targets.get(rowKey(row));
     };
-    // The session's first prompt branches like any other row (the fork comes
-    // out empty — the CLI's behavior for a designated target).
+    // The session's first prompt branches like any other row; its branch
+    // holds exactly that one entry.
     expect(bySeq(1)).toBe("u1");
     expect(bySeq(2)).toBe("a1");
     expect(bySeq(3)).toBe("u2");

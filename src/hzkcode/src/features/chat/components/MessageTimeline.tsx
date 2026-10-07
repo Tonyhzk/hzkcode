@@ -404,7 +404,7 @@ export const MessageRow = memo(function MessageRow({
    *  message only, so a mid-history bubble never shows it. */
   onRetry?: () => void;
   /** Branch affordance (the CLI's /branch): the row's own transcript uuid —
-   *  the fork includes a reply and forks right before a prompt. Absent when
+   *  the fork includes the row itself (a reply, or the prompt). Absent when
    *  the row cannot resolve one. */
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;

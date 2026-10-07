@@ -143,14 +143,13 @@ export function rowKey(row: TimelineRow): string | number {
 }
 
 /** Branch target uuid per message row (the CLI's /branch semantics): every
- *  message targets its own transcript entry — the backend forks inclusively
- *  of a reply and right before a prompt, so branching at a prompt ends the
- *  fork on the reply it follows. Rows without a resolvable entry (a
- *  just-sent prompt echoes locally and only gains its uuid once the session
- *  is re-read) are absent — the branch icon hides for them. The session's
- *  first prompt takes part like any other; its target is its own entry too,
- *  mirroring the CLI, which allows a designated target to produce an empty
- *  fork. */
+ *  message targets its own transcript entry and the backend forks
+ *  inclusively of it — a reply keeps that reply, and a user prompt keeps the
+ *  prompt itself, so a branch taken at a question ends with the question
+ *  ready to be answered. Rows without a resolvable entry (a just-sent
+ *  prompt echoes locally and only gains its uuid once the session is
+ *  re-read) are absent — the branch icon hides for them. The session's first
+ *  prompt takes part like any other: its branch holds exactly that entry. */
 export function branchTargets(rows: TimelineRow[]): Map<string | number, string> {
   const targets = new Map<string | number, string>();
   for (const row of rows) {
