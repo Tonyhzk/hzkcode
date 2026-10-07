@@ -521,13 +521,8 @@ export const MessageTimeline = memo(function MessageTimeline({
     return null;
   }, [rows]);
   // Branch target per message row (the CLI's /branch semantics); rows
-  // without a resolvable transcript entry get no icon, and a fork in front
-  // of the session's very first prompt would be empty — no icon there either
-  // unless earlier pages exist beyond the loaded window.
-  const branchTargetByRow = useMemo(
-    () => branchTargets(rows, Boolean(session.nextBefore)),
-    [rows, session.nextBefore],
-  );
+  // without a resolvable transcript entry get no icon.
+  const branchTargetByRow = useMemo(() => branchTargets(rows), [rows]);
   // Live stream rows are ordinary rows that grow in place; the only extra
   // tail item is the turn-status indicator below them.
   // The tail indicator stays mounted AND visible for the whole turn — a

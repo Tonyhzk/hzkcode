@@ -145,34 +145,20 @@ export function rowKey(row: TimelineRow): string | number {
 /** Branch target uuid per message row (the CLI's /branch semantics): every
  *  message targets its own transcript entry — the backend forks inclusively
  *  of a reply and right before a prompt, so branching at a prompt ends the
- *  fork on the reply it follows. The session's very first prompt gets no
- *  target: the fork would be empty. Rows without a resolvable entry (a
+ *  fork on the reply it follows. Rows without a resolvable entry (a
  *  just-sent prompt echoes locally and only gains its uuid once the session
- *  is re-read) are absent too — the branch icon hides for them. When earlier
- *  history exists beyond the loaded window, the head prompt is not "first"
- *  and keeps its target. */
-export function branchTargets(
-  rows: TimelineRow[],
-  hasEarlier = false,
-): Map<string | number, string> {
+ *  is re-read) are absent — the branch icon hides for them. The session's
+ *  first prompt takes part like any other; its target is its own entry too,
+ *  mirroring the CLI, which allows a designated target to produce an empty
+ *  fork. */
+export function branchTargets(rows: TimelineRow[]): Map<string | number, string> {
   const targets = new Map<string | number, string>();
-  let firstChatKey: string | number | null = null;
-  for (const row of rows) {
-    if (row.kind !== "msg") continue;
-    const role = row.message.role;
-    if (role !== "user" && role !== "assistant") continue;
-    firstChatKey = rowKey(row);
-    break;
-  }
   for (const row of rows) {
     if (row.kind !== "msg") continue;
     const uuid = row.message.uuid;
     if (!uuid) continue;
     const role = row.message.role;
     if (role !== "assistant" && role !== "user") continue;
-    if (role === "user" && !hasEarlier && rowKey(row) === firstChatKey) {
-      continue;
-    }
     targets.set(rowKey(row), uuid);
   }
   return targets;

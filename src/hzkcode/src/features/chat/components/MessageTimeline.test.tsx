@@ -206,27 +206,12 @@ describe("branch targets and affordance", () => {
       )!;
       return targets.get(rowKey(row));
     };
-    // The session's first prompt keeps no icon: a fork in front of it would
-    // be empty.
-    expect(bySeq(1)).toBeUndefined();
+    // The session's first prompt branches like any other row (the fork comes
+    // out empty — the CLI's behavior for a designated target).
+    expect(bySeq(1)).toBe("u1");
     expect(bySeq(2)).toBe("a1");
     expect(bySeq(3)).toBe("u2");
     expect(bySeq(4)).toBe("a2");
-  });
-
-  it("keeps the window's first prompt target when earlier history exists", () => {
-    // Paged load: the window starts mid-conversation, so the head prompt
-    // must keep its own-uuid target even with no reply before it.
-    const messages: Message[] = [
-      { seq: 9, role: "user", text: "older", ts: null, uuid: "u9" },
-      { seq: 10, role: "assistant", text: "ok", ts: null, uuid: "a9" },
-    ];
-    const rows = buildRows(messages);
-    const targets = branchTargets(rows, true);
-    const head = rows.find(
-      (r) => r.kind === "msg" && r.message.seq === 9,
-    )!;
-    expect(targets.get(rowKey(head))).toBe("u9");
   });
 
   let container: HTMLDivElement;

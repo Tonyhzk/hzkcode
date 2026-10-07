@@ -761,10 +761,9 @@ fn branch_session_blocking(
     } else {
         target_index
     };
+    // A user prompt with nothing before it forks empty; the CLI lets a
+    // designated target produce an empty fork, so this is not an error.
     let kept = &main[..branch_end];
-    if kept.is_empty() {
-        return Err("没有可创建分支的消息".to_string());
-    }
 
     let fork_id = uuid::Uuid::new_v4().to_string();
     let mut lines: Vec<String> = Vec::with_capacity(kept.len() + 2);
@@ -1637,6 +1636,25 @@ mod tests {
             .filter_map(|e| e.get("uuid").and_then(Value::as_str).map(str::to_string))
             .collect();
         assert_eq!(ids2, ["u1", "a1"]);
+
+        // First prompt target: forks empty (a designated target may produce an
+        // empty fork, matching the CLI), keeping the inherited title only.
+        let third = branch_session_blocking(&db, "claude", "src-1", "/ws", "u1").unwrap();
+        assert_eq!(third.title.as_deref(), Some("接续测试 (分支 3)"));
+        let text3 = std::fs::read_to_string(dir.join(format!("{}.jsonl", third.session_id))).unwrap();
+        let forked3: Vec<Value> = text3
+            .lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+        let ids3: Vec<&str> = forked3
+            .iter()
+            .filter_map(|e| e.get("uuid").and_then(Value::as_str))
+            .collect();
+        assert!(ids3.is_empty());
+        assert!(forked3.iter().any(|e| {
+            e.get("type").and_then(Value::as_str) == Some("custom-title")
+                && e.get("customTitle").and_then(Value::as_str) == Some("接续测试 (分支 3)")
+        }));
 
         // Missing target: localized error, nothing written.
         let before = std::fs::read_dir(&dir).unwrap().count();
