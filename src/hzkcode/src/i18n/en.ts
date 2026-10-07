@@ -206,6 +206,17 @@ export const en: Messages = {
     copy: "Copy",
     retry: "Retry",
     branch: "Branch",
+    rewind: "Rewind",
+    rewindTitle: "Rewind to this message",
+    rewindDesc:
+      "Everything after this message leaves the context from the next send on; the original content stays in the session file.",
+    rewindConversation: "Rewind conversation only",
+    rewindFiles: "Revert file changes only",
+    rewindBoth: "Rewind conversation and files",
+    rewindFilesUnavailable:
+      "No file snapshot exists for this message (only turns recorded after the update have one).",
+    rewindDirtyEditors:
+      "Save or close your unsaved editor changes before reverting files.",
     sessionToggles: "Session switches",
     sessionProxy: "Session proxy",
     secondBrain: "Second brain",

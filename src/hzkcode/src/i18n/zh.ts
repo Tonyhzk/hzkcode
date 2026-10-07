@@ -196,6 +196,17 @@ export const zh = {
     copy: "复制",
     retry: "重试",
     branch: "分支",
+    rewind: "回退",
+    rewindTitle: "回退到此条",
+    rewindDesc:
+      "此条之后的内容将从下一轮起不再进入上下文；原内容保留在会话文件中，可在原会话里找回。",
+    rewindConversation: "只回退对话",
+    rewindFiles: "只回退文件更改",
+    rewindBoth: "对话与文件都回退",
+    rewindFilesUnavailable:
+      "该提问没有可用的文件快照（更新后产生的新回合才会记录），无法回退文件。",
+    rewindDirtyEditors:
+      "有未保存的编辑器内容，请先保存或关闭后再回退文件。",
     sessionToggles: "会话开关",
     sessionProxy: "会话代理",
     secondBrain: "第二大脑",

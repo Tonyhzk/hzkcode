@@ -2,8 +2,9 @@ use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension};
 
 /// Folded into the scanner's stat signature so a schema/derivation change
-/// still invalidates cached parse results.
-pub const CACHE_VERSION: &str = "3";
+/// still invalidates cached parse results. (4: the reader and the scan
+/// summary hide rewind-abandoned chain branches — same files, new results.)
+pub const CACHE_VERSION: &str = "4";
 
 pub struct Db(pub Mutex<Connection>);
 

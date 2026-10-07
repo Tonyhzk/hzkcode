@@ -11,12 +11,18 @@ pub struct ParsedSession {
 /// Parse a native session file into the minimal message list. Bad lines are
 /// skipped individually. A segmented (compacted) session is parsed as its
 /// whole root → active segment chain, so the full history stays visible the
-/// way the pre-segmentation single file carried it.
+/// way the pre-segmentation single file carried it. Each segment's dead
+/// branches (a rewind's abandoned tail) are filtered on its own chain — the
+/// CLI restarts every segment from a null parent and only links back through
+/// a compact boundary's `logicalParentUuid`, so the filter must not expect
+/// message-level links across segment borders (see
+/// dead_branch_uuids_for_chain).
 pub fn parse_session_file(engine: &str, path: &Path) -> Result<ParsedSession, String> {
     let files = super::segments::session_files_for_read(engine, path);
     let extract = extractor_for(engine, ImageMode::Collect);
+    let filter = dead_branch_uuids_for_chain(&files);
     let mut rows: Vec<LineRow> = Vec::new();
-    for file in &files {
+    for (file, segment_dead) in files.iter().zip(filter.dead.iter()) {
         let reader = match open_line_reader(file) {
             Ok(reader) => reader,
             // The primary (active) file surfaces its real error; an unreadable
@@ -24,9 +30,447 @@ pub fn parse_session_file(engine: &str, path: &Path) -> Result<ParsedSession, St
             Err(error) if file.as_path() == path => return Err(error),
             Err(_) => continue,
         };
-        walk_lines(reader, &extract, |row| rows.push(row));
+        let drop = (!segment_dead.is_empty()).then_some(segment_dead);
+        // Anything read from a file that is not the active one is archived
+        // history, and inside the active file only the CLI's own resume
+        // chain is addressable (it walks `parentUuid` without bridging
+        // compact boundaries): rows outside it keep no rewind entry.
+        let archived_file = file.as_path() != path;
+        walk_lines(reader, &extract, drop, |mut row| {
+            row.archived = archived_file
+                || match (&row.uuid, &filter.rewindable) {
+                    (Some(uuid), Some(rewindable)) => !rewindable.contains(uuid),
+                    _ => false,
+                };
+            rows.push(row);
+        });
     }
     Ok(fold_rows(rows))
+}
+
+/// Transcript message types that participate in the chain, mirroring the
+/// CLI's `isTranscriptMessage`.
+const CHAIN_TYPES: [&str; 4] = ["user", "assistant", "attachment", "system"];
+
+/// Per-segment chain index: the positioned entries of one segment file
+/// (uuid → (parentUuid, logicalParentUuid)), its transcript chain nodes in
+/// file order, and the parallel-tool topology (assistant siblings by
+/// `message.id`, tool results by parent) the recovery pass needs.
+struct SegmentChain {
+    links: HashMap<String, (Option<String>, Option<String>)>,
+    order: Vec<String>,
+    assistants: Vec<(String, String)>,
+    tool_results: Vec<(String, String)>,
+    boundaries: Vec<String>,
+    preserved: Vec<PreservedSegment>,
+}
+
+/// A compact boundary that kept a slice of history: the CLI writes the kept
+/// entries with their original pre-compact `parentUuid` on disk and relinks
+/// them in memory at load (`applyPreservedSegmentRelinks`).
+struct PreservedSegment {
+    boundary: String,
+    head: String,
+    tail: String,
+    anchor: Option<String>,
+}
+
+/// What the chain analysis yields for one session: which uuids the page
+/// hides, and which ones the CLI can still resume at.
+pub(super) struct ChainFilter {
+    /// Dead-branch uuids per file (parallel to `files`; an unreadable file
+    /// maps to an empty set). Each segment's dead branches are judged on its
+    /// own chain — the CLI's segments are self-contained (every segment
+    /// restarts from a null parent, and a compact boundary points back
+    /// through `logicalParentUuid` instead of a message link), so a merged
+    /// walk would depend on bridges that need not exist. The sets stay per
+    /// file so a uuid that is dead in one segment but alive in another
+    /// (identical uuids cannot occur in practice, but nothing in the format
+    /// forbids them) never gets dropped on the wrong segment.
+    ///
+    /// A segment contributes nothing when its own layout is not understood
+    /// (a dangling reference to a uuid no segment knows, or a cycle):
+    /// dropping history on a guess is worse than showing a rewound-away
+    /// tail.
+    pub dead: Vec<std::collections::HashSet<String>>,
+    /// Uuids of the active file that `--resume-session-at` can resolve. The
+    /// CLI loads the active file alone and walks it with `parentUuid` only
+    /// (`buildConversationChain`, plus the relink and parallel-tool
+    /// recovery passes), so pre-boundary history that the page still shows
+    /// is not resumable. None when that walk is not understood: everything
+    /// stays rewindable rather than hiding the affordance on a guess.
+    pub rewindable: Option<std::collections::HashSet<String>>,
+}
+
+pub(super) fn dead_branch_uuids_for_chain(files: &[std::path::PathBuf]) -> ChainFilter {
+    let mut segments: Vec<Option<SegmentChain>> = Vec::with_capacity(files.len());
+    let mut anywhere: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for file in files {
+        // An unreadable archive segment only trims history (the parse loop
+        // reports the active file's own error); leaving it out of `anywhere`
+        // keeps references to its uuids conservative for every other segment.
+        let segment = open_line_reader(file).ok().map(segment_chain);
+        if let Some(segment) = &segment {
+            anywhere.extend(segment.links.keys().cloned());
+        }
+        segments.push(segment);
+    }
+    let rewindable = segments
+        .last()
+        .and_then(|segment| segment.as_ref())
+        .and_then(|segment| segment_kept_uuids(segment, &anywhere, false, false));
+    let dead = segments
+        .iter()
+        .map(|segment| match segment {
+            Some(segment) => segment_dead_uuids(segment, &anywhere).unwrap_or_default(),
+            None => std::collections::HashSet::new(),
+        })
+        .collect();
+    ChainFilter { dead, rewindable }
+}
+
+/// Index one segment file: positioned entries, transcript chain nodes in
+/// file order, and the parallel-tool topology.
+fn segment_chain(reader: impl BufRead) -> SegmentChain {
+    let mut chain = SegmentChain {
+        links: HashMap::new(),
+        order: Vec::new(),
+        assistants: Vec::new(),
+        tool_results: Vec::new(),
+        boundaries: Vec::new(),
+        preserved: Vec::new(),
+    };
+    for line in reader.lines() {
+        let Ok(line) = line else { continue };
+        let trimmed = line.trim();
+        if trimmed.is_empty() || !trimmed.contains("\"type\"") {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+            continue;
+        };
+        let Some(ty) = value.get("type").and_then(Value::as_str) else {
+            continue;
+        };
+        if value.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
+        let Some(uuid) = value
+            .get("uuid")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        // A missing parentUuid field is not a chain position (null IS one:
+        // the session root or a compact boundary).
+        if value.get("parentUuid").is_none() {
+            continue;
+        }
+        let parent = value
+            .get("parentUuid")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let logical = value
+            .get("logicalParentUuid")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        if CHAIN_TYPES.contains(&ty) {
+            chain.order.push(uuid.to_string());
+        }
+        // Parallel-tool topology for the recovery pass: assistant siblings
+        // share `message.id`, and a tool-result row's parentUuid points at
+        // the one-block assistant whose tool_use produced it.
+        if ty == "assistant" {
+            if let Some(id) = value
+                .pointer("/message/id")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                chain.assistants.push((uuid.to_string(), id.to_string()));
+            }
+        } else if ty == "user" {
+            let is_tool_result = value
+                .pointer("/message/content")
+                .and_then(Value::as_array)
+                .is_some_and(|blocks| {
+                    blocks
+                        .iter()
+                        .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+                });
+            if is_tool_result {
+                if let Some(parent) = &parent {
+                    chain.tool_results.push((uuid.to_string(), parent.clone()));
+                }
+            }
+        }
+        // Preserved-segment compaction (reactive / partial / session-memory
+        // compact): the boundary records the kept slice while those entries
+        // keep their pre-compact parentUuid on disk.
+        if ty == "system" && value.get("subtype").and_then(Value::as_str) == Some("compact_boundary")
+        {
+            chain.boundaries.push(uuid.to_string());
+            if let Some(segment) = value.pointer("/compactMetadata/preservedSegment") {
+                let head = segment.get("headUuid").and_then(Value::as_str);
+                let tail = segment.get("tailUuid").and_then(Value::as_str);
+                if let (Some(head), Some(tail)) = (head, tail) {
+                    chain.preserved.push(PreservedSegment {
+                        boundary: uuid.to_string(),
+                        head: head.to_string(),
+                        tail: tail.to_string(),
+                        anchor: segment
+                            .get("anchorUuid")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                    });
+                }
+            }
+        }
+        chain.links.insert(uuid.to_string(), (parent, logical));
+    }
+    chain
+}
+
+/// The outcome of mirroring the CLI's preserved-segment relink for one
+/// segment (see `relink_preserved`).
+enum RelinkOutcome {
+    /// No live preserved slice: walk the segment's own links.
+    NotNeeded,
+    /// The slice was spliced back: walk these links instead.
+    Patched(HashMap<String, (Option<String>, Option<String>)>),
+    /// The slice's tail → head walk does not close: keep the segment whole.
+    Unresolved,
+}
+
+/// Mirror the CLI's `applyPreservedSegmentRelinks` on one segment: of the
+/// boundaries in this file only the last one may still be live, and when it
+/// carries a preserved slice, splice that slice back before the chain walk
+/// sees it — `head → anchor`, and the anchor's other children → tail. The
+/// kept entries themselves stay where they are on disk (their parentUuid is
+/// the pre-compact one); the chain walk then reaches them through the
+/// patched head, and a later rewind re-roots only what the walk can no
+/// longer reach.
+///
+/// `Unresolved` (the segment is then kept whole, like the CLI's no-op) when
+/// the slice cannot be confirmed: an anchor missing from the metadata or a
+/// tail → head walk that runs outside this segment.
+fn relink_preserved(segment: &SegmentChain) -> RelinkOutcome {
+    let links = &segment.links;
+    let Some(last_boundary) = segment.boundaries.last() else {
+        return RelinkOutcome::NotNeeded;
+    };
+    let Some(preserved) = segment
+        .preserved
+        .iter()
+        .find(|preserved| preserved.boundary == *last_boundary)
+    else {
+        // A stale slice (an older boundary): the CLI skips the relink too.
+        return RelinkOutcome::NotNeeded;
+    };
+    let Some(anchor) = preserved.anchor.as_deref() else {
+        return RelinkOutcome::Unresolved;
+    };
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut cur = Some(preserved.tail.as_str());
+    let mut reached_head = false;
+    while let Some(uuid) = cur {
+        if uuid == preserved.head {
+            reached_head = true;
+            break;
+        }
+        if !seen.insert(uuid) {
+            break;
+        }
+        let Some((parent, logical)) = links.get(uuid) else {
+            break;
+        };
+        cur = parent.as_deref().or(logical.as_deref());
+        if let Some(next) = cur {
+            if !links.contains_key(next) {
+                cur = None;
+            }
+        }
+    }
+    if !reached_head {
+        return RelinkOutcome::Unresolved;
+    }
+    let mut patched = links.clone();
+    let head = preserved.head.as_str();
+    if let Some((_, logical)) = patched.get(head) {
+        patched.insert(
+            head.to_string(),
+            (Some(anchor.to_string()), logical.clone()),
+        );
+    }
+    let others: Vec<String> = patched
+        .iter()
+        .filter(|(uuid, (parent, _))| parent.as_deref() == Some(anchor) && uuid.as_str() != head)
+        .map(|(uuid, _)| uuid.clone())
+        .collect();
+    for uuid in others {
+        let logical = patched[&uuid].1.clone();
+        patched.insert(uuid, (Some(preserved.tail.clone()), logical));
+    }
+    // The boundary's logicalParentUuid is a display bridge back into the
+    // pre-compact history; a prefix-preserving boundary points it at the
+    // slice's own tail, so following it after the splice would loop back
+    // through the slice. History is read from its own segment anyway — drop
+    // the bridge on the patched view.
+    if let Some((parent, _)) = patched.get(last_boundary.as_str()) {
+        patched.insert(last_boundary.clone(), (parent.clone(), None));
+    }
+    RelinkOutcome::Patched(patched)
+}
+
+/// Kept uuids of one segment's chain walk, including the CLI's parallel-tool
+/// recovery (streaming writes one assistant entry per content block, all
+/// sharing `message.id`, and each tool result parents to its own block's
+/// uuid; the single-parent walk alone would orphan them, so the CLI's
+/// `recoverOrphanedParallelToolResults` pass is mirrored here).
+///
+/// A rewind (the interactive one, or a send carrying `--resume-session-at`)
+/// leaves the rewound conversation in the append-only file forever; the walk
+/// starts from the segment's latest leaf and takes everything it can reach
+/// (the CLI's `buildConversationChain`). Only entries shaped like
+/// main-conversation transcript messages join the chain.
+///
+/// `follow_logical` bridges compact boundaries through `logicalParentUuid`.
+/// This reader's page view wants that (pre-compaction history stays visible,
+/// matching its whole-chain semantics), but the CLI's own resume walk
+/// follows `parentUuid` only — which is exactly why pre-boundary history is
+/// shown here yet cannot be resumed there.
+///
+/// None when the layout is not understood (a cycle, or — with
+/// `bail_on_dangling` — a reference to a uuid no segment knows). Without
+/// `bail_on_dangling` such a reference just ends the walk, the way
+/// `buildConversationChain` silently truncates the chain.
+fn segment_kept_uuids(
+    segment: &SegmentChain,
+    anywhere: &std::collections::HashSet<String>,
+    follow_logical: bool,
+    bail_on_dangling: bool,
+) -> Option<std::collections::HashSet<String>> {
+    let order = &segment.order;
+    if order.is_empty() {
+        return Some(std::collections::HashSet::new());
+    }
+    // The preserved slice's entries hold their pre-compact parentUuid on
+    // disk; splice them back (in memory, like the CLI's loader) before
+    // judging what the chain walk reaches.
+    let relink = relink_preserved(segment);
+    let links = match &relink {
+        RelinkOutcome::NotNeeded => &segment.links,
+        RelinkOutcome::Patched(patched) => patched,
+        RelinkOutcome::Unresolved => return None,
+    };
+    let mut referenced: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    // Only chain nodes count as children for the leaf pick: an auxiliary node
+    // trailing the newest message (a legacy `progress` entry parented to it)
+    // must not disqualify that message as the latest leaf.
+    for uuid in order {
+        if let Some((parent, logical)) = links.get(uuid) {
+            for link in [parent.as_deref(), logical.as_deref()].into_iter().flatten() {
+                if links.contains_key(link) {
+                    referenced.insert(link);
+                }
+            }
+        }
+    }
+    // No unreferenced chain node = every chain cycles; not a layout this
+    // walk understands.
+    let leaf = order
+        .iter()
+        .rev()
+        .find(|u| !referenced.contains(u.as_str()))?;
+    let chain_set: std::collections::HashSet<&str> = order.iter().map(String::as_str).collect();
+    let mut visited: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut kept: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut cur: Option<&str> = Some(leaf.as_str());
+    while let Some(uuid) = cur {
+        if !visited.insert(uuid) {
+            // Cycle: not a layout this walk understands — keep everything.
+            return None;
+        }
+        if chain_set.contains(uuid) {
+            kept.insert(uuid.to_string());
+        }
+        let (parent, logical) = links.get(uuid)?;
+        let next = if follow_logical {
+            parent.as_deref().or(logical.as_deref())
+        } else {
+            parent.as_deref()
+        };
+        match next {
+            // Compact/replacement boundary or session root.
+            None => break,
+            Some(candidate) => {
+                if links.contains_key(candidate) {
+                    cur = Some(candidate);
+                } else if anywhere.contains(candidate) {
+                    // The chain continues in another segment — a legal
+                    // boundary, not a broken layout.
+                    break;
+                } else if bail_on_dangling {
+                    // Dangling parent — bail out rather than risk dropping
+                    // still-reachable history.
+                    return None;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+    // Parallel-tool recovery (the CLI's recoverOrphanedParallelToolResults):
+    // for every surviving assistant entry, its sibling blocks — same
+    // `message.id` — and all their tool results belong to the surviving
+    // turn, even though the walk followed a single branch through them.
+    let mut by_id: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (uuid, id) in &segment.assistants {
+        by_id.entry(id.as_str()).or_default().push(uuid.as_str());
+    }
+    let mut trs_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (uuid, parent) in &segment.tool_results {
+        trs_by_parent
+            .entry(parent.as_str())
+            .or_default()
+            .push(uuid.as_str());
+    }
+    let mut processed: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for (uuid, id) in &segment.assistants {
+        if !kept.contains(uuid.as_str()) || !processed.insert(id.as_str()) {
+            continue;
+        }
+        let Some(group) = by_id.get(id.as_str()) else {
+            continue;
+        };
+        for member in group {
+            kept.insert(member.to_string());
+            if let Some(trs) = trs_by_parent.get(member) {
+                kept.extend(trs.iter().map(|tr| tr.to_string()));
+            }
+        }
+    }
+    Some(kept)
+}
+
+/// Dead uuids of one segment; empty when nothing is dead, None when the
+/// segment's layout is not understood (the caller then keeps it whole).
+fn segment_dead_uuids(
+    segment: &SegmentChain,
+    anywhere: &std::collections::HashSet<String>,
+) -> Option<std::collections::HashSet<String>> {
+    let kept = segment_kept_uuids(segment, anywhere, true, true)?;
+    if kept.len() == segment.order.len() {
+        return Some(std::collections::HashSet::new());
+    }
+    Some(
+        segment
+            .order
+            .iter()
+            .filter(|uuid| !kept.contains(uuid.as_str()))
+            .cloned()
+            .collect(),
+    )
 }
 
 /// Everything the sidebar needs from a scan: title/preview/timestamps/count.
@@ -48,14 +492,19 @@ pub struct ScanSummary {
 pub fn scan_summary_file(engine: &str, path: &Path) -> Result<ScanSummary, String> {
     let files = super::segments::session_files_for_read(engine, path);
     let extract = extractor_for(engine, ImageMode::SkipDataUrls);
+    // Same dead-branch filter as the page reader (per-segment index pass, then
+    // a streaming skip): after a rewind the sidebar's count and timestamps
+    // must describe the surviving chain, not the withdrawn tail.
+    let filter = dead_branch_uuids_for_chain(&files);
     let mut acc = ScanAcc::default();
-    for file in &files {
+    for (file, segment_dead) in files.iter().zip(filter.dead.iter()) {
         let reader = match open_line_reader(file) {
             Ok(reader) => reader,
             Err(error) if file.as_path() == path => return Err(error),
             Err(_) => continue,
         };
-        walk_lines(reader, &extract, |row| {
+        let drop = (!segment_dead.is_empty()).then_some(segment_dead);
+        walk_lines(reader, &extract, drop, |row| {
             acc.accept(row);
         });
     }
@@ -83,8 +532,14 @@ fn extractor_for(engine: &str, images: ImageMode) -> LineExtractor<'static> {
 }
 
 /// Line-loop skeleton shared by the full parse and the scan summary: decode
-/// one NDJSON line, extract rows, normalize, hand each to `consume`.
-fn walk_lines(reader: impl BufRead, extract: &LineExtractor<'_>, mut consume: impl FnMut(LineRow)) {
+/// one NDJSON line, extract rows, normalize, hand each to `consume`. Entries
+/// whose uuid is in `drop` (a dead branch) are skipped entirely.
+fn walk_lines(
+    reader: impl BufRead,
+    extract: &LineExtractor<'_>,
+    drop: Option<&std::collections::HashSet<String>>,
+    mut consume: impl FnMut(LineRow),
+) {
     for line in reader.lines() {
         let Ok(line) = line else { continue };
         let trimmed = line.trim();
@@ -94,6 +549,13 @@ fn walk_lines(reader: impl BufRead, extract: &LineExtractor<'_>, mut consume: im
         let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
             continue;
         };
+        if let Some(drop) = drop {
+            if let Some(uuid) = value.get("uuid").and_then(Value::as_str) {
+                if drop.contains(uuid) {
+                    continue;
+                }
+            }
+        }
         for row in extract(&value) {
             let Some(row) = normalize_extracted_row(row) else {
                 continue;
@@ -186,6 +648,7 @@ fn fold_rows(rows: Vec<LineRow>) -> ParsedSession {
             duration_ms,
             images: row.images,
             level: row.level,
+            archived: row.archived,
         });
         if let Some(id) = call_id {
             call_rows.insert(id, messages.len() - 1);
@@ -300,6 +763,10 @@ struct LineRow {
     duration_ms: Option<i64>,
     images: Vec<String>,
     level: Option<String>,
+    /// True when the source line lives in an archived (pre-compaction)
+    /// segment file rather than the active one; filled in per file by the
+    /// parse loop.
+    archived: bool,
 }
 
 impl LineRow {
@@ -321,6 +788,7 @@ impl LineRow {
             duration_ms: None,
             images: Vec::new(),
             level: None,
+            archived: false,
         }
     }
 }
@@ -860,5 +1328,484 @@ mod tests {
         assert_eq!(texts, ["第一条问题", "第一条回答", "第二条问题"]);
         // seq numbering is 1-based and stays continuous across files.
         assert_eq!(seqs, [1, 2, 3]);
+    }
+
+    /// One transcript entry in the shape the CLI appends: user/assistant
+    /// message with a parentUuid position (None = session root or compact
+    /// boundary; with `logical` set it bridges a compaction).
+    fn msg(
+        role: &str,
+        uuid: &str,
+        parent: Option<&str>,
+        logical: Option<&str>,
+        text: &str,
+        ts: &str,
+    ) -> Value {
+        let content = if role == "user" {
+            serde_json::json!(text)
+        } else {
+            serde_json::json!([{"type": "text", "text": text}])
+        };
+        let mut value = serde_json::json!({
+            "type": role,
+            "uuid": uuid,
+            "parentUuid": parent,
+            "timestamp": ts,
+            "message": {"role": role, "content": content},
+        });
+        if let Some(logical) = logical {
+            value["logicalParentUuid"] = serde_json::json!(logical);
+        }
+        value
+    }
+
+    fn write_jsonl(path: &Path, lines: &[Value]) {
+        let body: String = lines.iter().map(|v| v.to_string() + "\n").collect();
+        std::fs::write(path, body).unwrap();
+    }
+
+    fn rewind_fixture(lines: &[Value]) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("hzkcode-extract-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("sess-fixture.jsonl");
+        write_jsonl(&file, lines);
+        (dir, file)
+    }
+
+    /// A compact boundary in the CLI's shape: `parentUuid` null, an optional
+    /// `logicalParentUuid` bridge, and an optional preserved slice.
+    fn boundary(
+        uuid: &str,
+        logical: Option<&str>,
+        preserved: Option<(&str, &str, &str)>,
+    ) -> Value {
+        let mut value = serde_json::json!({
+            "type": "system",
+            "subtype": "compact_boundary",
+            "content": "对话已压缩",
+            "uuid": uuid,
+            "parentUuid": serde_json::Value::Null,
+            "timestamp": "2026-10-05T03:00:00.000Z",
+        });
+        if let Some(logical) = logical {
+            value["logicalParentUuid"] = serde_json::json!(logical);
+        }
+        if let Some((head, anchor, tail)) = preserved {
+            value["compactMetadata"] = serde_json::json!({
+                "trigger": "reactive",
+                "preservedSegment": {
+                    "headUuid": head,
+                    "anchorUuid": anchor,
+                    "tailUuid": tail,
+                },
+            });
+        }
+        value
+    }
+
+    /// A segmented fixture: `root_lines` go to seg-1 (archived), `active_lines`
+    /// to the active file, with a manifest chaining seg-1 → seg-2.
+    fn segmented_fixture(
+        root_lines: &[Value],
+        active_lines: &[Value],
+    ) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("hzkcode-extract-{}", uuid::Uuid::new_v4()));
+        let session = dir.join("proj");
+        std::fs::create_dir_all(session.join("sess-1/segments")).unwrap();
+        write_jsonl(&session.join("sess-1/segments/seg-1.jsonl"), root_lines);
+        write_jsonl(&session.join("sess-1.jsonl"), active_lines);
+        std::fs::write(
+            session.join("sess-1/segments.json"),
+            r#"{"version":1,"sessionId":"sess-1","activeSegment":"seg-2","segments":[
+                {"id":"seg-1","seq":1,"file":"segments/seg-1.jsonl","kind":"root","parent":null},
+                {"id":"seg-2","seq":2,"file":"segments/seg-2.jsonl","kind":"compact","parent":"seg-1"}]}"#,
+        )
+        .unwrap();
+        (dir, session.join("sess-1.jsonl"))
+    }
+
+    /// Parsed text rows without the boundary usage markers.
+    fn page_texts(parsed: &ParsedSession) -> Vec<&str> {
+        parsed
+            .messages
+            .iter()
+            .filter(|m| m.role != "__usage__")
+            .map(|m| m.text.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn rewound_tail_disappears_from_the_page() {
+        // u1→a1→u2→a2 ran; the user rewound to a1 and sent u3, so the file
+        // keeps the abandoned u2/a2 branch forever (append-only). The page
+        // must walk the chain from the latest leaf (a3) and hide the tail.
+        let (dir, file) = rewind_fixture(&[
+            msg("user", "u1", None, None, "第一问", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "第一答", "2026-10-05T01:00:01.000Z"),
+            msg("user", "u2", Some("a1"), None, "被撤回的问", "2026-10-05T01:01:00.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "被撤回的答", "2026-10-05T01:01:01.000Z"),
+            msg("user", "u3", Some("a1"), None, "回退后的问", "2026-10-05T01:02:00.000Z"),
+            msg("assistant", "a3", Some("u3"), None, "回退后的答", "2026-10-05T01:02:01.000Z"),
+        ]);
+        let parsed = parse_session_file("claude", &file).unwrap();
+        let texts: Vec<&str> = parsed.messages.iter().map(|m| m.text.as_str()).collect();
+        let seqs: Vec<i64> = parsed.messages.iter().map(|m| m.seq).collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(texts, ["第一问", "第一答", "回退后的问", "回退后的答"]);
+        assert_eq!(seqs, [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn linear_and_bridged_chains_are_untouched() {
+        // A plain linear session: nothing is dead.
+        let (dir, file) = rewind_fixture(&[
+            msg("user", "u1", None, None, "问一", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "答一", "2026-10-05T01:00:01.000Z"),
+            msg("user", "u2", Some("a1"), None, "问二", "2026-10-05T01:01:00.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "答二", "2026-10-05T01:01:01.000Z"),
+        ]);
+        let parsed = parse_session_file("claude", &file).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(parsed.messages.len(), 4);
+
+        // A compact boundary: the first post-boundary message carries
+        // parentUuid null + logicalParentUuid, and the walk must bridge it so
+        // pre-compaction history stays visible (this reader shows the whole
+        // root → active chain, unlike the CLI's context-only restore).
+        let (dir, file) = rewind_fixture(&[
+            msg("user", "u1", None, None, "旧问", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "旧答", "2026-10-05T01:00:01.000Z"),
+            msg("user", "u2", None, Some("a1"), "压缩后问", "2026-10-05T01:01:00.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "压缩后答", "2026-10-05T01:01:01.000Z"),
+        ]);
+        let parsed = parse_session_file("claude", &file).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(parsed.messages.len(), 4);
+
+        // A dangling parent means the layout is not understood — keep
+        // everything rather than risk hiding reachable history.
+        let (dir, file) = rewind_fixture(&[
+            msg("user", "u1", None, None, "问一", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "答一", "2026-10-05T01:00:01.000Z"),
+            msg("user", "u2", Some("ghost"), None, "幽灵父", "2026-10-05T01:01:00.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "答二", "2026-10-05T01:01:01.000Z"),
+        ]);
+        let parsed = parse_session_file("claude", &file).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(parsed.messages.len(), 4);
+    }
+
+    #[test]
+    fn scan_summary_follows_the_surviving_chain() {
+        // The sidebar summary must describe the same surviving chain the
+        // page shows: compare the rewound file against a file that contains
+        // exactly the surviving messages.
+        let (rewound_dir, rewound) = rewind_fixture(&[
+            msg("user", "u1", None, None, "第一问", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "第一答", "2026-10-05T01:00:01.000Z"),
+            msg("user", "u2", Some("a1"), None, "被撤回的问", "2026-10-05T01:01:00.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "被撤回的答", "2026-10-05T01:01:01.000Z"),
+            msg("user", "u3", Some("a1"), None, "回退后的问", "2026-10-05T01:02:00.000Z"),
+            msg("assistant", "a3", Some("u3"), None, "回退后的答", "2026-10-05T01:02:01.000Z"),
+        ]);
+        let (clean_dir, clean) = rewind_fixture(&[
+            msg("user", "u1", None, None, "第一问", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "第一答", "2026-10-05T01:00:01.000Z"),
+            msg("user", "u3", Some("a1"), None, "回退后的问", "2026-10-05T01:02:00.000Z"),
+            msg("assistant", "a3", Some("u3"), None, "回退后的答", "2026-10-05T01:02:01.000Z"),
+        ]);
+        let rewound_summary = scan_summary_file("claude", &rewound).unwrap();
+        let clean_summary = scan_summary_file("claude", &clean).unwrap();
+        let _ = std::fs::remove_dir_all(&rewound_dir);
+        let _ = std::fs::remove_dir_all(&clean_dir);
+        assert_eq!(rewound_summary.title, clean_summary.title);
+        assert_eq!(rewound_summary.preview, clean_summary.preview);
+        assert_eq!(rewound_summary.message_count, clean_summary.message_count);
+        assert_eq!(rewound_summary.first_ts, clean_summary.first_ts);
+    }
+
+    #[test]
+    fn segment_chain_rewind_hides_the_active_tail_but_keeps_archives() {
+        // The CLI restarts every segment from a null parent: seg-1 is a root
+        // archive, the active segment opens with a compact boundary whose
+        // logicalParentUuid bridges back into seg-1. A rewind inside the
+        // active segment must hide only the withdrawn tail — the archive
+        // history and the boundary + summary chain stay.
+        let root = [
+            msg("user", "u1", None, None, "旧问一", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "旧答一", "2026-10-05T01:00:01.000Z"),
+            msg("user", "u2", Some("a1"), None, "旧问二", "2026-10-05T01:01:00.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "旧答二", "2026-10-05T01:01:01.000Z"),
+        ];
+        let active = [
+            boundary("b1", Some("a2"), None),
+            msg("user", "s1", Some("b1"), None, "（压缩摘要）", "2026-10-05T01:02:00.000Z"),
+            msg("user", "u3", Some("s1"), None, "压缩后问", "2026-10-05T01:02:01.000Z"),
+            msg("assistant", "a3", Some("u3"), None, "压缩后答", "2026-10-05T01:02:02.000Z"),
+            msg("user", "u4", Some("a3"), None, "被撤回的问", "2026-10-05T01:03:00.000Z"),
+            msg("assistant", "a4", Some("u4"), None, "被撤回的答", "2026-10-05T01:03:01.000Z"),
+            msg("user", "u5", Some("a3"), None, "回退后的问", "2026-10-05T01:04:00.000Z"),
+            msg("assistant", "a5", Some("u5"), None, "回退后的答", "2026-10-05T01:04:01.000Z"),
+        ];
+        let (dir, active_path) = segmented_fixture(&root, &active);
+        let parsed = parse_session_file("claude", &active_path).unwrap();
+        let texts = page_texts(&parsed);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            texts,
+            [
+                "旧问一", "旧答一", "旧问二", "旧答二", "（压缩摘要）", "压缩后问", "压缩后答",
+                "回退后的问", "回退后的答"
+            ]
+        );
+    }
+
+    #[test]
+    fn preserved_compact_slice_and_summary_survive_a_rewind() {
+        // Suffix-preserving compaction (reactive): the boundary keeps the
+        // recent slice, whose entries hold their pre-compact parentUuid on
+        // disk (u3 points back into seg-1), while the summary anchors the
+        // post-boundary chain. The in-memory relink must reconnect both
+        // before any walk, or the surviving chain orphans the slice and the
+        // summary. A later rewind then hides only what it withdrew.
+        let root = [
+            msg("user", "u1", None, None, "旧问一", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "旧答一", "2026-10-05T01:00:01.000Z"),
+            msg("user", "u2", Some("a1"), None, "旧问二", "2026-10-05T01:01:00.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "旧答二", "2026-10-05T01:01:01.000Z"),
+        ];
+        let active = [
+            boundary("b1", Some("a2"), Some(("u3", "s1", "a4"))),
+            msg("user", "s1", Some("b1"), None, "（压缩摘要）", "2026-10-05T01:02:00.000Z"),
+            msg("user", "u3", Some("a2"), None, "保留问一", "2026-10-05T01:02:01.000Z"),
+            msg("assistant", "a3", Some("u3"), None, "保留答一", "2026-10-05T01:02:02.000Z"),
+            msg("user", "u4", Some("a3"), None, "保留问二", "2026-10-05T01:03:00.000Z"),
+            msg("assistant", "a4", Some("u4"), None, "保留答二", "2026-10-05T01:03:01.000Z"),
+            msg("user", "u5", Some("a4"), None, "被撤回的问", "2026-10-05T01:03:02.000Z"),
+            msg("assistant", "a5", Some("u5"), None, "被撤回的答", "2026-10-05T01:03:03.000Z"),
+            msg("user", "u6", Some("a4"), None, "回退后的问", "2026-10-05T01:04:00.000Z"),
+            msg("assistant", "a6", Some("u6"), None, "回退后的答", "2026-10-05T01:04:01.000Z"),
+        ];
+        let expected = [
+            "旧问一", "旧答一", "旧问二", "旧答二", "（压缩摘要）", "保留问一", "保留答一",
+            "保留问二", "保留答二", "回退后的问", "回退后的答",
+        ];
+        let (dir, active_path) = segmented_fixture(&root, &active);
+        let parsed = parse_session_file("claude", &active_path).unwrap();
+        let texts = page_texts(&parsed);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(texts, expected);
+        // The kept slice is re-linked into the active chain, so the CLI can
+        // still resume at it; the archived root history cannot.
+        assert_eq!(
+            parsed
+                .messages
+                .iter()
+                .find(|m| m.text == "保留问一")
+                .map(|m| m.archived),
+            Some(false)
+        );
+        assert_eq!(
+            parsed
+                .messages
+                .iter()
+                .find(|m| m.text == "旧问一")
+                .map(|m| m.archived),
+            Some(true)
+        );
+
+        // The same shape when the rewind points at the summary: the new chain
+        // hangs off the anchor, and its entries must splice after the slice's
+        // tail — the withdrawn turn still stays hidden.
+        let active = [
+            boundary("b1", Some("a2"), Some(("u3", "s1", "a4"))),
+            msg("user", "s1", Some("b1"), None, "（压缩摘要）", "2026-10-05T01:02:00.000Z"),
+            msg("user", "u3", Some("a2"), None, "保留问一", "2026-10-05T01:02:01.000Z"),
+            msg("assistant", "a3", Some("u3"), None, "保留答一", "2026-10-05T01:02:02.000Z"),
+            msg("user", "u4", Some("a3"), None, "保留问二", "2026-10-05T01:03:00.000Z"),
+            msg("assistant", "a4", Some("u4"), None, "保留答二", "2026-10-05T01:03:01.000Z"),
+            msg("user", "u5", Some("a4"), None, "被撤回的问", "2026-10-05T01:03:02.000Z"),
+            msg("assistant", "a5", Some("u5"), None, "被撤回的答", "2026-10-05T01:03:03.000Z"),
+            msg("user", "u6", Some("s1"), None, "回退后的问", "2026-10-05T01:04:00.000Z"),
+            msg("assistant", "a6", Some("u6"), None, "回退后的答", "2026-10-05T01:04:01.000Z"),
+        ];
+        let (dir, active_path) = segmented_fixture(&root, &active);
+        let parsed = parse_session_file("claude", &active_path).unwrap();
+        let texts = page_texts(&parsed);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(texts, expected);
+    }
+
+    #[test]
+    fn prefix_preserved_compaction_does_not_loop_after_relink() {
+        // A prefix-preserving boundary points its logicalParentUuid at the
+        // kept slice's own tail (the CLI's partial compact), while the
+        // slice's head keeps a pre-compact parent from seg-1. After the
+        // splice the raw walk would loop (tail → … → head → boundary →
+        // logical → tail) and give up, so a later rewind could not filter
+        // anything; dropping the bridge on the patched view must keep it
+        // working.
+        let root = [
+            msg("user", "x0", None, None, "更早问", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "x1", Some("x0"), None, "更早答", "2026-10-05T01:00:01.000Z"),
+        ];
+        let active = [
+            boundary("b1", Some("a4"), Some(("u2", "b1", "a4"))),
+            msg("user", "u2", Some("x1"), None, "保留问一", "2026-10-05T01:01:00.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "保留答一", "2026-10-05T01:01:01.000Z"),
+            msg("user", "u3", Some("a2"), None, "保留问二", "2026-10-05T01:01:02.000Z"),
+            msg("assistant", "a4", Some("u3"), None, "保留答二", "2026-10-05T01:01:03.000Z"),
+            msg("user", "u5", Some("a4"), None, "被撤回的问", "2026-10-05T01:02:00.000Z"),
+            msg("assistant", "a5", Some("u5"), None, "被撤回的答", "2026-10-05T01:02:01.000Z"),
+            msg("user", "u6", Some("a4"), None, "回退后的问", "2026-10-05T01:03:00.000Z"),
+            msg("assistant", "a6", Some("u6"), None, "回退后的答", "2026-10-05T01:03:01.000Z"),
+        ];
+        let (dir, active_path) = segmented_fixture(&root, &active);
+        let parsed = parse_session_file("claude", &active_path).unwrap();
+        let texts = page_texts(&parsed);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            texts,
+            [
+                "更早问", "更早答", "保留问一", "保留答一", "保留问二", "保留答二",
+                "回退后的问", "回退后的答"
+            ]
+        );
+    }
+
+    #[test]
+    fn parallel_tool_branches_stay_visible_and_rewound_turns_drop() {
+        // A parallel tool turn writes one assistant entry per content block
+        // (all sharing `message.id`) and each tool result parents to its own
+        // block: the bare single-parent walk keeps only one branch. The
+        // recovery pass must keep both blocks and both results — while a
+        // rewound turn is still dropped.
+        let block = |uuid: &str, parent: &str, text: &str, id: &str| {
+            let mut value = msg(
+                "assistant",
+                uuid,
+                Some(parent),
+                None,
+                text,
+                "2026-10-05T01:00:01.000Z",
+            );
+            value["message"]["id"] = serde_json::json!(id);
+            value
+        };
+        let tool_result = |uuid: &str, parent: &str| {
+            let mut value = msg("user", uuid, Some(parent), None, "", "2026-10-05T01:00:02.000Z");
+            value["message"]["content"] = serde_json::json!([
+                {"type": "tool_result", "tool_use_id": "t", "content": "ok"}
+            ]);
+            value
+        };
+        let (dir, file) = rewind_fixture(&[
+            msg("user", "u1", None, None, "问一", "2026-10-05T01:00:00.000Z"),
+            block("a1", "u1", "第一块", "msg_m1"),
+            block("a2", "a1", "第二块", "msg_m1"),
+            tool_result("r1", "a1"),
+            tool_result("r2", "a2"),
+            block("a3", "r1", "收尾", "msg_m2"),
+        ]);
+        let filter = super::dead_branch_uuids_for_chain(&[file.clone()]);
+        let parsed = parse_session_file("claude", &file).unwrap();
+        let texts = page_texts(&parsed);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            filter.dead[0].is_empty(),
+            "parallel blocks are not dead: {:?}",
+            filter.dead
+        );
+        assert_eq!(texts, ["问一", "第一块", "第二块", "收尾"]);
+
+        // The rewound turn (its own blocks and results) must disappear.
+        let (dir, file) = rewind_fixture(&[
+            msg("user", "u1", None, None, "问一", "2026-10-05T01:00:00.000Z"),
+            block("a1", "u1", "第一块", "msg_m1"),
+            block("a2", "a1", "第二块", "msg_m1"),
+            tool_result("r1", "a1"),
+            tool_result("r2", "a2"),
+            msg("user", "u2", Some("r1"), None, "被撤回的问", "2026-10-05T01:01:00.000Z"),
+            block("a4", "u2", "被撤回的答", "msg_m2"),
+            tool_result("r3", "a4"),
+            msg("user", "u3", Some("r1"), None, "回退后的问", "2026-10-05T01:02:00.000Z"),
+            block("a5", "u3", "回退后的答", "msg_m3"),
+        ]);
+        let filter = super::dead_branch_uuids_for_chain(&[file.clone()]);
+        let parsed = parse_session_file("claude", &file).unwrap();
+        let texts = page_texts(&parsed);
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut expected: Vec<String> = ["u2", "a4", "r3"].iter().map(|s| s.to_string()).collect();
+        let mut found: Vec<String> = filter.dead[0].iter().cloned().collect();
+        expected.sort();
+        found.sort();
+        assert_eq!(found, expected);
+        assert_eq!(texts, ["问一", "第一块", "第二块", "回退后的问", "回退后的答"]);
+    }
+
+    #[test]
+    fn compaction_boundary_rows_are_not_rewindable() {
+        // The page shows pre-boundary history (the logicalParentUuid bridge),
+        // but the CLI's resume walk follows parentUuid only: those rows keep
+        // no rewind entry while everything from the boundary on does.
+        let (dir, file) = rewind_fixture(&[
+            msg("user", "u1", None, None, "旧问", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "旧答", "2026-10-05T01:00:01.000Z"),
+            boundary("b1", Some("a1"), None),
+            msg("user", "s1", Some("b1"), None, "（压缩摘要）", "2026-10-05T01:01:00.000Z"),
+            msg("user", "u2", Some("s1"), None, "压缩后问", "2026-10-05T01:01:01.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "压缩后答", "2026-10-05T01:01:02.000Z"),
+        ]);
+        let parsed = parse_session_file("claude", &file).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let archived: Vec<(&str, bool)> = parsed
+            .messages
+            .iter()
+            .filter(|m| m.role != "__usage__")
+            .map(|m| (m.text.as_str(), m.archived))
+            .collect();
+        assert_eq!(
+            archived,
+            [
+                ("旧问", true),
+                ("旧答", true),
+                ("（压缩摘要）", false),
+                ("压缩后问", false),
+                ("压缩后答", false),
+            ]
+        );
+    }
+
+    #[test]
+    fn same_uuid_alive_in_one_segment_survives_another_segments_verdict() {
+        // Identical uuids across segments cannot occur in the CLI's own
+        // writes, but the per-file verdicts must still keep a uuid that is
+        // dead in one segment when another segment carries it alive.
+        let root = [
+            msg("user", "u1", None, None, "旧问", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "旧答", "2026-10-05T01:00:01.000Z"),
+            msg("user", "u2", Some("a1"), None, "重复问", "2026-10-05T01:00:02.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "重复答", "2026-10-05T01:00:03.000Z"),
+            msg("user", "u4", Some("a1"), None, "重发问", "2026-10-05T01:01:00.000Z"),
+            msg("assistant", "a4", Some("u4"), None, "重发答", "2026-10-05T01:01:01.000Z"),
+        ];
+        // Inside seg-1 the rewind abandoned u2/a2 (u4/a4 re-rooted at a1).
+        let active = [
+            boundary("b1", None, None),
+            msg("user", "u2", Some("b1"), None, "重复问", "2026-10-05T01:02:00.000Z"),
+            msg("assistant", "a2", Some("u2"), None, "重复答", "2026-10-05T01:02:01.000Z"),
+            msg("user", "u5", Some("a2"), None, "压缩后问", "2026-10-05T01:02:02.000Z"),
+            msg("assistant", "a5", Some("u5"), None, "压缩后答", "2026-10-05T01:02:03.000Z"),
+        ];
+        let (dir, active_path) = segmented_fixture(&root, &active);
+        let parsed = parse_session_file("claude", &active_path).unwrap();
+        let texts = page_texts(&parsed);
+        let _ = std::fs::remove_dir_all(&dir);
+        // seg-1's u2/a2 rows are hidden, the alive copies in the active file
+        // stay: each text appears exactly once.
+        assert_eq!(texts.iter().filter(|text| **text == "重复问").count(), 1);
+        assert_eq!(texts.iter().filter(|text| **text == "重复答").count(), 1);
+        assert!(texts.contains(&"重发问"));
+        assert!(texts.contains(&"压缩后问"));
     }
 }

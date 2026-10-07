@@ -146,6 +146,16 @@ impl Engine for ClaudeEngine {
         if let Some(session_id) = req.session_id.as_deref() {
             cmd.arg("--resume");
             cmd.arg(session_id);
+            // Conversation rewind (the GUI's 回退): load the transcript
+            // truncated to this message, inclusive — the abandoned tail stays
+            // in the append-only file. Only meaningful together with
+            // --resume, hence nested here.
+            if let Some(rewind_to) = req.rewind_to.as_deref() {
+                if !rewind_to.is_empty() {
+                    cmd.arg("--resume-session-at");
+                    cmd.arg(rewind_to);
+                }
+            }
         }
         let stdin_payload = images::claude_stdin_message(&req.prompt, &req.images, &req.workspace)?;
         Ok(BuiltCommand {
@@ -194,6 +204,9 @@ impl Engine for ClaudeEngine {
                         message: format_api_retry(&value),
                     });
                 } else if subtype == Some("compact_boundary") {
+                    // The session compacted: everything on screen predates
+                    // the new boundary and is no longer resumable.
+                    out.push(EngineEvent::Compacted);
                     if let Some(post_tokens) = value
                         .get("compactMetadata")
                         .and_then(|m| m.get("postTokens").or_else(|| m.get("post_tokens")))
@@ -1335,8 +1348,9 @@ mod tests {
         .to_string();
         let mut out = Vec::new();
         engine.parse_line(&boundary, &mut out);
-        assert_eq!(out.len(), 1);
-        match &out[0] {
+        assert_eq!(out.len(), 2);
+        assert!(matches!(out[0], EngineEvent::Compacted));
+        match &out[1] {
             EngineEvent::Usage(usage) => {
                 assert_eq!(usage["input_tokens"], 8038);
                 assert_eq!(usage["total_tokens"], 8038);
@@ -1385,7 +1399,7 @@ mod tests {
     }
 
     #[test]
-    fn compact_boundary_without_metadata_stays_silent() {
+    fn compact_boundary_without_metadata_still_reports_the_compaction() {
         let line = serde_json::json!({
             "type": "system",
             "subtype": "compact_boundary"
@@ -1393,7 +1407,10 @@ mod tests {
         .to_string();
         let mut out = Vec::new();
         ClaudeEngine::new().parse_line(&line, &mut out);
-        assert!(out.is_empty());
+        // No post-token usage to report, but the UI still needs to know the
+        // session compacted (rewind entries must withdraw).
+        assert_eq!(out.len(), 1);
+        assert!(matches!(out[0], EngineEvent::Compacted));
     }
 
     /// The UI's context gauge divided by a hardcoded 200k because nothing

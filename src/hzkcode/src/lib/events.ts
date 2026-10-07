@@ -17,6 +17,7 @@ export interface EngineEventPayload {
     | "warn"
     | "retry"
     | "notice"
+    | "compacted"
     | "permission_denied"
     | "question"
     | "permission"

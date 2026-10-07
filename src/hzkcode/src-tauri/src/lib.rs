@@ -275,6 +275,9 @@ pub fn run() {
             plugins::market::plugin_check_updates,
             // engine
             engine::send_message,
+            engine::rewind_files,
+            engine::session_file_history_available,
+            engine::session_rewindable_uuids,
             engine::default_auto_compact_window,
             engine::interrupt_session,
             engine::answer_question,

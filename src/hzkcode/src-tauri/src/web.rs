@@ -987,12 +987,35 @@ struct SendMessageArgs {
     /// Per-session context-window override (see
     /// engine::SendRequest::auto_compact_window).
     auto_compact_window: Option<u64>,
+    /// Conversation rewind (see engine::SendRequest::rewind_to).
+    rewind_to: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DefaultAutoCompactWindowArgs {
     engine: String,
     provider_id: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RewindFilesArgs {
+    engine: String,
+    session_id: String,
+    workspace_path: String,
+    message_id: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionFileHistoryArgs {
+    engine: String,
+    session_id: String,
+    message_id: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionRewindableArgs {
+    engine: String,
+    session_id: String,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1437,12 +1460,39 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
                 a.proxy_enabled,
                 a.second_brain_enabled,
                 a.auto_compact_window,
+                a.rewind_to,
             )
             .await)
         }
         "interrupt_session" => {
             let a: SessionIdArgs = parse_args(&raw)?;
             ser(crate::engine::interrupt_session(app.state(), a.session_id).await)
+        }
+        "rewind_files" => {
+            let a: RewindFilesArgs = parse_args(&raw)?;
+            ser(crate::engine::rewind_files(
+                app.state(),
+                a.engine,
+                a.session_id,
+                a.workspace_path,
+                a.message_id,
+            )
+            .await)
+        }
+        "session_file_history_available" => {
+            let a: SessionFileHistoryArgs = parse_args(&raw)?;
+            ser(Ok(crate::engine::session_file_history_available(
+                a.engine,
+                a.session_id,
+                a.message_id,
+            )))
+        }
+        "session_rewindable_uuids" => {
+            let a: SessionRewindableArgs = parse_args(&raw)?;
+            ser(Ok(crate::engine::session_rewindable_uuids(
+                a.engine,
+                a.session_id,
+            )))
         }
         "list_engines" => ser(Ok(crate::engine::list_engines())),
         "default_auto_compact_window" => {

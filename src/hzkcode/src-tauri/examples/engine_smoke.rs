@@ -45,6 +45,7 @@ async fn run_one(engine_id: &str, workspace: &PathBuf) -> Result<(), String> {
         proxy_enabled: None,
         second_brain_enabled: None,
         auto_compact_window: None,
+        rewind_to: None,
     };
     let bin = which::which(engine_id)
         .map(|p| p.to_string_lossy().to_string())
@@ -131,6 +132,7 @@ async fn run_one(engine_id: &str, workspace: &PathBuf) -> Result<(), String> {
                 EngineEvent::Retry { attempt, max, message } => {
                     println!("  retry {attempt}/{max}: {message}");
                 }
+                EngineEvent::Compacted => println!("  compacted"),
                 EngineEvent::AttemptEnd { error } => {
                     if let Some(error) = error {
                         println!("  attempt failed (CLI may recover): {error}");

@@ -5,6 +5,7 @@ import Copy from "lucide-react/dist/esm/icons/copy";
 import Check from "lucide-react/dist/esm/icons/check";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch";
+import Undo2 from "lucide-react/dist/esm/icons/undo-2";
 import AlertCircle from "lucide-react/dist/esm/icons/alert-circle";
 import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle";
 import Info from "lucide-react/dist/esm/icons/info";
@@ -47,6 +48,7 @@ const TimelineRowView = memo(function TimelineRowView({
   onRetry,
   branchTarget,
   onBranch,
+  onRewind,
 }: {
   row: TimelineRow;
   workspacePath: string;
@@ -65,6 +67,7 @@ const TimelineRowView = memo(function TimelineRowView({
   onRetry?: () => void;
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;
+  onRewind?: (target: { uuid: string; role: "user" | "assistant" }) => void;
 }) {
   // Plugin-defined row kinds (plan §4.2 #5) dispatch to the registered
   // renderer before the builtin switch below; builtin kinds never hit this
@@ -104,6 +107,7 @@ const TimelineRowView = memo(function TimelineRowView({
       onRetry={onRetry}
       branchTarget={branchTarget}
       onBranch={onBranch}
+      onRewind={onRewind}
     />
   );
 });
@@ -194,19 +198,22 @@ function MessageMeta({ message }: { message: Message }) {
   );
 }
 
-/** Assistant message hover actions (copy + retry + branch). The retry
- *  affordance is wired only on the timeline's last message (the terminal's
- *  `//`); branch rides any message that resolves to a transcript entry. */
+/** Assistant message hover actions (copy + retry + rewind + branch). The
+ *  retry affordance is wired only on the timeline's last message (the
+ *  terminal's `//`); rewind and branch ride any message that resolves to a
+ *  transcript entry. */
 function MessageActions({
   text,
   onRetry,
   branchTarget,
   onBranch,
+  onRewind,
 }: {
   text: string;
   onRetry?: () => void;
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;
+  onRewind?: (targetUuid: string) => void;
 }) {
   const { t } = useTranslation();
   const { copied, copy } = useCopied();
@@ -237,6 +244,17 @@ function MessageActions({
           <RotateCcw className="size-3.5" aria-hidden />
         </button>
       )}
+      {branchTarget && onRewind && (
+        <button
+          type="button"
+          aria-label={t("chat.rewind")}
+          title={t("chat.rewind")}
+          onClick={() => onRewind(branchTarget)}
+          className={iconBtn}
+        >
+          <Undo2 className="size-3.5" aria-hidden />
+        </button>
+      )}
       {branchTarget && onBranch && (
         <button
           type="button"
@@ -263,18 +281,21 @@ function UserMessageCopy({
   onRetry,
   branchTarget,
   onBranch,
+  onRewind,
 }: {
   text: string;
   onRetry?: () => void;
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;
+  onRewind?: (targetUuid: string) => void;
 }) {
   const { t } = useTranslation();
   const { copied, copy } = useCopied();
   const iconBtn =
     "flex size-6 cursor-pointer items-center justify-center rounded-md bg-transparent text-foreground-icon-secondary opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-background-tertiary-hover hover:text-foreground-icon-primary";
   const canBranch = Boolean(branchTarget && onBranch);
-  if (!text.trim() && !onRetry && !canBranch) return null;
+  const canRewind = Boolean(branchTarget && onRewind);
+  if (!text.trim() && !onRetry && !canBranch && !canRewind) return null;
   return (
     <div className="flex items-center gap-0.5">
       {text.trim() && (
@@ -303,6 +324,17 @@ function UserMessageCopy({
           <RotateCcw className="size-3.5" aria-hidden />
         </button>
       )}
+      {canRewind && (
+        <button
+          type="button"
+          aria-label={t("chat.rewind")}
+          title={t("chat.rewind")}
+          onClick={() => onRewind!(branchTarget!)}
+          className={iconBtn}
+        >
+          <Undo2 className="size-3.5" aria-hidden />
+        </button>
+      )}
       {canBranch && (
         <button
           type="button"
@@ -326,11 +358,13 @@ function UserMessageRow({
   onRetry,
   branchTarget,
   onBranch,
+  onRewind,
 }: {
   message: Message;
   onRetry?: () => void;
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;
+  onRewind?: (targetUuid: string) => void;
 }) {
   const { t } = useTranslation();
   const stripped = useMemo(() => stripAgentBlock(message.text), [message.text]);
@@ -361,6 +395,7 @@ function UserMessageRow({
         onRetry={onRetry}
         branchTarget={branchTarget}
         onBranch={onBranch}
+        onRewind={onRewind}
       />
     </div>
   );
@@ -396,6 +431,7 @@ export const MessageRow = memo(function MessageRow({
   onRetry,
   branchTarget,
   onBranch,
+  onRewind,
 }: {
   message: Message;
   workspacePath: string;
@@ -408,12 +444,19 @@ export const MessageRow = memo(function MessageRow({
    *  the row cannot resolve one. */
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;
+  /** Rewind affordance (回退): the row's own transcript uuid plus its role —
+   *  the dialog decides between rewinding the conversation and/or the
+   *  workspace files. Shown on every row that resolves a uuid, except rows
+   *  read from an archived (pre-compaction) segment: the CLI's
+   *  `--resume-session-at` cannot resolve those. */
+  onRewind?: (target: { uuid: string; role: "user" | "assistant" }) => void;
 }) {
   // A live row's text grows per store flush; a full markdown reparse per
   // flush scales linearly with reply length (~30ms at 32KB) and starves the
   // main thread, so the parse is throttled. Settled rows never change and
   // render as-is.
   const text = useThrottled(message.text, message.live ? streamParseInterval(message.text.length) : 0);
+  const { t } = useTranslation();
   if (message.role === "grant") {
     // Permission-denial card: actionable directory grant, not a chat bubble.
     return <GrantCard message={message} />;
@@ -434,12 +477,21 @@ export const MessageRow = memo(function MessageRow({
         onRetry={onRetry}
         branchTarget={branchTarget}
         onBranch={onBranch}
+        onRewind={
+          onRewind && !message.archived
+            ? (uuid) => onRewind({ uuid, role: "user" })
+            : undefined
+        }
       />
     );
   }
   if (message.role === "notice") {
     return <NoticeRow message={message} />;
   }
+  const rewindForRow =
+    onRewind && !message.archived
+      ? (uuid: string) => onRewind({ uuid, role: "assistant" })
+      : undefined;
   return (
     <div className="group flex flex-col text-left">
       <Markdown text={text} workspacePath={workspacePath} streaming={message.live} />
@@ -450,8 +502,25 @@ export const MessageRow = memo(function MessageRow({
             onRetry={onRetry}
             branchTarget={branchTarget}
             onBranch={onBranch}
+            onRewind={rewindForRow}
           />
           <MessageMeta message={message} />
+        </div>
+      )}
+      {/* A mid-turn assistant segment keeps its own rewind entry (the row
+          resolves its own transcript uuid); the copy/meta footer stays
+          turn-final-only. */}
+      {!turnFinal && branchTarget && rewindForRow && (
+        <div className="mt-1 flex items-center opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <button
+            type="button"
+            aria-label={t("chat.rewind")}
+            title={t("chat.rewind")}
+            onClick={() => rewindForRow(branchTarget)}
+            className="flex size-6 cursor-pointer items-center justify-center rounded-md text-foreground-icon-secondary transition-colors hover:bg-background-tertiary-hover hover:text-foreground-icon-primary"
+          >
+            <Undo2 className="size-3.5" aria-hidden />
+          </button>
         </div>
       )}
     </div>
@@ -465,6 +534,7 @@ export const MessageTimeline = memo(function MessageTimeline({
   workspacePath,
   onRetry,
   onBranch,
+  onRewind,
 }: {
   session: SessionState;
   streaming: boolean;
@@ -476,6 +546,11 @@ export const MessageTimeline = memo(function MessageTimeline({
   /** Fork the conversation at one message (the CLI's /branch): the target is
    *  the transcript uuid the fork should end at. */
   onBranch?: (targetUuid: string) => void;
+  /** 回退 (rewind) at one message: opens the choice between rewinding the
+   *  conversation (the next send truncates to this message) and/or restoring
+   *  the workspace files to the state at it. Shown on every row that
+   *  resolves a transcript uuid. */
+  onRewind?: (target: { uuid: string; role: "user" | "assistant" }) => void;
 }) {
 
   const { t } = useTranslation();
@@ -700,6 +775,7 @@ export const MessageTimeline = memo(function MessageTimeline({
                         : undefined
                     }
                     onBranch={onBranch}
+                    onRewind={onRewind}
                   />
                 )}
               </div>

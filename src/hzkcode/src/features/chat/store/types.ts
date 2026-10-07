@@ -193,6 +193,17 @@ export interface ChatStore {
   setSessionSecondBrain: (key: string, value: boolean | null) => void;
   /** Per-session context-window override (the CLI's /maxtokens; null 跟随默认). */
   setSessionAutoCompactWindow: (key: string, value: number | null) => void;
+  /** Set (or clear) a session's pending rewind point: the next send passes
+   *  it as the CLI's `--resume-session-at` (truncate to that message,
+   *  inclusive). Persisted until that send dispatches. */
+  setRewindAnchor: (key: string, uuid: string | null) => void;
+  /** A settled run spends the anchor it carried — only when it is still the
+   *  effective one (another window may have set a newer point; compare and
+   *  keep that one). */
+  consumeRewindAnchor: (key: string, anchor: string) => void;
+  /** Restore the workspace files to their state at one user message (the
+   *  CLI's one-shot `--rewind-files`). Errors surface through actionError. */
+  rewindWorkspaceFiles: (key: string, messageId: string) => Promise<void>;
   /** Enqueue a message on the active session while a turn streams. */
   queueMessage: (text: string, images: string[]) => void;
   /** Drop a queued message from the active session. */
@@ -220,4 +231,8 @@ export interface ChatStore {
   refreshSessionUsage: (key?: string) => Promise<void>;
   /** Backfill engine uuids onto just-sent prompts from session history. */
   refreshSessionUuids: (key?: string) => Promise<void>;
+  /** Re-read the uuids the CLI can still resume at and realign the rows'
+   *  rewind entries (a mid-turn compaction archives most of them while the
+   *  preserved slice stays resumable). */
+  refreshRewindable: (key?: string) => Promise<void>;
 }

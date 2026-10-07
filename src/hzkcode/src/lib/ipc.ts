@@ -77,6 +77,9 @@ export interface Message {
    *  the branch action addresses fork points by it. Live rows get it from
    *  the engine's `message_uuid` event once the reply finishes streaming. */
   uuid?: string | null;
+  /** True for history read from an archived (pre-compaction) segment file:
+   *  the rewind action is unavailable for these rows. */
+  archived?: boolean;
   usage?: unknown;
   model?: string | null;
   /** Reasoning effort level ("low" | "medium" | "high" | "xhigh" | "max") */
@@ -749,7 +752,33 @@ export const ipc = {
      *  HZKCODE_AUTO_COMPACT_WINDOW (the auto-compact limit); null keeps the
      *  app/shell default. */
     autoCompactWindow?: number | null;
+    /** Conversation rewind (the 回退 action): pins the CLI's hidden
+     *  `--resume-session-at <uuid>`, loading the transcript truncated to that
+     *  message (inclusive) before the run. Only meaningful with sessionId. */
+    rewindTo?: string | null;
   }) => invoke<SendResult>("send_message", args),
+  /** Restore the workspace files to their state at one user message (the
+   *  CLI's `--rewind-files`, a one-shot run that exits right after); resolves
+   *  with the CLI's stdout, rejects with its error. */
+  rewindFiles: (
+    engine: string,
+    sessionId: string,
+    workspacePath: string,
+    messageId: string,
+  ) =>
+    invoke<string>("rewind_files", { engine, sessionId, workspacePath, messageId }),
+  /** Whether the transcript carries a file-history snapshot for that user
+   *  message (the 回退文件更改 option is offered only then). */
+  sessionFileHistoryAvailable: (
+    engine: string,
+    sessionId: string,
+    messageId: string,
+  ) => invoke<boolean>("session_file_history_available", { engine, sessionId, messageId }),
+  /** Uuids the CLI can still resume at (`--resume-session-at`): the active
+   *  file's own chain. Re-read after a mid-turn compaction; null when it
+   *  cannot be read (the caller then leaves its rewind entries as they are). */
+  sessionRewindableUuids: (engine: string, sessionId: string) =>
+    invoke<string[] | null>("session_rewindable_uuids", { engine, sessionId }),
   interruptSession: (sessionId: string) =>
     invoke<boolean>("interrupt_session", { sessionId }),
   /** The auto-compact window the app/channel config would inject when the

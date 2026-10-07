@@ -56,6 +56,11 @@ pub struct Message {
     /// fallback). Drives the row's color; None for every other role.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub level: Option<String>,
+    /// True for rows read from an archived (pre-compaction) segment file.
+    /// The CLI's `--resume-session-at` only resolves uuids in the active
+    /// segment, so the rewind affordance is hidden for these rows.
+    #[serde(default)]
+    pub archived: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

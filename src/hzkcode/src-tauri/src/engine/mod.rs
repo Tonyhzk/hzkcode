@@ -80,6 +80,13 @@ pub struct SendRequest {
     /// auto-compact pipeline reads per check — session-only, never persisted.
     /// Some(tokens) pins it for this send; None keeps the app/shell default.
     pub auto_compact_window: Option<u64>,
+    /// Conversation rewind for this send (the CLI's hidden
+    /// `--resume-session-at <message-uuid>`): the resumed transcript loads
+    /// truncated to that message, inclusive, and the run continues on the
+    /// same session id — the rewind the GUI's 回退 action performs. The
+    /// abandoned tail stays in the append-only file and is hidden by the
+    /// reader's chain walk.
+    pub rewind_to: Option<String>,
 }
 
 pub struct BuiltCommand {
@@ -158,6 +165,11 @@ pub enum EngineEvent {
         /// Human-readable reason (HTTP status / provider message).
         message: String,
     },
+    /// The session compacted mid-turn (claude `system/compact_boundary`):
+    /// everything the client already holds predates the new boundary, and
+    /// the CLI can only resume at the active chain — the UI withdraws the
+    /// rewind entries it already shows.
+    Compacted,
     /// A tool call was denied by the CLI's permission system (headless mode
     /// cannot prompt). `path` is the denied absolute path when the denial
     /// text or tool input carries one — the UI offers a directory grant for
@@ -1019,6 +1031,7 @@ fn prepare_launch(
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
     auto_compact_window: Option<u64>,
+    rewind_to: Option<String>,
 ) -> Result<Launch, String> {
     let engine_impl = engine_by_id(engine).ok_or_else(|| format!("unknown engine: {engine}"))?;
     // Channel settings apply to this child below; the program's own files
@@ -1075,6 +1088,9 @@ fn prepare_launch(
         proxy_enabled,
         second_brain_enabled,
         auto_compact_window,
+        // Conversation rewind (回退): emitted as --resume-session-at under
+        // --resume (see engine/claude.rs).
+        rewind_to: rewind_to.filter(|s| !s.trim().is_empty()),
     };
     let bin = engine_bin(&settings, engine);
     let mut built = engine_impl.build_command(&req, &bin)?;
@@ -1097,6 +1113,10 @@ fn prepare_launch(
     for (key, value) in crate::settings::feature_env(&settings) {
         built.command.env(key, value);
     }
+    // Headless file checkpoints back the 回退文件更改 action (the CLI's
+    // --rewind-files): SDK runs record per-user-message file snapshots only
+    // when this is set; interactive runs default to on — match that here.
+    built.command.env("HZKCODE_ENABLE_SDK_FILE_CHECKPOINTING", "1");
     // Session proxy override (mirrors the CLI's /proxy on|off): wins over the
     // app-level switch above, and decides per process — the GUI send is the
     // process.
@@ -1570,6 +1590,18 @@ impl TurnCore {
                     serde_json::json!({ "attempt": attempt, "max": max, "message": message }),
                 );
             }
+            EngineEvent::Compacted => {
+                // Not terminal: the turn keeps running against the new
+                // context. The UI uses this to withdraw rewind entries for
+                // the pre-boundary history it still shows.
+                state.push(
+                    &self.sink,
+                    &self.run_id,
+                    &self.engine_id,
+                    "compacted",
+                    Value::Null,
+                );
+            }
             EngineEvent::PermissionDenied {
                 tool,
                 path,
@@ -2007,6 +2039,126 @@ mod default_window_tests {
     }
 }
 
+/// Claude session and message ids are UUIDs. Anything else is rejected before
+/// it can be joined into a path or handed to the CLI (path traversal, stale
+/// ids). The CLI resolves `--resume` from the workspace cwd, so a session of
+/// another workspace simply won't resolve there.
+fn is_uuid_shaped(value: &str) -> bool {
+    let value = value.trim();
+    value.len() == 36
+        && value.bytes().enumerate().all(|(i, b)| {
+            if matches!(i, 8 | 13 | 18 | 23) {
+                b == b'-'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        })
+}
+
+/// Whether the transcript carries a file-history snapshot for one user
+/// message: the 回退文件更改 option is offered only for messages that have a
+/// checkpoint — the same per-message truth the CLI's `fileHistoryCanRestore`
+/// rebuilds from the `file-history-snapshot` entries at load (a session with
+/// snapshots only for its later turns must not offer earlier ones).
+#[tauri::command]
+pub fn session_file_history_available(
+    engine: String,
+    session_id: String,
+    message_id: String,
+) -> bool {
+    if engine != "claude" || !is_uuid_shaped(&session_id) || !is_uuid_shaped(&message_id) {
+        return false;
+    }
+    crate::history::reader::session_has_file_snapshot(&engine, &session_id, &message_id)
+}
+
+/// The uuids a send can still rewind to (`--resume-session-at`): the active
+/// file's own chain, re-read after a mid-turn compaction so the client can
+/// withdraw rewind entries for history the CLI can no longer resolve (while
+/// the preserved slice keeps its entry). None when that cannot be read — the
+/// client then leaves its entries as they are.
+#[tauri::command]
+pub fn session_rewindable_uuids(engine: String, session_id: String) -> Option<Vec<String>> {
+    if engine != "claude" || !is_uuid_shaped(&session_id) {
+        return None;
+    }
+    crate::history::reader::session_rewindable_uuids(&engine, &session_id)
+}
+
+/// Restore the workspace files to their state at one user message (the CLI's
+/// hidden `--rewind-files <user-message-uuid>`, which requires `--resume`): a
+/// one-shot CLI run that exits right after the restore. It runs in the
+/// workspace (the CLI resolves the session from the working directory) and
+/// returns the CLI's stdout; its stderr comes back as the error. No channel
+/// env is needed: the restore makes no API calls.
+#[tauri::command]
+pub async fn rewind_files(
+    state: tauri::State<'_, crate::AppState>,
+    engine: String,
+    session_id: String,
+    workspace_path: String,
+    message_id: String,
+) -> Result<String, String> {
+    if engine != "claude" {
+        return Err(format!("rewind_files: unknown engine {engine}"));
+    }
+    let session_id = session_id.trim().to_string();
+    let message_id = message_id.trim().to_string();
+    if !is_uuid_shaped(&session_id) || !is_uuid_shaped(&message_id) {
+        return Err("rewind_files: invalid session or message id".into());
+    }
+    if !std::path::Path::new(&workspace_path).is_dir() {
+        return Err("rewind_files: workspace not found".into());
+    }
+    // Never restore under a live turn: the run keeps writing workspace files
+    // and would race — or immediately undo — the restore. Session-keyed
+    // registry entries appear once a run learns its native id.
+    if state
+        .processes
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .get(&session_id)
+        .is_some()
+    {
+        return Err("该会话仍在运行，回合结束后再回退文件".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let settings = crate::settings::read_settings().unwrap_or_default();
+        let bin = engine_bin(&settings, &engine);
+        let output = std::process::Command::new(&bin)
+            .current_dir(&workspace_path)
+            // The one-shot restore lives in the print-mode entrypoint (the
+            // same `-p` the send path uses); without it the CLI boots the
+            // interactive entry and never runs the restore.
+            .arg("-p")
+            // The dev CLI keys the session's project directory off this
+            // variable (see the send path); without it the resume may look
+            // in the launcher's cwd instead of the workspace.
+            .env("HZKCODE_DEV_CALLER_CWD", &workspace_path)
+            // The restore process does its own checkpoint-enabled check.
+            .env("HZKCODE_ENABLE_SDK_FILE_CHECKPOINTING", "1")
+            .arg("--resume")
+            .arg(&session_id)
+            .arg("--rewind-files")
+            .arg(&message_id)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|e| format!("restore files: {e}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(if stderr.is_empty() {
+                format!("restore files: exit {}", output.status)
+            } else {
+                stderr
+            });
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn send_message(
     state: tauri::State<'_, crate::AppState>,
@@ -2026,6 +2178,7 @@ pub async fn send_message(
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
     auto_compact_window: Option<u64>,
+    rewind_to: Option<String>,
 ) -> Result<SendResult, String> {
     send_message_inner(
         &state,
@@ -2045,6 +2198,7 @@ pub async fn send_message(
         proxy_enabled,
         second_brain_enabled,
         auto_compact_window,
+        rewind_to,
     )
     .await
 }
@@ -2071,6 +2225,7 @@ pub async fn send_message_inner(
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
     auto_compact_window: Option<u64>,
+    rewind_to: Option<String>,
 ) -> Result<SendResult, String> {
     let run_id = run_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     if run_id.is_empty() || run_id.len() > 128
@@ -2134,6 +2289,7 @@ pub async fn send_message_inner(
         proxy_enabled,
         second_brain_enabled,
         auto_compact_window,
+        rewind_to,
         killed,
         reader_abort,
     )
@@ -2167,6 +2323,7 @@ async fn send_reserved(
     proxy_enabled: Option<bool>,
     second_brain_enabled: Option<bool>,
     auto_compact_window: Option<u64>,
+    rewind_to: Option<String>,
     killed: Arc<std::sync::atomic::AtomicBool>,
     reader_abort: Arc<std::sync::OnceLock<tokio::task::AbortHandle>>,
 ) -> Result<SendResult, String> {
@@ -2190,6 +2347,7 @@ async fn send_reserved(
         proxy_enabled,
         second_brain_enabled,
         auto_compact_window,
+        rewind_to,
     )?;
 
     // WSL 远程工作区:引擎进程经 ssh 在发行版内执行(见 wsl_transport)。
@@ -2500,6 +2658,7 @@ mod permission_tests {
             proxy_enabled: None,
             second_brain_enabled: None,
             auto_compact_window: None,
+            rewind_to: None,
         }
     }
 

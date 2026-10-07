@@ -366,6 +366,7 @@ fn subagent_history_row(message: &Message, delegation: bool) -> Message {
         duration_ms: None,
         images: Vec::new(),
         level: None,
+        archived: message.archived,
     }
 }
 
@@ -692,6 +693,51 @@ fn unique_branch_title(db: &crate::db::Db, base: &str) -> String {
     }
 }
 
+/// Whether the transcript carries a file-history snapshot for one user
+/// message — the CLI's own `fileHistoryCanRestore` truth (it rebuilds its
+/// snapshot list from the `file-history-snapshot` entries at load). Used to
+/// offer the 回退文件更改 option only for messages that actually have a
+/// checkpoint.
+pub fn session_has_file_snapshot(engine: &str, session_id: &str, message_id: &str) -> bool {
+    let Some(source) = session_files_by_id(engine, session_id)
+        .into_iter()
+        .next()
+    else {
+        return false;
+    };
+    let files = super::segments::session_files_for_read(engine, &source);
+    for file in &files {
+        let Ok(content) = std::fs::read_to_string(file) else {
+            continue;
+        };
+        for line in content.lines() {
+            let Ok(value) = serde_json::from_str::<Value>(line.trim()) else {
+                continue;
+            };
+            if value.get("type").and_then(Value::as_str) == Some("file-history-snapshot")
+                && value.get("messageId").and_then(Value::as_str) == Some(message_id)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Uuids of a session that `--resume-session-at` can still resolve: the
+/// active file's own chain (see history::extract::ChainFilter::rewindable).
+/// None when the session file is missing or the walk is not understood.
+pub fn session_rewindable_uuids(engine: &str, session_id: &str) -> Option<Vec<String>> {
+    let source = session_files_by_id(engine, session_id).into_iter().next()?;
+    let files = super::segments::session_files_for_read(engine, &source);
+    let mut rewindable: Vec<String> = super::extract::dead_branch_uuids_for_chain(&files)
+        .rewindable?
+        .into_iter()
+        .collect();
+    rewindable.sort();
+    Some(rewindable)
+}
+
 /// Fork the session at `target_uuid`: the main conversation entries up to
 /// and including the target (a reply or a user prompt are both kept),
 /// `sessionId` rewritten, the parent chain rebuilt, `forkedFrom`
@@ -718,9 +764,15 @@ fn branch_session_blocking(
     // A segmented (compacted) session is read as its whole root → active
     // chain, so a fork point may sit in an archived segment; the fork prefix
     // then spans the chain exactly like a single-file prefix used to.
+    // A rewind leaves the abandoned branch in the append-only file; the fork
+    // must take the surviving chain only (the same per-segment walk the page
+    // reader uses), or it would resurrect content the user rewound away. The
+    // verdicts are applied per file so a uuid that still lives in another
+    // segment can never be dropped here.
     let files = super::segments::session_files_for_read(engine, &source);
+    let filter = super::extract::dead_branch_uuids_for_chain(&files);
     let mut entries: Vec<Value> = Vec::new();
-    for file in &files {
+    for (file, segment_dead) in files.iter().zip(filter.dead.iter()) {
         let content = match std::fs::read_to_string(file) {
             Ok(content) => content,
             // The active file surfaces its real error; an unreadable archive
@@ -730,11 +782,15 @@ fn branch_session_blocking(
             }
             Err(_) => continue,
         };
-        entries.extend(
-            content
-                .lines()
-                .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok()),
-        );
+        entries.extend(content.lines().filter_map(|line| {
+            let value: Value = serde_json::from_str(line.trim()).ok()?;
+            if let Some(uuid) = value.get("uuid").and_then(Value::as_str) {
+                if segment_dead.contains(uuid) {
+                    return None;
+                }
+            }
+            Some(value)
+        }));
     }
 
     let is_transcript_message = |entry: &Value| {
@@ -928,10 +984,15 @@ fn clone_session_blocking(
         .or_else(|| session_files_by_id(engine, session_id).into_iter().next())
         .ok_or_else(|| "没有可克隆的会话".to_string())?;
     // Segmented (compacted) sessions read as their whole root → active chain
-    // — same as the read and branch paths.
+    // — same as the read and branch paths. The clone carries the surviving
+    // chain only (the same per-segment walk the page reader uses), so a
+    // rewound-away branch cannot come back in the new file. The verdicts are
+    // applied per file so a uuid that still lives in another segment can
+    // never be dropped here.
     let files = super::segments::session_files_for_read(engine, &source);
+    let filter = super::extract::dead_branch_uuids_for_chain(&files);
     let mut entries: Vec<Value> = Vec::new();
-    for file in &files {
+    for (file, segment_dead) in files.iter().zip(filter.dead.iter()) {
         let content = match std::fs::read_to_string(file) {
             Ok(content) => content,
             // The active file surfaces its real error; an unreadable archive
@@ -941,11 +1002,15 @@ fn clone_session_blocking(
             }
             Err(_) => continue,
         };
-        entries.extend(
-            content
-                .lines()
-                .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok()),
-        );
+        entries.extend(content.lines().filter_map(|line| {
+            let value: Value = serde_json::from_str(line.trim()).ok()?;
+            if let Some(uuid) = value.get("uuid").and_then(Value::as_str) {
+                if segment_dead.contains(uuid) {
+                    return None;
+                }
+            }
+            Some(value)
+        }));
     }
     let main: Vec<&Value> = entries
         .iter()
@@ -1657,6 +1722,61 @@ mod tests {
     }
 
     #[test]
+    fn branch_skips_a_rewound_tail() {
+        // After a rewind (--resume-session-at) the append-only file keeps the
+        // abandoned branch; branching from the surviving chain must not
+        // resurrect it in the new session.
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let dir = config_dir.join("projects").join("-ws");
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src-9.jsonl");
+        let entry = |role: &str, uuid: &str, parent: Option<&str>, text: &str| {
+            let content = if role == "user" {
+                serde_json::json!(text)
+            } else {
+                serde_json::json!([{"type": "text", "text": text}])
+            };
+            serde_json::json!({
+                "type": role, "uuid": uuid, "parentUuid": parent, "sessionId": "src-9",
+                "message": {"role": role, "content": content},
+                "timestamp": "2026-10-04T00:00:00.000Z"
+            })
+        };
+        let lines = [
+            entry("user", "u1", None, "一"),
+            entry("assistant", "a1", Some("u1"), "答一"),
+            entry("user", "u2", Some("a1"), "被撤回"),
+            entry("assistant", "a2", Some("u2"), "被撤答"),
+            entry("user", "u3", Some("a1"), "回退后"),
+            entry("assistant", "a3", Some("u3"), "回退答"),
+        ];
+        std::fs::write(
+            &src,
+            lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n") + "\n",
+        )
+        .unwrap();
+        db.0.lock()
+            .execute(
+                "INSERT INTO sessions(engine,session_id,workspace_path,file_path,file_size,file_mtime_ms,title) VALUES('claude','src-9','/ws',?1,1,1,'t')",
+                rusqlite::params![src.to_string_lossy().to_string()],
+            )
+            .unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+
+        let result = branch_session_blocking(&db, "claude", "src-9", "/ws", "a3").unwrap();
+        let text =
+            std::fs::read_to_string(dir.join(format!("{}.jsonl", result.session_id))).unwrap();
+        let ids: Vec<String> = text
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter_map(|e| e.get("uuid").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        assert_eq!(ids, ["u1", "a1", "u3", "a3"]);
+    }
+
+    #[test]
     fn remote_session_path_shape_is_claude_only() {
         // 合法形态:绝对 .jsonl 且落在 claude 会话目录下
         assert!(is_plausible_remote_session_path(
@@ -1742,6 +1862,7 @@ mod tests {
             duration_ms: None,
             images: Vec::new(),
             level: None,
+            archived: false,
         }
     }
 

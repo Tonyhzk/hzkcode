@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
@@ -21,6 +21,7 @@ import {
 
 import { MessageTimeline } from "./MessageTimeline";
 import { ConversationFooter } from "./ConversationFooter";
+import { RewindDialog } from "./RewindDialog";
 import { useComposerActions } from "./use-composer-actions";
 import { filterEngineOptions } from "./engine-options";
 import { ErrorBanner } from "./ErrorBanner";
@@ -35,8 +36,9 @@ import type { EngineInfo, Workspace } from "@/lib/ipc";
 import { EmptyState } from "@/components/base/empty-state";
 import { parseUsage } from "../usage";
 import { rememberContextWindow, resolveContextMax } from "../context-window-memory";
-import { resolveSessionProvider } from "../store/stream";
+import { lastRowIndexByUuid, resolveSessionProvider } from "../store/stream";
 import { useWorkspaceUIHooks, workspaceAllowedEngines } from "../workspace-ui-bridge";
+import { useFilesStore } from "@/features/files/store";
 
 
 const EMPTY_QUEUE: QueuedMessage[] = [];
@@ -60,17 +62,81 @@ const SessionTimeline = memo(function SessionTimeline({
   // The branch icon forks the conversation at one message (the CLI's
   // /branch) and opens the fork in place.
   const branchFromMessage = useChatStore((s) => s.branchFromMessage);
+  // The rewind icon opens the 回退 choice for one message.
+  const setRewindAnchor = useChatStore((s) => s.setRewindAnchor);
+  const rewindWorkspaceFiles = useChatStore((s) => s.rewindWorkspaceFiles);
+  const { t } = useTranslation();
+  const [rewindTarget, setRewindTarget] = useState<{
+    uuid: string;
+    role: "user" | "assistant";
+  } | null>(null);
+  const handleRewindPick = (mode: "conversation" | "files" | "both") => {
+    const target = rewindTarget;
+    setRewindTarget(null);
+    if (!target) return;
+    if (mode === "conversation") {
+      setRewindAnchor(key, target.uuid);
+      return;
+    }
+    void (async () => {
+      // Unsaved editor content would be clobbered by the restore (or would
+      // clobber it back on the next save): refuse instead of guessing.
+      const files = useFilesStore.getState();
+      if (Object.keys(files.dirtyPaths).length > 0) {
+        useChatStore.setState({ actionError: t("chat.rewindDirtyEditors") });
+        return;
+      }
+      await rewindWorkspaceFiles(key, target.uuid);
+      // Refresh only when the restore landed; a failure surfaced through the
+      // store's error banner keeps the tree and the editors as they were.
+      if (useChatStore.getState().actionError) return;
+      const open = useFilesStore.getState().openFiles;
+      void useFilesStore.getState().refreshTree();
+      // Clean editors reload from disk so they show the restored content — a
+      // stale buffer must not overwrite it on the next save.
+      for (const path of open) void useFilesStore.getState().reloadFile(path);
+      if (mode === "both") setRewindAnchor(key, target.uuid);
+    })();
+  };
   if (!session) return null;
+  // Pending rewind (the 回退 action): show the conversation up to and
+  // including the anchor's whole transcript entry — the next send writes the
+  // same truncation into the transcript. One entry can produce several rows
+  // sharing its uuid, so the cut takes the LAST of them; an anchor outside
+  // the loaded window leaves the list untouched.
+  const anchorIndex = session.rewindAnchor
+    ? lastRowIndexByUuid(session.messages, session.rewindAnchor)
+    : -1;
+  const shown =
+    anchorIndex >= 0
+      ? { ...session, messages: session.messages.slice(0, anchorIndex + 1) }
+      : session;
+  const engineEnd = key.indexOf("/");
+  const engine = engineEnd > 0 ? key.slice(0, engineEnd) : "claude";
+  const sessionId =
+    key.startsWith("new:") || engineEnd <= 0 ? null : key.slice(engineEnd + 1);
   return (
-    <MessageTimeline
-      key={key}
-      session={session}
-      streaming={session.streaming}
-      onLoadEarlier={onLoadEarlier}
-      workspacePath={workspacePath}
-      onRetry={() => void resendLastUser(key)}
-      onBranch={(targetUuid) => void branchFromMessage(key, targetUuid)}
-    />
+    <>
+      <MessageTimeline
+        key={key}
+        session={shown}
+        streaming={session.streaming}
+        onLoadEarlier={onLoadEarlier}
+        workspacePath={workspacePath}
+        onRetry={() => void resendLastUser(key)}
+        onBranch={(targetUuid) => void branchFromMessage(key, targetUuid)}
+        onRewind={setRewindTarget}
+      />
+      {rewindTarget && (
+        <RewindDialog
+          engine={engine}
+          sessionId={sessionId}
+          target={rewindTarget}
+          onPick={handleRewindPick}
+          onClose={() => setRewindTarget(null)}
+        />
+      )}
+    </>
   );
 });
 

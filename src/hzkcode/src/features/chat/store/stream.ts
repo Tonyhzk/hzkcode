@@ -37,6 +37,11 @@ export interface SessionState {
   /** Per-session context-window override (the CLI's /maxtokens): pins
    *  HZKCODE_AUTO_COMPACT_WINDOW per send; null 跟随默认. */
   autoCompactWindow?: number | null;
+  /** Pending conversation rewind (the 回退 action): the uuid of the message
+   *  the next send truncates to, inclusive (the CLI's hidden
+   *  `--resume-session-at`). Cleared once a send dispatched with it — after
+   *  that the transcript's own chain is the record. */
+  rewindAnchor?: string | null;
   /** Slash commands the CLI announced for this session (the headless init
    *  message's `slash_commands`); the composer's built-in group reads them. */
   availableCommands?: string[];
@@ -73,6 +78,7 @@ export const EMPTY_SESSION: SessionState = {
   proxyEnabled: null,
   secondBrainEnabled: null,
   autoCompactWindow: null,
+  rewindAnchor: null,
   availableCommands: [],
   usage: null,
   turnUsage: null,
@@ -154,6 +160,31 @@ export type SetFn<T extends BySessionSlice> = (fn: (s: T) => Partial<T>) => void
  * the run settles (done/error) or is interrupted — the map must not grow
  * monotonically over the app's lifetime. */
 export const runRouting = new Map<string, string>();
+
+/** runId -> the rewind anchor that send carried (see setRewindAnchor). The
+ * anchor is consumed once the run truly writes its new chain — a run that
+ * never lands, or that errors before producing anything (a failed resume),
+ * keeps it pending for the retry. */
+export const pendingRewindByRun = new Map<string, string>();
+
+/** Runs whose main loop produced content (delta / thinking / message / …):
+ * proof the CLI got past resume, so the transcript now holds the new chain
+ * and the rewind an error settles has taken effect. Bounded like the other
+ * per-run bookkeeping. */
+export const runsWithContent = new Set<string>();
+
+/** The LAST display row whose transcript entry carries this uuid: one
+ *  transcript message can produce several rows (thinking / text / tool share
+ *  its uuid), and a rewind keeps the whole entry. -1 when absent. */
+export function lastRowIndexByUuid(
+  messages: { uuid?: string | null }[],
+  uuid: string,
+): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].uuid === uuid) return i;
+  }
+  return -1;
+}
 
 export function rememberSettledRun(session: SessionState | undefined, runId: string): string[] {
   return [...(session?.settledRunIds ?? []).filter((id) => id !== runId), runId].slice(-32);

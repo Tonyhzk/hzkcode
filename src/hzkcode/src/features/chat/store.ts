@@ -13,7 +13,7 @@ import { pruneSlashCommands } from "@/components/application/ai-chat/slash-comma
 import { stripAgentBlock } from "./components/agent-block";
 import { listenEngineEvents, listenSessionsChanged } from "@/lib/events";
 import { errorText } from "@/lib/errors";
-import { writeStored } from "@/lib/storage";
+import { readStoredJson, writeStored } from "@/lib/storage";
 import { windowContext } from "@/lib/window-context";
 import { newId } from "@/lib/id";
 import { subscribeTauriEvent } from "@/hooks/use-tauri-event";
@@ -37,8 +37,10 @@ import {
   EMPTY_SESSION,
   applyStreamParts,
   drainPending,
+  lastRowIndexByUuid,
   moveStreamingFlag,
   patchSession,
+  pendingRewindByRun,
   resolveSessionModel,
   resolveSessionEffort,
   resolveSessionProvider,
@@ -150,6 +152,20 @@ function textsAlign(historyText: string, localText: string): boolean {
   return (
     stripAgentBlock(historyText).text.trim() ===
     stripAgentBlock(localText).text.trim()
+  );
+}
+
+/** Pending per-session rewind points (sessionKey → message uuid): see
+ *  setRewindAnchor. Persisted so a restart keeps an unspent rewind — the
+ *  transcript is untouched until the send carrying it runs. */
+const REWIND_ANCHORS_KEY = "hzkcode.rewindAnchors:v1";
+function readRewindAnchors(): Record<string, string> {
+  return (
+    readStoredJson(REWIND_ANCHORS_KEY, (value) =>
+      value && typeof value === "object"
+        ? (value as Record<string, string>)
+        : null,
+    ) ?? {}
   );
 }
 
@@ -453,6 +469,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
         get().bySession[key],
         get().providers[engine],
       ) ?? null;
+    // The rewind point THIS send carries — read from the SHARED persisted map
+    // at send time, never this window's cached copy: another window may have
+    // set, moved, or cancelled the point since this one loaded. No entry =
+    // no rewind. Consumed only when the run settles (see pendingRewindByRun).
+    const rewindForSend = readRewindAnchors()[key] ?? null;
     // The model the next turn runs: the session's explicit pick, else the
     // default of the channel it spawns on — what that channel is configured
     // to serve (transcript history is deliberately not a source; see
@@ -507,6 +528,30 @@ export const useChatStore = create<ChatStore>((set, get) => {
         rememberProviderForRun(key, provider);
       }
     }
+    // A rewinded send continues from the surviving prefix: trim the in-memory
+    // conversation at the anchor (inclusive) before anything appends, so the
+    // streaming reply stays visible and the withdrawn tail cannot resurface
+    // in memory. The display anchor is dropped with it — the list itself now
+    // is the range; the PERSISTED anchor stays until the run settles (a send
+    // that never lands must rewind again on the retry).
+    if (rewindForSend) {
+      set((s) => {
+        const cur = s.bySession[key];
+        if (!cur) return {};
+        const index = lastRowIndexByUuid(cur.messages, rewindForSend);
+        if (index < 0) return {};
+        return {
+          bySession: {
+            ...s.bySession,
+            [key]: {
+              ...cur,
+              messages: cur.messages.slice(0, index + 1),
+              rewindAnchor: null,
+            },
+          },
+        };
+      });
+    }
     // Optimistic user message.
     set((s) => ({
       streamingByKey: setStreamingFlag(s.streamingByKey, key, true),
@@ -541,6 +586,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
     if (agentResolveError) {
       patchSession(set, key, { error: agentResolveError });
     }
+    // Register the rewind anchor under the provisional run id BEFORE the
+    // invocation: a whole turn can settle before the invoke resolves, and
+    // its consume must find the entry. A backend that renames the run
+    // migrates it below.
+    if (rewindForSend) pendingRewindByRun.set(requestedRunId, rewindForSend);
     try {
       const result = await ipc.sendMessage({
         runId: requestedRunId,
@@ -568,6 +618,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
         // Session context-window override (the CLI's /maxtokens): null keeps
         // the app/shell default for this send.
         autoCompactWindow: get().bySession[key]?.autoCompactWindow ?? null,
+        // Pending conversation rewind (the 回退 action): the CLI truncates
+        // the resumed transcript to this message, inclusive, before the run.
+        rewindTo: rewindForSend,
       });
       // Record the identity only after the send landed: a failed spawn or a
       // permission denial keeps the previous value, so the retry still
@@ -577,10 +630,16 @@ export const useChatStore = create<ChatStore>((set, get) => {
         result.sessionId ?? tab.sessionId,
         agentName,
       );
-      // Older backends choose their own id. Retire the provisional route.
+      // Older backends choose their own id. Retire the provisional route —
+      // and carry the pending rewind anchor over to the real id.
       if (result.runId !== requestedRunId) {
         runRouting.delete(requestedRunId);
         untrackRun(requestedRunId);
+        const pendingRewind = pendingRewindByRun.get(requestedRunId);
+        if (pendingRewind) {
+          pendingRewindByRun.delete(requestedRunId);
+          pendingRewindByRun.set(result.runId, pendingRewind);
+        }
       }
       // A whole turn can finish while invoke is still pending. Its session
       // event has then moved the state and done has removed the routing entry.
@@ -803,6 +862,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
               upsertSessionMeta: (meta) => upsertSessionMetaInto(set, meta),
               refreshSessionUsage: (k) => get().refreshSessionUsage(k),
               refreshSessionUuids: (k) => get().refreshSessionUuids(k),
+              refreshRewindable: (k) => get().refreshRewindable(k),
             }),
           ),
         ),
@@ -1092,6 +1152,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
       if (rememberedProvider && !get().bySession[key]?.activeProvider) {
         patchSession(set, key, { activeProvider: rememberedProvider });
       }
+      // A pending rewind survives restarts and other windows (the transcript
+      // is untouched until the send carrying it runs): hydrate the in-memory
+      // copy from the shared map.
+      const pendingRewind = readRewindAnchors()[key];
+      if (pendingRewind && !get().bySession[key]?.rewindAnchor) {
+        patchSession(set, key, { rewindAnchor: pendingRewind });
+      }
       const syncEngine = engine !== get().activeEngine;
       if (syncEngine) writeStored(ENGINE_PREF_KEY, engine);
       set((s) => {
@@ -1126,6 +1193,37 @@ export const useChatStore = create<ChatStore>((set, get) => {
           usage:
             [...page.messages].reverse().find((m) => m.usage)?.usage ?? null,
         });
+        // A pending rewind may point at a message in an earlier page than
+        // the last one sessions open with: load older pages (bounded) until
+        // the anchor is located, so the timeline truncates instead of
+        // falling back to the full tail. Not finding it within the bound
+        // leaves the send-side rewind intact (the CLI truncates regardless).
+        const anchor = readRewindAnchors()[key];
+        if (anchor) {
+          let attempts = 0;
+          while (attempts < 5) {
+            const current = get().bySession[key];
+            if (!current) break;
+            if (current.messages.some((m) => m.uuid === anchor)) break;
+            if (current.nextBefore === null) break;
+            attempts++;
+            const older = await loadHistoryPage(
+              engine,
+              sessionId,
+              workspacePath,
+              100,
+              current.nextBefore,
+            );
+            // Merge against the LATEST state: messages appended while the
+            // page was in flight (a send, streaming rows) must survive.
+            const latest = get().bySession[key];
+            if (!latest) break;
+            patchSession(set, key, {
+              messages: [...older.messages, ...latest.messages],
+              nextBefore: older.nextBefore,
+            });
+          }
+        }
       } catch (error) {
         patchSession(set, key, { loading: false, error: String(error) });
       }
@@ -1636,8 +1734,17 @@ export const useChatStore = create<ChatStore>((set, get) => {
     resendLastUser: async (key) => {
       const s = get();
       if (s.streamingByKey[key]) return; // a turn is already running
-      const messages = s.bySession[key]?.messages ?? [];
-      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      const state = s.bySession[key];
+      const messages = state?.messages ?? [];
+      // A pending rewind narrows "the last prompt" to the surviving range:
+      // retry must not resurrect a withdrawn prompt.
+      const anchor = state?.rewindAnchor ?? null;
+      const anchorIndex = anchor
+        ? lastRowIndexByUuid(messages, anchor)
+        : -1;
+      const scope =
+        anchorIndex >= 0 ? messages.slice(0, anchorIndex + 1) : messages;
+      const lastUser = [...scope].reverse().find((m) => m.role === "user");
       if (!lastUser) return;
       const tab =
         s.openTabs.find(
@@ -1661,6 +1768,47 @@ export const useChatStore = create<ChatStore>((set, get) => {
      *  token count pinned on every send; null 跟随默认。 */
     setSessionAutoCompactWindow: (key, value) => {
       patchSession(set, key, { autoCompactWindow: value });
+    },
+    /** Set (or clear) a session's pending rewind point: the next send passes
+     *  it as the CLI's `--resume-session-at` (truncate to that message,
+     *  inclusive). Persisted — the transcript stays untouched until that
+     *  send, so a restart keeps the pending point. */
+    setRewindAnchor: (key, uuid) => {
+      patchSession(set, key, { rewindAnchor: uuid });
+      const anchors = readRewindAnchors();
+      if (uuid) anchors[key] = uuid;
+      else delete anchors[key];
+      writeStored(REWIND_ANCHORS_KEY, JSON.stringify(anchors));
+    },
+    consumeRewindAnchor: (key, anchor) => {
+      // The effective point may live only in the persisted map (another
+      // window set it; this window never hydrated it).
+      const current =
+        get().bySession[key]?.rewindAnchor ?? readRewindAnchors()[key] ?? null;
+      if (current !== anchor) return;
+      patchSession(set, key, { rewindAnchor: null });
+      const anchors = readRewindAnchors();
+      delete anchors[key];
+      writeStored(REWIND_ANCHORS_KEY, JSON.stringify(anchors));
+    },
+    rewindWorkspaceFiles: async (key, messageId) => {
+      const s = get();
+      const tab =
+        s.openTabs.find(
+          (t) => sessionKey(t.engine, t.sessionId, t.workspacePath) === key,
+        ) ?? s.active;
+      if (!tab?.sessionId) return;
+      try {
+        await ipc.rewindFiles(
+          tab.engine,
+          tab.sessionId,
+          tab.workspacePath,
+          messageId,
+        );
+        set({ actionError: null });
+      } catch (error) {
+        set({ actionError: errorText(error) });
+      }
     },
 
     /** Fork the conversation at one message (the CLI's /branch): the host
@@ -2077,6 +2225,63 @@ export const useChatStore = create<ChatStore>((set, get) => {
      *  Only user rows are backfilled (replies take theirs from the engine's
      *  message_uuid event); matches apply by seq with a text check so a
      *  stale read can never stamp a session that has changed underneath. */
+    /** Re-read which uuids the CLI can still resume at and realign the rows'
+     *  rewind entries: a mid-turn compaction archives the history the client
+     *  already holds, while the preserved slice stays resumable. Rows without
+     *  a uuid, and a read that cannot be confirmed, are left alone. The
+     *  update covers only what existed when the read started — a newer turn
+     *  (or a newer anchor) that lands meanwhile is never judged by it. */
+    refreshRewindable: async (key?: string) => {
+      const { active, openTabs } = get();
+      const targetKey =
+        key ??
+        (active
+          ? sessionKey(active.engine, active.sessionId, active.workspacePath)
+          : "");
+      if (!targetKey) return;
+      const targetTab = openTabs.find(
+        (t) => sessionKey(t.engine, t.sessionId, t.workspacePath) === targetKey,
+      );
+      if (!targetTab?.sessionId) return;
+      const before = get().bySession[targetKey];
+      if (!before) return;
+      const covered = new Set(
+        before.messages
+          .map((m) => m.uuid)
+          .filter((uuid): uuid is string => Boolean(uuid)),
+      );
+      const uuids = await ipc.sessionRewindableUuids(
+        targetTab.engine,
+        targetTab.sessionId,
+      );
+      if (!uuids) return;
+      const allowed = new Set(uuids);
+      set((s) => {
+        const cur = s.bySession[targetKey];
+        if (!cur) return {};
+        return {
+          bySession: {
+            ...s.bySession,
+            [targetKey]: {
+              ...cur,
+              messages: cur.messages.map((m) => {
+                if (!m.uuid || !covered.has(m.uuid)) return m;
+                const archived = !allowed.has(m.uuid);
+                return m.archived === archived ? m : { ...m, archived };
+              }),
+            },
+          },
+        };
+      });
+      const anchor =
+        get().bySession[targetKey]?.rewindAnchor ??
+        readRewindAnchors()[targetKey] ??
+        null;
+      if (anchor && covered.has(anchor) && !allowed.has(anchor)) {
+        get().consumeRewindAnchor(targetKey, anchor);
+      }
+    },
+
     refreshSessionUuids: async (key?: string) => {
       const { active, openTabs } = get();
       const targetKey =

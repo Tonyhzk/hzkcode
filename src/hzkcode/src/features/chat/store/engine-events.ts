@@ -10,10 +10,12 @@ import {
   migratePendingStream,
   moveStreamingFlag,
   patchSession,
+  pendingRewindByRun,
   resolveSessionEffort,
   rememberSettledRun,
   routeRun,
   runRouting,
+  runsWithContent,
   scheduleDeltaFlush,
   setStreamingFlag,
   settleLiveRows,
@@ -49,6 +51,9 @@ export interface EngineEventDeps {
   /** Re-fetch the latest token usage from session history for the given session key. */
   refreshSessionUsage?: (key: string) => Promise<void>;
   refreshSessionUuids?: (key: string) => Promise<void>;
+  /** Re-read which uuids the CLI can still resume at (after a compaction)
+   *  and update the rows' rewind entries accordingly. */
+  refreshRewindable?: (key: string) => Promise<void>;
 }
 
 /** Collapse whitespace and cap a prompt for use as a session title. */
@@ -170,6 +175,11 @@ function onModel(
  *  store read path on purpose: the delta handlers test this set (O(1)) rather
  *  than reading `bySession` for every streamed token. */
 const retryingKeys = new Set<string>();
+
+/** Sessions whose turn compacted: their rows were just archived wholesale,
+ *  and the true resumable set is re-read once the turn settles (the CLI
+ *  rotates the segment mid-turn). Exported for tests to reset. */
+export const compactedKeys = new Set<string>();
 
 function onDelta(
   event: EngineEventPayload,
@@ -621,11 +631,68 @@ function writeUsageRow(
     .catch(() => {});
 }
 
+/** A settled run consumes the rewind anchor its send carried once the
+ *  transcript holds the new chain, so the pending rewind is spent. A run the
+ *  CLI failed before it produced anything (a failed resume or startup) wrote
+ *  no new chain: both the pending entry and the persisted anchor survive, so
+ *  the retry still sends `--resume-session-at`. A newer anchor set meanwhile
+ *  survives too (value compared). */
+function consumePendingRewind(
+  event: EngineEventPayload,
+  key: string,
+  deps: EngineEventDeps,
+) {
+  const anchor = pendingRewindByRun.get(event.runId);
+  if (!anchor) return;
+  // The run is over either way: its provisional registration never lingers.
+  pendingRewindByRun.delete(event.runId);
+  if (event.kind === "error" && !runsWithContent.has(event.runId)) {
+    // The CLI failed before producing anything (a failed resume or startup)
+    // and wrote no new chain: the persisted anchor stays for the retry,
+    // which will rewind again.
+    return;
+  }
+  deps.get().consumeRewindAnchor(key, anchor);
+}
+
+/** The session compacted mid-turn: every row already in memory belongs to
+ *  the archived side of the new boundary — the CLI can only resume at the
+ *  active chain. Withdraw the rewind entries now (a settled turn re-reads
+ *  the true set and restores the preserved slice), and drop an unsent
+ *  pending anchor pointing into that history. */
+function onCompacted(key: string, deps: EngineEventDeps) {
+  compactedKeys.add(key);
+  const state = deps.get();
+  const anchor = state.bySession[key]?.rewindAnchor ?? null;
+  const inFlight = anchor != null && [...pendingRewindByRun.values()].includes(anchor);
+  if (anchor && !inFlight) {
+    // A run already carrying this anchor decided at send time; a merely
+    // staged one points at history the CLI can no longer find.
+    state.consumeRewindAnchor(key, anchor);
+  }
+  deps.set((s) => {
+    const cur = s.bySession[key];
+    if (!cur) return {};
+    return {
+      bySession: {
+        ...s.bySession,
+        [key]: {
+          ...cur,
+          messages: cur.messages.map((m) =>
+            m.archived ? m : { ...m, archived: true },
+          ),
+        },
+      },
+    };
+  });
+}
+
 function onError(
   event: EngineEventPayload,
   key: string,
   deps: EngineEventDeps,
 ) {
+  consumePendingRewind(event, key, deps);
   retryingKeys.delete(key);
   if (deps.get().bySession[key]?.retry) patchSession(deps.set, key, { retry: null });
   // Fold unflushed chunks into rows and settle them: the turn stops here,
@@ -684,7 +751,14 @@ function onError(
   void deps.refreshSessionUsage?.(key).catch(() => {});
   // A failed turn still owns its prompt in the transcript: backfill the uuid
   // so the row can branch without waiting for a session reload.
-  void deps.refreshSessionUuids?.(key).catch(() => {});
+  const backfill = deps.refreshSessionUuids?.(key)?.catch(() => {});
+  if (compactedKeys.delete(key)) {
+    // Chain the resumable-set re-read behind the backfill: a kept prompt
+    // that had no uuid yet would otherwise stay withdrawn forever.
+    const refetch = () => deps.refreshRewindable?.(key)?.catch(() => {});
+    if (backfill) void backfill.then(refetch);
+    else refetch();
+  }
   // An error settles the turn exactly like done does — the messages typed
   // behind it are the user's next step, and parking them here left the queue
   // stuck until it was sent or cleared by hand. A stop is still the user's
@@ -1161,6 +1235,7 @@ function clearRetry(key: string, deps: EngineEventDeps) {
 }
 
 function onDone(event: EngineEventPayload, key: string, deps: EngineEventDeps) {
+  consumePendingRewind(event, key, deps);
   retryingKeys.delete(key);
   if (deps.get().bySession[key]?.retry) patchSession(deps.set, key, { retry: null });
   const prev = deps.get().bySession[key] ?? EMPTY_SESSION;
@@ -1262,8 +1337,20 @@ function onDone(event: EngineEventPayload, key: string, deps: EngineEventDeps) {
   // The prompt lands in the transcript as soon as the engine writes it — a
   // stop or a failed turn does not erase it, and the branch affordance must
   // not depend on a successful reply. Backfill its uuid either way.
+  // The compaction flag is taken synchronously: a next turn may compact
+  // while this callback still waits, and its own flag must survive.
+  const compactedThisTurn = compactedKeys.delete(key);
   setTimeout(() => {
-    deps.refreshSessionUuids?.(key)?.catch(() => {});
+    const backfill = deps.refreshSessionUuids?.(key)?.catch(() => {});
+    // A compaction during this turn archived the rows outright; re-read the
+    // resumable set once the engine settled (the CLI rotated the segment
+    // mid-turn). The backfill runs first: a kept prompt that had no uuid yet
+    // would otherwise stay withdrawn forever.
+    if (compactedThisTurn) {
+      const refetch = () => deps.refreshRewindable?.(key)?.catch(() => {});
+      if (backfill) void backfill.then(refetch);
+      else refetch();
+    }
   }, 400);
 }
 
@@ -1316,6 +1403,7 @@ function adoptObservedRun(
 // tests would otherwise leak the previous test's terminal state.
 export const settledRuns = new Map<string, "done" | "error">();
 const MAX_SETTLED_RUNS = 256;
+const MAX_CONTENT_RUNS = 256;
 
 /** Resolve an event's session key (run routing, then session-id match) and
  * dispatch to the per-kind handler. */
@@ -1339,6 +1427,19 @@ export function handleEngineEvents(
       )
     )
       continue;
+    // Any content event proves the run's main loop started, which means the
+    // CLI got past resume: the rewind settlement uses this to tell a run
+    // that wrote its new chain from one that failed before doing so.
+    if (
+      event.kind === "delta" ||
+      event.kind === "thinking" ||
+      event.kind === "message" ||
+      event.kind === "message_uuid" ||
+      event.kind === "usage"
+    ) {
+      if (runsWithContent.size > MAX_CONTENT_RUNS) runsWithContent.clear();
+      runsWithContent.add(event.runId);
+    }
     const state = deps.get();
     let key = runRouting.get(event.runId) ?? Object.keys(state.bySession).find(
       (candidate) => state.bySession[candidate]?.settledRunIds?.includes(event.runId),
@@ -1417,6 +1518,9 @@ export function handleEngineEvents(
         break;
       case "notice":
         onNotice(event, key, deps);
+        break;
+      case "compacted":
+        onCompacted(key, deps);
         break;
       case "retry":
         onRetry(event, key, deps);
