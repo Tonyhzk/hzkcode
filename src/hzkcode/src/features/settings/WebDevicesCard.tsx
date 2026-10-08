@@ -126,7 +126,12 @@ export function WebDevicesCard() {
                       // post-composition Enter may commit the rename.
                       if (event.nativeEvent.isComposing) return;
                       if (event.key === "Enter") saveRename(device.id);
-                      if (event.key === "Escape") setRenaming(null);
+                      if (event.key === "Escape") {
+                        // Marked consumed so the global Esc=interrupt runtime
+                        // yields to the rename cancel (see shortcuts/runtime).
+                        event.preventDefault();
+                        setRenaming(null);
+                      }
                     }}
                     onBlur={() => {
                       // Enter already saved and cleared `renaming`; a second

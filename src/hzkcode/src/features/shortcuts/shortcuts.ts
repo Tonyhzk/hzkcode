@@ -353,7 +353,3 @@ export function isMacPlatform(): boolean {
   }
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 }
-
-export function getDefaultInterruptShortcut(): string {
-  return isMacPlatform() ? "ctrl+c" : "ctrl+shift+c";
-}

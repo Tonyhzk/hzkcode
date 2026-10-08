@@ -103,7 +103,12 @@ export function InfoTip({
       setPinned(false);
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPinned(false);
+      if (e.key === "Escape") {
+        // Marked consumed so the global Esc=interrupt runtime yields to the
+        // unpin (see shortcuts/runtime).
+        e.preventDefault();
+        setPinned(false);
+      }
     };
     // Unpin on scroll too: react-aria closes hover-driven tooltips when a
     // parent scrolls, and a pinned one would otherwise float detached.

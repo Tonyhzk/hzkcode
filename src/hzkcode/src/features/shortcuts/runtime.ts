@@ -5,6 +5,7 @@ import { registerKeydownHandler } from "./dispatcher";
 import {
   isEditableShortcutTarget,
   matchesShortcutForPlatform,
+  parseShortcut,
 } from "./shortcuts";
 import { useShortcutsStore } from "./store";
 
@@ -39,6 +40,26 @@ export function registerShortcutHandler(
 
 let started = false;
 
+/** 带主修饰键（cmd/ctrl/alt）的绑定在编辑区让位：这类组合多与系统或
+ *  编辑操作重合（如自定义为 ⌃C 时的复制），裸键（如默认的 Esc）不受限。 */
+function hasPrimaryModifier(value: string): boolean {
+  const parsed = parseShortcut(value);
+  return Boolean(parsed && (parsed.meta || parsed.ctrl || parsed.alt));
+}
+
+/** 有效键位是恰好一个裸 Esc（无任何修饰键）。 */
+function isBareEscape(value: string): boolean {
+  const parsed = parseShortcut(value);
+  return Boolean(
+    parsed &&
+      parsed.key === "escape" &&
+      !parsed.meta &&
+      !parsed.ctrl &&
+      !parsed.alt &&
+      !parsed.shift,
+  );
+}
+
 export function startShortcutRuntime(): () => void {
   if (started) return () => {};
   started = true;
@@ -61,6 +82,7 @@ export function startShortcutRuntime(): () => void {
       if (event.repeat && !action.allowRepeat) continue;
       if (
         action.editableGuard &&
+        hasPrimaryModifier(value) &&
         (isEditableShortcutTarget(event.target) ||
           isEditableShortcutTarget(document.activeElement))
       ) {
@@ -72,12 +94,28 @@ export function startShortcutRuntime(): () => void {
         ? commandRegistry.get(action.commandId)
         : undefined;
       if (!local && !command) continue;
-      event.preventDefault();
-      if (local) {
-        for (const handler of Array.from(local)) handler();
-      } else {
-        command?.run();
+      const run = () => {
+        if (local) {
+          for (const handler of Array.from(local)) handler();
+        } else {
+          command?.run();
+        }
+      };
+      // 裸 Esc 同时是全局「关闭/取消」键：命令面板、文件搜索、运行状态
+      // 面板等都挂在 window 上且晚于本 dispatcher 注册，同一轮 keydown
+      // 里本 handler 先跑、看不到它们稍后的 preventDefault。把触发推迟
+      // 到下一任务轮（微任务可能在两个监听器之间就被执行）再确认，
+      // 只有无人消费时才执行（如中断对话）。
+      if (isBareEscape(value)) {
+        // 输入法候选窗未上屏时 Esc 属于 IME，不触发
+        if (event.isComposing || event.keyCode === 229) return;
+        setTimeout(() => {
+          if (!event.defaultPrevented) run();
+        }, 0);
+        return;
       }
+      event.preventDefault();
+      run();
       return;
     }
   });

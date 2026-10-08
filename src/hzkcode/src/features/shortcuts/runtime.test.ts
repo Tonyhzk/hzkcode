@@ -58,8 +58,8 @@ describe("resolveShortcut", () => {
     ).toBe("cmd+alt+n");
   });
 
-  it("resolves the platform interrupt default", () => {
-    expect(defaultShortcutFor(action("interrupt"))).toMatch(/^ctrl\+(shift\+)?c$/);
+  it("resolves the interrupt default to Esc", () => {
+    expect(defaultShortcutFor(action("interrupt"))).toBe("esc");
   });
 });
 
@@ -110,8 +110,9 @@ describe("shortcut runtime dispatch", () => {
     stop();
   });
 
-  it("does not steal the interrupt shortcut from editable targets", () => {
+  it("keeps a custom modifier interrupt key out of editable targets", () => {
     const stop = startShortcutRuntime();
+    useShortcutsStore.setState({ values: { interruptShortcut: "ctrl+c" } });
     const spy = vi.fn();
     const unregister = registerShortcutHandler("interrupt", spy);
     const input = document.createElement("input");
@@ -121,6 +122,81 @@ describe("shortcut runtime dispatch", () => {
     pressKey("c", { ctrl: true });
     expect(spy).toHaveBeenCalledTimes(1);
     input.remove();
+    unregister();
+    stop();
+  });
+
+  it("fires interrupt on the default Esc even inside the composer", async () => {
+    const stop = startShortcutRuntime();
+    const spy = vi.fn();
+    const unregister = registerShortcutHandler("interrupt", spy);
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    pressKey("Escape", {}, input);
+    await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    input.remove();
+    unregister();
+    stop();
+  });
+
+  it("yields the default Esc to another consumer that prevents default", async () => {
+    const stop = startShortcutRuntime();
+    const spy = vi.fn();
+    const unregister = registerShortcutHandler("interrupt", spy);
+    // 模拟命令面板等晚注册的 window 监听：消费 Esc 时 preventDefault
+    const consumer = (event: KeyboardEvent) => {
+      if (event.key === "Escape") event.preventDefault();
+    };
+    window.addEventListener("keydown", consumer);
+    pressKey("Escape");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(spy).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", consumer);
+    unregister();
+    stop();
+  });
+
+  it("yields the default Esc to a capture-phase consumer (context menu)", async () => {
+    const stop = startShortcutRuntime();
+    const spy = vi.fn();
+    const unregister = registerShortcutHandler("interrupt", spy);
+    // 模拟右键菜单：window 捕获阶段消费 Esc（stopPropagation + preventDefault），
+    // 事件的 target 在页面内部而不是 window 本身。
+    const consumer = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("keydown", consumer, true);
+    pressKey("Escape", {}, document.body);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(spy).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", consumer, true);
+    unregister();
+    stop();
+  });
+
+  it("ignores Esc while an IME composition is active", async () => {
+    const stop = startShortcutRuntime();
+    const spy = vi.fn();
+    const unregister = registerShortcutHandler("interrupt", spy);
+    // 输入法候选窗开着（isComposing）或已按 IME 老协议上报 keyCode 229 时，
+    // Esc 属于 IME 的取消键，不能当作中断。
+    for (const mark of [
+      (event: KeyboardEvent) => Object.defineProperty(event, "isComposing", { value: true }),
+      (event: KeyboardEvent) => Object.defineProperty(event, "keyCode", { value: 229 }),
+    ]) {
+      const event = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      });
+      mark(event);
+      window.dispatchEvent(event);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(spy).not.toHaveBeenCalled();
+    }
     unregister();
     stop();
   });

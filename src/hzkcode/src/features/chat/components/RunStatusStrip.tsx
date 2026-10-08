@@ -649,11 +649,15 @@ export const RunStatusStrip = memo(function RunStatusStrip({
   };
   if (section && sectionData[section] === 0) setSection(null);
 
-  // Esc collapses the open panel.
+  // Esc collapses the open panel. preventDefault marks the key as consumed
+  // so the global Esc=interrupt runtime yields to it (see shortcuts/runtime).
   useEffect(() => {
     if (!section) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSection(null);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSection(null);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

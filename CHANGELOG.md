@@ -1,5 +1,9 @@
 # 更新日志
 
+## [Unreleased]
+
+- 中断快捷键默认改为 **Esc**（对齐终端版）：对话运行中按 Esc 停止，输入框内也可触发；默认的 ⌃C 移除（设置 → 快捷键中仍可自定义，带修饰键的自定义组合在输入框内让位、保护复制）。Esc 同时是界面「关闭」键——命令面板 / 文件搜索 / 运行状态面板 / 固定提示框 / 右键菜单 / 图片预览 / 弹窗等打开时会先消费它（keydown 上标 `preventDefault` 或 `stopPropagation`），中断触发推迟到该轮派发结束后二次确认（`setTimeout(0)`，等晚注册的 window 监听跑完），不会误停对话；IME 候选窗开着时按 Esc（取消候选）不触发中断；快捷键触发的中断只在会话运行中生效，空闲时不再产生 `interrupted` 标记与用量刷新等副作用（停止按钮路径不变）；编辑区让位语义收窄为「仅带 cmd/ctrl/alt 的键位」，删除已无引用的 `getDefaultInterruptShortcut`
+
 ## [3.1.3-1] - 2026-10-08
 
 - 内置 CLI 升级到 3.1.3（发布 commit `05f89313`、tag `v3.1.3`；关键修复位于 `40655f12`（跨会话来源防护）/ `4b37703a`（档位别名 primary 过滤）/ `33c08bc5`（grok 别名过滤））：二进制槽位替换为 `0_Release/3.1.3/hzkcode-3.1.3-macos-arm64`（sha256 `00271dd5…6eb9`，`--version` 自报 `3.1.3`；升级前的 3.1.0 与联调临时构建 `3.1.2-dev-1` 两代槽位二进制分别备份到 `.delete/20261008133849/` 与 `.delete/20261008152218/`，均保持项目相对路径）；应用版本号按 CLI 定案同步为 `3.1.3-1`（外层 `VERSION` / `package.json` / `Cargo.toml` / `Cargo.lock` / `tauri.conf.json` 一致，应用内版本记录同条目）；源码快照 `0_Reference/hzk-code-agent-3.1.3-05f89313`

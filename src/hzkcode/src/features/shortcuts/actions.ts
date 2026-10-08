@@ -43,7 +43,8 @@ export interface ShortcutAction {
   defaultOther?: string | null;
   /** 无组件 handler 时 dispatcher 运行的 commandRegistry 命令 id */
   commandId?: string;
-  /** 焦点在编辑区时不触发（如 interrupt 默认 ctrl+c 与复制冲突） */
+  /** 焦点在编辑区时让位，仅对带 cmd/ctrl/alt 的键位生效（如 interrupt
+   *  自定义为 ⌃C 时保护复制）；裸键（如默认的 Esc）不受限。 */
   editableGuard?: boolean;
   /** 允许按住重复触发（缩放类） */
   allowRepeat?: boolean;
@@ -63,8 +64,7 @@ export const shortcutActions: ShortcutAction[] = [
     setting: "interruptShortcut",
     category: "sessions",
     labelKey: "shortcuts.actions.interrupt",
-    defaultMac: "ctrl+c",
-    defaultOther: "ctrl+shift+c",
+    defaultMac: "esc",
     editableGuard: true,
   },
   // 应用

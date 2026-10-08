@@ -17,10 +17,10 @@ export function ImageLightbox({
 
   // A modal <dialog> renders in the top layer, so no portal is needed to
   // escape the timeline's transformed virtual rows (a transformed ancestor
-  // traps position: fixed). Escape closes natively (close event); the
-  // mousedown listener keeps the press-anywhere-to-close behavior, including
-  // presses on the image itself. The ref holds the latest handler so the
-  // listener subscribes once instead of per render.
+  // traps position: fixed). The mousedown listener keeps the
+  // press-anywhere-to-close behavior, including presses on the image itself.
+  // The ref holds the latest handler so the listener subscribes once instead
+  // of per render.
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -30,11 +30,22 @@ export function ImageLightbox({
     if (!dialog) return;
     if (!dialog.open) dialog.showModal();
     const close = () => onCloseRef.current();
+    // Escape closes the lightbox: preventDefault marks the key as consumed
+    // (the global Esc=interrupt runtime yields on it — the native dialog
+    // close alone carries no such mark, see shortcuts/runtime), and the
+    // explicit close() keeps the close-on-Escape behavior.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      dialog.close();
+    };
     dialog.addEventListener("mousedown", close);
     dialog.addEventListener("close", close);
+    dialog.addEventListener("keydown", onKeyDown);
     return () => {
       dialog.removeEventListener("mousedown", close);
       dialog.removeEventListener("close", close);
+      dialog.removeEventListener("keydown", onKeyDown);
     };
   }, []);
 

@@ -65,10 +65,18 @@ describe("InfoTip", () => {
     await act(async () => button.click());
     expect(tipVisible()).toBe(true);
 
+    let event!: KeyboardEvent;
     await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      event = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
     });
     expect(tipVisible()).toBe(false);
+    // Consumed mark: the global Esc=interrupt runtime yields on defaultPrevented.
+    expect(event.defaultPrevented).toBe(true);
   });
   it("scroll unpins the tip", async () => {
     const button = await render();

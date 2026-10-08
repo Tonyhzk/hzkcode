@@ -82,8 +82,8 @@ pub struct AppSettings {
     /// None = unbound. Defaults mirror src/features/shortcuts/actions.ts.
     #[serde(default = "default_new_session_shortcut")]
     pub new_session_shortcut: Option<String>,
-    /// None = platform default (mac ctrl+c, win ctrl+shift+c), resolved
-    /// frontend-side via getDefaultInterruptShortcut().
+    /// None = platform default (Esc), resolved frontend-side (see
+    /// src/features/shortcuts/actions.ts).
     #[serde(default)]
     pub interrupt_shortcut: Option<String>,
     #[serde(default = "default_command_palette_shortcut")]

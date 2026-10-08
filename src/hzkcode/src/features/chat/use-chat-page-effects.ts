@@ -5,6 +5,7 @@ import { keywords } from "@/features/commands/builtins";
 import { registerShortcutHandler } from "@/features/shortcuts/runtime";
 import { ipc } from "@/lib/ipc";
 import { useChatStore } from "./store";
+import { sessionKey } from "./store/persistence";
 
 /** Mount-time store init, the focus-driven session rescan, and git status
  * tracking the active workspace. */
@@ -36,8 +37,19 @@ export function useChatPageLifecycle(
   }, [activeWorkspacePath, gitRefresh]);
 }
 
+/** 快捷键触发的中断：只在当前会话正在运行时才真正停止——空闲时按下
+ *  不产生 interrupted 标记与用量刷新等副作用（停止按钮的点击路径
+ *  仍直接调用 store.interrupt，两者语义分开）。 */
+export function interruptActiveRun(): void {
+  const { active, bySession } = useChatStore.getState();
+  if (!active) return;
+  const key = sessionKey(active.engine, active.sessionId, active.workspacePath);
+  if (!bySession[key]?.streaming) return;
+  void useChatStore.getState().interrupt();
+}
+
 /** Terminal toggle + new-session + interrupt keys live in the shortcut
- * runtime (defaults ⌘J / ⌘N / ⌃C, configurable in Settings → Shortcuts). */
+ * runtime (defaults ⌘J / ⌘N / Esc, configurable in Settings → Shortcuts). */
 export function useChatShortcutHandlers(
   activeWorkspacePath: string | undefined,
   toggleTerminal: (workspacePath: string) => void,
@@ -55,10 +67,7 @@ export function useChatShortcutHandlers(
     [handleNewSession],
   );
   useEffect(
-    () =>
-      registerShortcutHandler("interrupt", () => {
-        void useChatStore.getState().interrupt();
-      }),
+    () => registerShortcutHandler("interrupt", interruptActiveRun),
     [],
   );
 }

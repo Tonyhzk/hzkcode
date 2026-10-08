@@ -250,7 +250,7 @@ export interface AppSettings {
   composerSendShortcut: string;
   /** Keyboard shortcuts (快捷键), format "cmd+ctrl+alt+shift+key" lowercase;
    *  null = unbound. Defaults live in src/features/shortcuts/actions.ts;
-   *  interruptShortcut null = platform default (mac ctrl+c, win ctrl+shift+c). */
+   *  interruptShortcut null = platform default (Esc). */
   newSessionShortcut?: string | null;
   interruptShortcut?: string | null;
   commandPaletteShortcut?: string | null;

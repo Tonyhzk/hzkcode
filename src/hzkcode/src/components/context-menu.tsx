@@ -59,6 +59,9 @@ export function ContextMenu({
     const close = () => onCloseRef.current();
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // Consumed mark — the global Esc=interrupt runtime yields on
+        // defaultPrevented (see shortcuts/runtime).
+        e.preventDefault();
         e.stopPropagation();
         close();
       }
