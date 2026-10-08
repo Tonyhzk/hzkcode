@@ -22,7 +22,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
     date: "2026-10-08",
     content: {
       zh: `🔄 引擎更新
-- 内置引擎升级到 3.1.2（随应用一起更新，无需单独安装）
+- 内置引擎升级到 3.1.3（随应用一起更新，无需单独安装）
 
 ✨ 新功能
 - **编辑已发送的消息**：把鼠标移到你发过的某条提问上，点铅笔图标即可修改文本；修改直接保存到对话记录、不会重新生成回复，压缩之前的老消息也可以编辑
@@ -30,7 +30,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 🔧 行为说明
 - 渠道配置的「1M 上下文」开关升级为「上下文窗口」数值字段：原来开启过 1M 的渠道，打开编辑时会自动填入 1000000，长上下文能力不受升级影响`,
       en: `🔄 Engine update
-- Bundled engine upgraded to 3.1.2 (updates ship with the app)
+- Bundled engine upgraded to 3.1.3 (updates ship with the app)
 
 ✨ Features
 - **Edit sent messages**: hover one of your prompts and click the pencil icon to revise its text; the edit is saved into the transcript in place (no reply is regenerated), and pre-compaction messages can be edited too
