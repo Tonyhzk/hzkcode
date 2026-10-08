@@ -36,8 +36,8 @@
 ## 内置 CLI 与数据互通
 
 - 应用内置 CLI 二进制：源码槽位 `src/hzkcode/src-tauri/binaries/`，打包后位于 `HZK CODE.app/Contents/Resources/binaries/`（Windows 为安装目录下的 `binaries\`）；文件名 `hzkcode`（Windows `hzkcode.exe`），也可放上游构建产物 `claude`，两者都在时优先 `hzkcode`。
-- 当前内置 CLI 版本：**3.1.0**（槽位二进制 `--version` 自报）；替换槽位二进制时必须同步更新本行。
-- 3.1.0 源码快照：外层 `0_Reference/hzk-code-agent-3.1.0-39d129e4`（fork 仓库 tag `v3.1.0`、commit `39d129e4`，不进 Git）；替换二进制前的接口检查可对照该快照。
+- 当前内置 CLI 版本：**3.1.2**（槽位二进制 `--version` 自报 `3.1.2-dev-1`，为联调构建；替换槽位二进制时必须同步更新本行）。
+- 3.1.2 源码：fork 仓库 commit `33c08bc5`（含跨会话来源防护、档位别名 primary 过滤、grok 别名过滤三项修复；快照目录待补到 `0_Reference/`）；3.1.0 源码快照 `0_Reference/hzk-code-agent-3.1.0-39d129e4`（fork 仓库 tag `v3.1.0`、commit `39d129e4`，不进 Git）保留作历史参考。
 - 对齐与核对基准：GUI 与内置 CLI 的功能盘点、差距核对、规划与开发一律以上述快照（当前内置版本的源码）和内置二进制实测为准；其他版本或其他仓库的代码不作为依据。
 - 会话启动参数：推理强度档位以 `--effort` 直传（不再用 `HZKCODE_MAX_THINKING_TOKENS` 伪造预算）；选中的身份以 `--agents` 定义 JSON + `--agent`（主线程名）下发——定义含 description/prompt（必填非空；空提示词的旧数据发送时以最小提示词兜底，避免配置被静默丢弃）与可选 tools/model/effort/context（context 未限定时显式声明全量三件套，保持「角色预设叠加完整上下文」的既有行为）——并叠加运行期参数：`--tools`（工具白名单；未配置不传、空列表传 `--tools ""` 禁用全部）与身份优先于会话选择的 `--model`/`--effort`；恢复会话时 CLI 仅在定义可用时还原（GUI 每次发送都会重新下发定义）；GUI 侧已移除「智能体文本块内联」（`components/agent-block.ts` 仅保留旧历史的剥离显示）。派生会话进程时把 `HZKCODE_DEV_CALLER_CWD` 钉在会话工作区（CLI 用它决定会话落盘的工程目录，继承启动目录会把会话存错位置、扫描不到也删不掉）。
 - 身份编辑器（`AgentEditorDialog` + `features/agents/tool-catalog.ts`）：智能体可配置提示词（必填）/ 工具白名单（勾选列表，工具名必须与内置 CLI 完全一致——白名单下未列出或被自动 deny 的内置工具都会失效，CLI 升级时核对 `getAllBaseTools`）/ 模型（跟随会话或 high/mid/low 档位别名，旧拼写打开编辑时归一）/ 上下文组件开关 / 思考档。`agent_update` 为整体提交语义（每个字段覆盖存储值、缺省清空）。
