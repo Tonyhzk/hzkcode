@@ -27,6 +27,7 @@ describe("claude channel template", () => {
   it("channel controls edit the CLI's own variables", () => {
     expect(CLAUDE_ENV_FIELD_KEYS).toEqual([
       "HZKCODE_API_MODE",
+      "HZKCODE_MAX_CONTEXT_TOKENS",
       "HZKCODE_AUTO_COMPACT_WINDOW",
       "HZKCODE_MODEL",
       "HZKCODE_DEFAULT_HIGH_MODEL",

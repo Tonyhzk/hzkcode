@@ -7,6 +7,12 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 
+// Routing/auth keys a channel must own: they are blanked first so native
+// settings.json cannot redirect the request, then filled from the channel.
+// HZKCODE_MAX_CONTEXT_TOKENS is deliberately NOT part of this mask set —
+// like HZKCODE_AUTO_COMPACT_WINDOW it layers (channel env when set, else the
+// app level / native settings), so a channel without a context window must
+// not blank the values configured elsewhere.
 const ROUTING_KEYS: &[&str] = &[
     "HZKCODE_BASE_URL",
     "HZKCODE_BASE_URL_ENDPOINT",
@@ -47,24 +53,23 @@ pub(super) fn resolve_model(
         None | Some("default") => configured?,
         Some(s) => s,
     };
-    let wants_1m = selected.ends_with("[1m]");
-    let raw = selected.strip_suffix("[1m]").unwrap_or(selected);
-    // Family alias -> the custom id its capability tier is pointed at.
-    let tier_key = match raw {
-        "opus" => Some("HZKCODE_DEFAULT_HIGH_MODEL"),
-        "sonnet" => Some("HZKCODE_DEFAULT_MID_MODEL"),
-        "haiku" => Some("HZKCODE_DEFAULT_LOW_MODEL"),
+    // 3.1.2：模型名后缀机制已移除（CLI 端也只作输入容错剥离）；档位别名在
+    // 3.1.1 统一为 high/mid/low。旧别名（opus/sonnet/haiku）与旧后缀在这里
+    // 归一，存量会话与渠道数据不迁移也能解析到同一档位。
+    let raw =
+        super::models::normalize_tier_alias(&super::models::strip_context_suffix(selected));
+    // Tier alias → the custom id its capability tier is pointed at.
+    let tier_key = match raw.as_str() {
+        "high" => Some("HZKCODE_DEFAULT_HIGH_MODEL"),
+        "mid" => Some("HZKCODE_DEFAULT_MID_MODEL"),
+        "low" => Some("HZKCODE_DEFAULT_LOW_MODEL"),
         _ => None,
     };
-    let resolved = tier_key
-        .and_then(|key| env.get(key))
-        .map(String::as_str)
-        .unwrap_or(raw);
-    Some(if wants_1m && !resolved.ends_with("[1m]") {
-        format!("{resolved}[1m]")
-    } else {
-        resolved.to_string()
-    })
+    let resolved = match tier_key.and_then(|key| env.get(key)) {
+        Some(value) => super::models::strip_context_suffix(value),
+        None => raw,
+    };
+    Some(resolved)
 }
 
 pub(super) fn apply(
@@ -129,16 +134,18 @@ fn stage(
         );
     }
     settings.insert("env".into(), Value::Object(overlay));
-    // An explicit model rides the overlay; without one, "default" (the CLI's
-    // own alias) masks any native settings.json model so the isolated channel
-    // never inherits the native account's model. No --model flag is passed in
-    // that case — resolve_model returns None (see prepare_launch).
+    // An explicit model rides the overlay; without one, the CLI's mid tier
+    // masks any native settings.json model so the isolated channel never
+    // inherits the native account's model — "mid" is the CLI's default tier
+    // since 3.1.2 (the literal "default" is no longer an alias the CLI
+    // resolves). No --model flag is passed in that case — resolve_model
+    // returns None (see prepare_launch).
     settings.insert(
         "model".into(),
         Value::String(
             model
                 .filter(|m| !m.trim().is_empty())
-                .unwrap_or("default")
+                .unwrap_or("mid")
                 .to_string(),
         ),
     );
@@ -213,6 +220,17 @@ mod tests {
         .unwrap();
         assert_eq!(staged["env"]["HZKCODE_AUTO_COMPACT_WINDOW"], "777");
 
+        // A channel without a context window leaves the key out of the
+        // overlay entirely — the app level / native value must survive
+        // instead of being blanked by the routing mask.
+        let mut no_window = built();
+        stage(&mut no_window, &provider, &HashMap::new(), None, None, &directory).unwrap();
+        let staged = serde_json::from_slice::<Value>(
+            &std::fs::read(no_window.cleanup_files.last().unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert!(staged["env"].get("HZKCODE_MAX_CONTEXT_TOKENS").is_none());
+
         let _ = std::fs::remove_dir_all(&directory);
     }
 
@@ -226,10 +244,13 @@ mod tests {
         for (selected, expected) in [
             (None, "relay-model"),
             (Some("default"), "relay-model"),
+            (Some("mid"), "relay-model"),
+            // Legacy spellings normalize before the tier lookup.
             (Some("sonnet"), "relay-model"),
-            (Some("sonnet[1m]"), "relay-model[1m]"),
+            (Some("sonnet[1m]"), "relay-model"),
             (Some("custom-id"), "custom-id"),
-            (Some("opus"), "opus"),
+            // An unmapped tier collapses to the 3.1.2 alias spell.
+            (Some("opus"), "high"),
         ] {
             assert_eq!(
                 resolve_model(selected, Some(&provider), &env).as_deref(),
@@ -243,7 +264,7 @@ mod tests {
         assert_eq!(resolve_model(Some("default"), Some(&empty), &HashMap::new()), None);
         assert_eq!(
             resolve_model(Some("sonnet"), Some(&empty), &HashMap::new()).as_deref(),
-            Some("sonnet")
+            Some("mid")
         );
     }
 
@@ -310,7 +331,8 @@ mod tests {
         assert!(second.cleanup_files[0].exists());
         super::super::cleanup_staged_files(&second.cleanup_files);
         // No explicit model: the overlay masks the native model key with the
-        // CLI's own "default" alias instead of forcing one onto argv.
+        // CLI's mid tier (3.1.2's default; the literal "default" is no longer
+        // an alias the CLI resolves) instead of forcing one onto argv.
         let mut no_model = built();
         stage(
             &mut no_model,
@@ -323,7 +345,7 @@ mod tests {
         .unwrap();
         let staged: Value =
             serde_json::from_slice(&std::fs::read(&no_model.cleanup_files[0]).unwrap()).unwrap();
-        assert_eq!(staged["model"], "default");
+        assert_eq!(staged["model"], "mid");
         super::super::cleanup_staged_files(&no_model.cleanup_files);
 
         let mut failed = built();

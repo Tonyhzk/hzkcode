@@ -17,6 +17,8 @@ describe("stripAgentBlock", () => {
       text: "fix the bug",
       agentName: "Reviewer",
       agentIcon: "🧐",
+      // The raw tail rides along so an editor can append it back.
+      tail: block("Reviewer", "🧐", "Be strict."),
     });
   });
 
@@ -26,6 +28,7 @@ describe("stripAgentBlock", () => {
       text: "hi",
       agentName: "Solo",
       agentIcon: undefined,
+      tail: block("Solo", null, "Do things."),
     });
   });
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/lib/ipc";
-import type { EngineId } from "./providers";
+import { migrateChannelEnv, type EngineId } from "./providers";
 import type { ProviderFormValue } from "./ProviderDialog";
 import {
   CLAUDE_ENV_FIELD_KEYS,
@@ -53,12 +53,32 @@ function presetEnvValues(env: Record<string, string> | undefined): Record<string
   return values;
 }
 
+/** The stored settings.json with its legacy model spellings migrated (see
+ *  migrateChannelEnv): suffix-stripped model ids, the implied 1M window, and
+ *  normalized tier spells. Broken JSON returns unchanged — the editor's own
+ *  error state covers it. */
+function migrateSettingsJson(settingsJson: string): string {
+  try {
+    const parsed = JSON.parse(settingsJson) as Record<string, unknown> | null;
+    const env = parsed?.env;
+    if (!parsed || !env || typeof env !== "object") return settingsJson;
+    const migrated = migrateChannelEnv(env as Record<string, unknown>);
+    if (migrated === env) return settingsJson;
+    return JSON.stringify({ ...parsed, env: migrated }, null, 2);
+  } catch {
+    return settingsJson;
+  }
+}
+
 /** Initial form state: seed the JSON editor from the stored settingsConfig
- *  (edit), the flat fields (legacy channels), or the official-direct
- *  template (add). */
+ *  (edit, legacy spellings migrated so a save lands the normalized values),
+ *  the flat fields (legacy channels), or the official-direct template
+ *  (add). */
 function initialForm(initial?: ProviderFormValue): ProviderFormValue {
   const base: ProviderFormValue = { ...EMPTY_FORM, ...initial };
-  if (base.settingsJson.trim()) return base;
+  if (base.settingsJson.trim()) {
+    return { ...base, settingsJson: migrateSettingsJson(base.settingsJson) };
+  }
   if (initial) {
     // Legacy flat channel: migrate its fields into the default template.
     const extra: Record<string, string> = {};
@@ -94,9 +114,12 @@ export function useProviderForm({
   const { t } = useTranslation();
   const [value, setValue] = useState<ProviderFormValue>(() => initialForm(initial));
   // Channel controls start empty on add (the template's env carries the
-  // defaults); on edit they mirror the stored settings.json.
+  // defaults); on edit they mirror the stored settings.json — through the
+  // same migration the JSON editor seed applies.
   const [envValues, setEnvValues] = useState<Record<string, string>>(() =>
-    initial?.settingsJson ? envValuesFrom(initial.settingsJson) : emptyEnvValues(),
+    initial?.settingsJson
+      ? envValuesFrom(migrateSettingsJson(initial.settingsJson))
+      : emptyEnvValues(),
   );
   const [jsonError, setJsonError] = useState("");
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);

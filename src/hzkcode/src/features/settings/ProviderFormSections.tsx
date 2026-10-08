@@ -13,10 +13,7 @@ import { Switch } from "@/components/base/switch/switch";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { cx } from "@/utils/cx";
 import {
-  has1mSuffix,
   mergeCustomModels,
-  with1mSuffix,
-  without1mSuffix,
   type EngineId,
 } from "./providers";
 import {
@@ -380,30 +377,14 @@ export function EnvFieldControl({
           )}
         </Select>
         {isCustom && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-end gap-1.5">
-              <span className="text-body-2-regular text-text-tertiary">
-                {t("settings.cliField1m")}
-              </span>
-              <Switch
-                size="sm"
-                aria-label={`${t(field.labelKey)}: ${t("settings.cliField1m")}`}
-                isSelected={has1mSuffix(value)}
-                isDisabled={value.trim() === ""}
-                onChange={(next) =>
-                  onChange(next ? with1mSuffix(value) : without1mSuffix(value))
-                }
-              />
-            </div>
-            <Input
-              size="small"
-              list={FETCH_DATALIST_ID}
-              aria-label={t(field.labelKey)}
-              placeholder={field.placeholderKey ? t(field.placeholderKey) : undefined}
-              value={value}
-              onChange={onChange}
-            />
-          </div>
+          <Input
+            size="small"
+            list={FETCH_DATALIST_ID}
+            aria-label={t(field.labelKey)}
+            placeholder={field.placeholderKey ? t(field.placeholderKey) : undefined}
+            value={value}
+            onChange={onChange}
+          />
         )}
         {hint && <p className="text-body-2-regular text-text-tertiary">{hint}</p>}
       </div>
@@ -428,44 +409,6 @@ export function EnvFieldControl({
             </SelectItem>
           ))}
         </Select>
-        {hint && <p className="text-body-2-regular text-text-tertiary">{hint}</p>}
-      </div>
-    );
-  }
-  if (field.oneM) {
-    // Model fields carry the 1M-context switch: it rewrites the value's
-    // `[1m]` suffix (append when absent, replace a different one, drop on
-    // uncheck) instead of asking the user to spell the suffix out.
-    const switchLabel = `${t(field.labelKey)}: ${t("settings.cliField1m")}`;
-    return (
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-body-medium text-text-secondary">
-            {t(field.labelKey)}
-          </span>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <span className="text-body-2-regular text-text-tertiary">
-              {t("settings.cliField1m")}
-            </span>
-            <Switch
-              size="sm"
-              aria-label={switchLabel}
-              isSelected={has1mSuffix(value)}
-              isDisabled={value.trim() === ""}
-              onChange={(next) =>
-                onChange(next ? with1mSuffix(value) : without1mSuffix(value))
-              }
-            />
-          </div>
-        </div>
-        <Input
-          size="small"
-          list={FETCH_DATALIST_ID}
-          aria-label={t(field.labelKey)}
-          placeholder={field.placeholderKey ? t(field.placeholderKey) : undefined}
-          value={value}
-          onChange={onChange}
-        />
         {hint && <p className="text-body-2-regular text-text-tertiary">{hint}</p>}
       </div>
     );

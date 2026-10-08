@@ -1006,6 +1006,15 @@ struct RewindFilesArgs {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct EditMessageArgs {
+    engine: String,
+    session_id: String,
+    workspace_path: String,
+    message_id: String,
+    text: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SessionFileHistoryArgs {
     engine: String,
     session_id: String,
@@ -1476,6 +1485,18 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
                 a.session_id,
                 a.workspace_path,
                 a.message_id,
+            )
+            .await)
+        }
+        "edit_message" => {
+            let a: EditMessageArgs = parse_args(&raw)?;
+            ser(crate::engine::edit_message(
+                app.state(),
+                a.engine,
+                a.session_id,
+                a.workspace_path,
+                a.message_id,
+                a.text,
             )
             .await)
         }

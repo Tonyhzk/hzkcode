@@ -204,6 +204,9 @@ export interface ChatStore {
   /** Restore the workspace files to their state at one user message (the
    *  CLI's one-shot `--rewind-files`). Errors surface through actionError. */
   rewindWorkspaceFiles: (key: string, messageId: string) => Promise<void>;
+  /** 编辑成功后把消息新文本落到内存（磁盘已由 --edit-message 改好）：
+   *  匹配该 uuid 的用户消息行替换文本，历史渲染立即跟上。 */
+  applyEditedMessage: (key: string, uuid: string, text: string) => void;
   /** Enqueue a message on the active session while a turn streams. */
   queueMessage: (text: string, images: string[]) => void;
   /** Drop a queued message from the active session. */

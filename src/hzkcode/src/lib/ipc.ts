@@ -194,6 +194,18 @@ export interface SendResult {
   sessionId: string | null;
 }
 
+/** One edited message's outcome, unwrapped from the CLI's stream-json result
+ *  line (the `edit_message` command). A non-null `errorCode` is that line's
+ *  classified failure (invalid_session / session_live / rotation_pending /
+ *  not_found / not_editable / file_changed / write_failed /
+ *  unsupported_platform); `archived` flags a pre-compaction segment message
+ *  (its text updates, the compaction summary does not). */
+export interface EditMessageOutcome {
+  errorCode: string | null;
+  archived: boolean;
+  detail: string;
+}
+
 export interface ProviderSection {
   providers: Record<string, unknown>;
   current: string | null;
@@ -767,6 +779,24 @@ export const ipc = {
     messageId: string,
   ) =>
     invoke<string>("rewind_files", { engine, sessionId, workspacePath, messageId }),
+  /** Rewrite one user message's text in place (the CLI's `--edit-message`,
+   *  a one-shot run that exits right after; the text travels on stdin).
+   *  Resolves with the unwrapped result line — a classified failure comes
+   *  back as an outcome with `errorCode`, not a rejection. */
+  editMessage: (
+    engine: string,
+    sessionId: string,
+    workspacePath: string,
+    messageId: string,
+    text: string,
+  ) =>
+    invoke<EditMessageOutcome>("edit_message", {
+      engine,
+      sessionId,
+      workspacePath,
+      messageId,
+      text,
+    }),
   /** Whether the transcript carries a file-history snapshot for that user
    *  message (the 回退文件更改 option is offered only then). */
   sessionFileHistoryAvailable: (

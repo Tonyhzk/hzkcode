@@ -278,6 +278,42 @@ describe("branch targets and affordance", () => {
     });
     expect(container.querySelectorAll("button")).toHaveLength(1);
   });
+
+  it("renders an edit button on a user message and hands over uuid/body/tail", async () => {
+    const onEdit = vi.fn();
+    const tail = "\n\n## Agent Role and Instructions\ntail";
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={{ seq: 1, role: "user", text: `hi${tail}`, ts: null, uuid: "u1" }}
+          workspacePath="/ws"
+          turnFinal
+          branchTarget="u1"
+          onEdit={onEdit}
+        />,
+      );
+    });
+    const buttons = container.querySelectorAll<HTMLButtonElement>("button");
+    // Copy + edit; the visible body excludes the hidden legacy tail, which
+    // travels alongside so the editor can append it back.
+    expect(buttons).toHaveLength(2);
+    await act(async () => buttons[1].click());
+    expect(onEdit).toHaveBeenCalledWith({ uuid: "u1", text: "hi", tail });
+  });
+
+  it("hides the edit button without a uuid even when a hook is wired", async () => {
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={{ seq: 1, role: "user", text: "hi", ts: null }}
+          workspacePath="/ws"
+          turnFinal
+          onEdit={vi.fn()}
+        />,
+      );
+    });
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+  });
 });
 
 describe("CLI notice rows", () => {

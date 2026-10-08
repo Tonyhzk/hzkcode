@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { EFFORT_LEVELS, type EffortLevel } from "@/components/application/ai-chat/effort-levels";
+import { normalizeTierAlias } from "@/features/settings/providers";
 import { useChatStore, type ActiveSession } from "../store";
 
 /** Session records and history rows carry plain strings; anything that is not
@@ -81,8 +82,10 @@ export function useTabModelDisplay({
   const tabModel = useMemo(() => {
     if (!active || active.engine !== activeEngine) return undefined;
     // tab pick → the channel's default model → the stored pick (pre-config
-    // only, while the channel context is still loading).
-    return active.model || channelDefault || models[activeEngine];
+    // only, while the channel context is still loading). A stored legacy
+    // alias normalizes for display: "sonnet" shows as the mid tier.
+    const pick = active.model || channelDefault || models[activeEngine];
+    return pick ? normalizeTierAlias(pick) : undefined;
   }, [active, activeEngine, channelDefault, models]);
   const sessionActiveEffort = useChatStore((s) =>
     sessionKey ? (s.bySession[sessionKey]?.activeEffort ?? null) : null,

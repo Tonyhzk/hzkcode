@@ -559,7 +559,145 @@ pub(crate) fn channel_env(
                 .or_insert_with(|| value.clone());
         }
     }
+    normalize_legacy_model_env(&mut out, provider);
     Ok(out)
+}
+
+/// Normalize model-valued env entries for a 3.1.2 CLI. Legacy spellings are
+/// rewritten at the injection boundary, grouped by how the CLI consumes the
+/// variable:
+///
+/// - Variables the CLI resolves through parseUserSpecifiedModel (the
+///   main-loop default and the subagent model): the retired context suffix
+///   is stripped and the pre-3.1.1 family aliases (opus/sonnet/haiku,
+///   case-insensitive) map to high/mid/low. A stale "sonnet" left as-is
+///   would be taken for a literal model id by the CLI's primary-model
+///   fallback.
+/// - The tier bindings (HZKCODE_DEFAULT_HIGH/MID/LOW_MODEL) are consumed as
+///   a concrete model id — the unified-tier read only strips the suffix and
+///   never resolves an alias. A tier spelling there is an invalid binding
+///   (it would be requested literally, and cross-wire the tiers), so the key
+///   is dropped and the tier chain falls through to the primary model /
+///   family defaults.
+/// - Variables consumed verbatim as a model id (small/fast and the media
+///   read models): a tier spelling is migrated to the tier's channel
+///   binding; without a usable binding the value is kept with only the
+///   suffix stripped — dropping the key would silently disable the media
+///   read tools (getReadModelConfig returns null without a model).
+/// - When a main-loop model (the channel default or one of the three tiers)
+///   carried the suffix, the 1M context window it used to activate is
+///   restored through HZKCODE_MAX_CONTEXT_TOKENS — the old mechanism drove
+///   both the window and the 1M beta header. The legacy top-level
+///   `settingsConfig.model` field counts too (resolve_model reads it as the
+///   channel default when HZKCODE_MODEL is absent). An explicitly configured
+///   window is never overwritten.
+fn normalize_legacy_model_env(out: &mut HashMap<String, String>, provider: &Value) {
+    // Resolved by the CLI — normalize to the current tier spell.
+    const PARSED_KEYS: &[&str] = &["HZKCODE_MODEL", "HZKCODE_SUBAGENT_MODEL"];
+    // Concrete model ids — a tier spelling is an invalid binding.
+    const BINDING_KEYS: &[&str] = &[
+        "HZKCODE_DEFAULT_HIGH_MODEL",
+        "HZKCODE_DEFAULT_MID_MODEL",
+        "HZKCODE_DEFAULT_LOW_MODEL",
+    ];
+    // Consumed verbatim — a tier spelling can never run here.
+    const DIRECT_KEYS: &[&str] = &[
+        "HZKCODE_SMALL_FAST_MODEL",
+        "HZKCODE_READ_MODEL",
+        "HZKCODE_READ_IMAGE_MODEL",
+        "HZKCODE_READ_VIDEO_MODEL",
+        "HZKCODE_READ_AUDIO_MODEL",
+    ];
+    let binding = |tier: &str, out: &HashMap<String, String>| -> Option<String> {
+        let key = match tier {
+            "high" => "HZKCODE_DEFAULT_HIGH_MODEL",
+            "mid" => "HZKCODE_DEFAULT_MID_MODEL",
+            "low" => "HZKCODE_DEFAULT_LOW_MODEL",
+            _ => return None,
+        };
+        out.get(key).cloned()
+    };
+    let mut main_had_suffix = false;
+    // Resolved keys first: the direct keys below read their bindings from
+    // the already-normalized values.
+    for key in PARSED_KEYS {
+        let Some(value) = out.get(*key) else {
+            continue;
+        };
+        let stripped = crate::engine::models::strip_context_suffix(value);
+        let normalized = crate::engine::models::normalize_tier_alias(&stripped);
+        if normalized.is_empty() {
+            continue;
+        }
+        if stripped != value.trim() && *key == "HZKCODE_MODEL" {
+            main_had_suffix = true;
+        }
+        if normalized != value.trim() {
+            out.insert((*key).to_string(), normalized);
+        }
+    }
+    for key in BINDING_KEYS {
+        let Some(value) = out.get(*key) else {
+            continue;
+        };
+        let stripped = crate::engine::models::strip_context_suffix(value);
+        if stripped.is_empty() {
+            continue;
+        }
+        if stripped != value.trim() {
+            main_had_suffix = true;
+        }
+        if matches!(
+            crate::engine::models::normalize_tier_alias(&stripped).as_str(),
+            "high" | "mid" | "low"
+        ) {
+            out.remove(*key);
+        } else if stripped != value.trim() {
+            out.insert((*key).to_string(), stripped);
+        }
+    }
+    for key in DIRECT_KEYS {
+        let Some(value) = out.get(*key) else {
+            continue;
+        };
+        let stripped = crate::engine::models::strip_context_suffix(value);
+        if stripped.is_empty() {
+            continue;
+        }
+        let normalized = crate::engine::models::normalize_tier_alias(&stripped);
+        let replacement = if matches!(normalized.as_str(), "high" | "mid" | "low") {
+            // A tier spelling can never run verbatim here: migrate to the
+            // tier's binding, or keep the stripped value when the channel
+            // has no binding (dropping it would silently disable the media
+            // read tools).
+            binding(&normalized, out).unwrap_or(stripped)
+        } else {
+            stripped
+        };
+        if replacement != value.trim() {
+            out.insert((*key).to_string(), replacement);
+        }
+    }
+    // The legacy top-level settingsConfig.model counts only when it is what
+    // resolve_model will actually read: HZKCODE_MODEL outranks it, so a
+    // suffixed legacy value shadowed by an env model never runs and must not
+    // widen the window.
+    let legacy_model_had_suffix = !out.contains_key("HZKCODE_MODEL")
+        && provider
+            .pointer("/settingsConfig/model")
+            .and_then(Value::as_str)
+            .is_some_and(|value| {
+                let stripped = crate::engine::models::strip_context_suffix(value);
+                !stripped.is_empty() && stripped != value.trim()
+            });
+    if (main_had_suffix || legacy_model_had_suffix)
+        && !out.contains_key("HZKCODE_MAX_CONTEXT_TOKENS")
+    {
+        out.insert(
+            "HZKCODE_MAX_CONTEXT_TOKENS".to_string(),
+            "1000000".to_string(),
+        );
+    }
 }
 
 // ── claude: settings.json ───────────────────────────────────────────────────
@@ -784,6 +922,153 @@ mod tests {
             assert!(!env.contains_key(key), "{key} must never be injected");
         }
         assert_eq!(env.get("SAFE").map(String::as_str), Some("1"));
+    }
+
+    #[test]
+    fn channel_env_migrates_retired_context_suffixes() {
+        // A channel written under the old suffix mechanism: the suffix is
+        // stripped and the 1M window it used to activate is restored through
+        // HZKCODE_MAX_CONTEXT_TOKENS.
+        let p = serde_json::json!({ "env": {
+            "HZKCODE_DEFAULT_HIGH_MODEL": "deepseek-v4-pro[1m]",
+            "HZKCODE_DEFAULT_MID_MODEL": "deepseek-v4.1-flash[1m]",
+            "HZKCODE_DEFAULT_LOW_MODEL": "deepseek-v4.1-flash"
+        } });
+        let env = channel_env("claude", &p).unwrap();
+        assert_eq!(
+            env.get("HZKCODE_DEFAULT_HIGH_MODEL").map(String::as_str),
+            Some("deepseek-v4-pro")
+        );
+        assert_eq!(
+            env.get("HZKCODE_DEFAULT_MID_MODEL").map(String::as_str),
+            Some("deepseek-v4.1-flash")
+        );
+        assert_eq!(
+            env.get("HZKCODE_DEFAULT_LOW_MODEL").map(String::as_str),
+            Some("deepseek-v4.1-flash")
+        );
+        assert_eq!(
+            env.get("HZKCODE_MAX_CONTEXT_TOKENS").map(String::as_str),
+            Some("1000000")
+        );
+
+        // An explicitly configured window is never overwritten; [2m] counts
+        // as a suffix too.
+        let p = serde_json::json!({ "env": {
+            "HZKCODE_MODEL": "x[2m]",
+            "HZKCODE_MAX_CONTEXT_TOKENS": "500000"
+        } });
+        let env = channel_env("claude", &p).unwrap();
+        assert_eq!(env.get("HZKCODE_MODEL").map(String::as_str), Some("x"));
+        assert_eq!(
+            env.get("HZKCODE_MAX_CONTEXT_TOKENS").map(String::as_str),
+            Some("500000")
+        );
+
+        // No suffix anywhere → no window is injected and values are intact.
+        let p = serde_json::json!({ "env": { "HZKCODE_MODEL": "plain" } });
+        let env = channel_env("claude", &p).unwrap();
+        assert!(!env.contains_key("HZKCODE_MAX_CONTEXT_TOKENS"));
+        assert_eq!(env.get("HZKCODE_MODEL").map(String::as_str), Some("plain"));
+
+        // An auxiliary model's suffix is stripped but never sizes the main
+        // conversation: only the channel default / tier models do that.
+        let p = serde_json::json!({ "env": {
+            "HZKCODE_DEFAULT_MID_MODEL": "relay-model",
+            "HZKCODE_READ_MODEL": "reader[1m]"
+        } });
+        let env = channel_env("claude", &p).unwrap();
+        assert_eq!(
+            env.get("HZKCODE_READ_MODEL").map(String::as_str),
+            Some("reader")
+        );
+        assert!(!env.contains_key("HZKCODE_MAX_CONTEXT_TOKENS"));
+
+        // The legacy top-level settingsConfig.model field feeds the channel
+        // default (resolve_model reads it) even though it never becomes an
+        // env entry — its suffix still implies the 1M window…
+        let p = serde_json::json!({ "settingsConfig": { "model": "legacy-model[1m]" } });
+        let env = channel_env("claude", &p).unwrap();
+        assert!(!env.contains_key("HZKCODE_MODEL"));
+        assert_eq!(
+            env.get("HZKCODE_MAX_CONTEXT_TOKENS").map(String::as_str),
+            Some("1000000")
+        );
+
+        // …unless a window is configured explicitly.
+        let p = serde_json::json!({ "settingsConfig": {
+            "model": "legacy-model[1m]",
+            "env": { "HZKCODE_MAX_CONTEXT_TOKENS": "500000" }
+        } });
+        let env = channel_env("claude", &p).unwrap();
+        assert_eq!(
+            env.get("HZKCODE_MAX_CONTEXT_TOKENS").map(String::as_str),
+            Some("500000")
+        );
+
+        // …and never when HZKCODE_MODEL outranks the legacy field: a
+        // shadowed suffixed value does not run, so it must not widen.
+        let p = serde_json::json!({ "settingsConfig": {
+            "model": "legacy-model[1m]",
+            "env": { "HZKCODE_MODEL": "plain" }
+        } });
+        let env = channel_env("claude", &p).unwrap();
+        assert!(!env.contains_key("HZKCODE_MAX_CONTEXT_TOKENS"));
+
+        // A stale family alias in the default model normalizes at the
+        // injection boundary: the CLI reads HZKCODE_MODEL for background and
+        // subagent defaults, where a literal "sonnet" would be a dead id.
+        let p = serde_json::json!({ "env": { "HZKCODE_MODEL": "sonnet" } });
+        let env = channel_env("claude", &p).unwrap();
+        assert_eq!(env.get("HZKCODE_MODEL").map(String::as_str), Some("mid"));
+
+        // Suffixed aliases normalize both ways and count for the window.
+        let p = serde_json::json!({ "env": { "HZKCODE_MODEL": "haiku[1m]" } });
+        let env = channel_env("claude", &p).unwrap();
+        assert_eq!(env.get("HZKCODE_MODEL").map(String::as_str), Some("low"));
+        assert_eq!(
+            env.get("HZKCODE_MAX_CONTEXT_TOKENS").map(String::as_str),
+            Some("1000000")
+        );
+
+        // Concrete ids that merely contain a family word are untouched.
+        let p = serde_json::json!({ "env": { "HZKCODE_MODEL": "claude-sonnet-4-6" } });
+        let env = channel_env("claude", &p).unwrap();
+        assert_eq!(
+            env.get("HZKCODE_MODEL").map(String::as_str),
+            Some("claude-sonnet-4-6")
+        );
+
+        // Verbally-consumed auxiliary models can never run a tier spelling:
+        // it resolves to the tier's channel binding (case-insensitively)…
+        let p = serde_json::json!({ "env": {
+            "HZKCODE_DEFAULT_LOW_MODEL": "flash-x",
+            "HZKCODE_SMALL_FAST_MODEL": "haiku",
+            "HZKCODE_READ_MODEL": "Low[1m]"
+        } });
+        let env = channel_env("claude", &p).unwrap();
+        assert_eq!(
+            env.get("HZKCODE_SMALL_FAST_MODEL").map(String::as_str),
+            Some("flash-x")
+        );
+        assert_eq!(env.get("HZKCODE_READ_MODEL").map(String::as_str), Some("flash-x"));
+
+        // …and kept (suffix-stripped) when the tier has no binding: dropping
+        // the key would silently disable the media read tools.
+        let p = serde_json::json!({ "env": { "HZKCODE_SMALL_FAST_MODEL": "Sonnet[1m]" } });
+        let env = channel_env("claude", &p).unwrap();
+        assert_eq!(
+            env.get("HZKCODE_SMALL_FAST_MODEL").map(String::as_str),
+            Some("Sonnet")
+        );
+
+        // A tier spelling is an invalid binding for the unified-tier fields
+        // (they are consumed as concrete ids, never resolved): the key is
+        // dropped so the tier chain falls through instead of requesting
+        // "sonnet" literally.
+        let p = serde_json::json!({ "env": { "HZKCODE_DEFAULT_HIGH_MODEL": "sonnet" } });
+        let env = channel_env("claude", &p).unwrap();
+        assert!(!env.contains_key("HZKCODE_DEFAULT_HIGH_MODEL"));
     }
 
     #[test]

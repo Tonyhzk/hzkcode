@@ -1,4 +1,5 @@
 import type { Message, TodosPayload } from "@/lib/ipc";
+import { normalizeTierAlias } from "@/features/settings/providers";
 
 /**
  * Streaming buffers and bySession write helpers. Leaf module: functions are
@@ -107,7 +108,8 @@ export function resolveSessionModel(
   engineDefault?: string,
 ): string | undefined {
   if (!tab) return engineDefault;
-  if (tab.model) return tab.model;
+  // A stored legacy alias normalizes on the way out: "sonnet" sends as mid.
+  if (tab.model) return normalizeTierAlias(tab.model);
   if (channelDefault) return channelDefault;
   return engineDefault;
 }

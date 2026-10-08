@@ -22,6 +22,7 @@ import {
 import { MessageTimeline } from "./MessageTimeline";
 import { ConversationFooter } from "./ConversationFooter";
 import { RewindDialog } from "./RewindDialog";
+import { EditMessageDialog } from "./EditMessageDialog";
 import { useComposerActions } from "./use-composer-actions";
 import { filterEngineOptions } from "./engine-options";
 import { ErrorBanner } from "./ErrorBanner";
@@ -65,10 +66,16 @@ const SessionTimeline = memo(function SessionTimeline({
   // The rewind icon opens the 回退 choice for one message.
   const setRewindAnchor = useChatStore((s) => s.setRewindAnchor);
   const rewindWorkspaceFiles = useChatStore((s) => s.rewindWorkspaceFiles);
+  const applyEditedMessage = useChatStore((s) => s.applyEditedMessage);
   const { t } = useTranslation();
   const [rewindTarget, setRewindTarget] = useState<{
     uuid: string;
     role: "user" | "assistant";
+  } | null>(null);
+  const [editTarget, setEditTarget] = useState<{
+    uuid: string;
+    text: string;
+    tail?: string;
   } | null>(null);
   const handleRewindPick = (mode: "conversation" | "files" | "both") => {
     const target = rewindTarget;
@@ -126,7 +133,18 @@ const SessionTimeline = memo(function SessionTimeline({
         onRetry={() => void resendLastUser(key)}
         onBranch={(targetUuid) => void branchFromMessage(key, targetUuid)}
         onRewind={setRewindTarget}
+        onEdit={setEditTarget}
       />
+      {editTarget && sessionId && (
+        <EditMessageDialog
+          engine={engine}
+          sessionId={sessionId}
+          workspacePath={workspacePath}
+          target={editTarget}
+          onSaved={(uuid, text) => applyEditedMessage(key, uuid, text)}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
       {rewindTarget && (
         <RewindDialog
           engine={engine}

@@ -15,6 +15,9 @@ export interface StrippedAgentBlock {
   text: string;
   agentName?: string;
   agentIcon?: string;
+  /** The raw trailing block including its separator, so an editor can append
+   *  it back to the rewritten body instead of silently dropping it. */
+  tail?: string;
 }
 
 export function stripAgentBlock(text: string): StrippedAgentBlock {
@@ -29,5 +32,6 @@ export function stripAgentBlock(text: string): StrippedAgentBlock {
     text: text.slice(0, match.index).replace(/\s+$/, ""),
     agentName: name || undefined,
     agentIcon: icon || undefined,
+    tail: text.slice(match.index),
   };
 }

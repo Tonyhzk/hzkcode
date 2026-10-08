@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { normalizeTierAlias } from "@/features/settings/providers";
 import type { ActiveSession } from "../store/persistence";
 
 /** Drops a dead per-tab model override.
@@ -42,7 +43,9 @@ export function useSessionModelRepair({
   useEffect(() => {
     if (!active || active.engine !== activeEngine) return;
     if (!isReady || !served) return;
-    const stamp = active.model;
+    // A legacy family alias normalizes first: a stored "sonnet" is the mid
+    // tier now, not a dead pick to clear.
+    const stamp = normalizeTierAlias(active.model ?? "");
     if (!stamp || served.has(stamp)) return;
     repair(active.engine, active.sessionId, active.workspacePath, stamp);
   }, [active, activeEngine, isReady, served, repair]);

@@ -175,9 +175,9 @@ describe("useEngineModels tier display names", () => {
     vi.mocked(ipc.listEngineModels).mockResolvedValue({
       models: [
         { id: "default", name: "Default" },
-        { id: "opus", name: "Opus", description: "Opus 4.5" },
-        { id: "sonnet", name: "Sonnet", description: "Sonnet 4.5" },
-        { id: "haiku", name: "Haiku" },
+        { id: "high", name: "High", description: "Opus 4.7" },
+        { id: "mid", name: "Mid", description: "Sonnet 4.5" },
+        { id: "low", name: "Low" },
       ],
       authoritative: false,
     } as unknown as EngineCatalog);
@@ -199,25 +199,27 @@ describe("useEngineModels tier display names", () => {
     await show([engineInfo("claude", true)]);
     const byId = new Map(latest.modelsByEngine.claude.map((m) => [m.id, m]));
     // Mapped tiers carry the "[tier]" tag so the rows stay tellable apart
-    // even when two tiers resolve to the same model.
-    expect(byId.get("opus")?.label).toBe("[High]deepseek-v4-pro[1m]");
-    expect(byId.get("sonnet")?.label).toBe("[Mid]deepseek-v4.1-flash[1m]");
+    // even when two tiers resolve to the same model. The retired [1m]
+    // suffix strips off the displayed value.
+    expect(byId.get("high")?.label).toBe("[High]deepseek-v4-pro");
+    expect(byId.get("mid")?.label).toBe("[Mid]deepseek-v4.1-flash");
     // The catalog's built-in-model description would contradict the mapped
     // name, so it is dropped for mapped tiers only.
-    expect(byId.get("sonnet")?.description).toBeUndefined();
-    expect(byId.get("opus")?.description).toBeUndefined();
+    expect(byId.get("mid")?.description).toBeUndefined();
+    expect(byId.get("high")?.description).toBeUndefined();
     // The default alias has no explicit model configured, so it stands for
     // the mid tier (the app's default tier) and shows the bare model name
     // (no tag: it is the hidden internal fallback).
-    expect(byId.get("default")?.label).toBe("deepseek-v4.1-flash[1m]");
+    expect(byId.get("default")?.label).toBe("deepseek-v4.1-flash");
     expect(byId.get("default")?.description).toBeUndefined();
     // Unmapped tiers keep the catalog presentation untouched.
-    expect(byId.get("haiku")?.label).toBe("Haiku");
+    expect(byId.get("low")?.label).toBe("Low");
   });
 
   it("默认档存的是档位别名时解析成该档映射的模型", async () => {
     // The dialog's default-model picker stores tier aliases; the default row
-    // must display the mapped model, not the bare "sonnet".
+    // must display the mapped model, not the bare "mid" (here via a legacy
+    // "sonnet" spelling, which normalizes on read).
     vi.mocked(ipc.listEngineModels).mockResolvedValue({
       models: [{ id: "default", name: "Default" }],
       authoritative: false,
@@ -239,7 +241,7 @@ describe("useEngineModels tier display names", () => {
     } as never);
     await show([engineInfo("claude", true)]);
     const byId = new Map(latest.modelsByEngine.claude.map((m) => [m.id, m]));
-    expect(byId.get("default")?.label).toBe("deepseek-v4.1-flash[1m]");
+    expect(byId.get("default")?.label).toBe("deepseek-v4.1-flash");
   });
 
   it("默认档优先显示显式配置的模型，高阶层回退不遮住它", async () => {
@@ -269,7 +271,7 @@ describe("useEngineModels tier display names", () => {
 
   it("渠道配置在扁平 env 形状里同样生效", async () => {
     vi.mocked(ipc.listEngineModels).mockResolvedValue({
-      models: [{ id: "sonnet", name: "Sonnet" }],
+      models: [{ id: "mid", name: "Mid" }],
       authoritative: false,
     } as unknown as EngineCatalog);
     vi.mocked(ipc.getCliConfig).mockResolvedValue({
@@ -281,8 +283,8 @@ describe("useEngineModels tier display names", () => {
       },
     } as never);
     await show([engineInfo("claude", true)]);
-    const sonnet = latest.modelsByEngine.claude.find((m) => m.id === "sonnet");
-    expect(sonnet?.label).toBe("[Mid]glm-5.2[1m]");
+    const mid = latest.modelsByEngine.claude.find((m) => m.id === "mid");
+    expect(mid?.label).toBe("[Mid]glm-5.2");
   });
 });
 
@@ -290,8 +292,8 @@ describe("useEngineModels default normalization", () => {
   const CLAUDE_CATALOG = {
     models: [
       { id: "default", name: "Default" },
-      { id: "opus", name: "Opus" },
-      { id: "sonnet", name: "Sonnet" },
+      { id: "high", name: "High" },
+      { id: "mid", name: "Mid" },
     ],
     authoritative: false,
   };
@@ -320,12 +322,12 @@ describe("useEngineModels default normalization", () => {
     } as never);
     await show([engineInfo("claude", true)]);
     const byId = new Map(latest.modelsByEngine.claude.map((m) => [m.id, m]));
-    expect(byId.get("sonnet")?.label).toBe("[Mid]deepseek-v4.1-flash[1m]");
-    expect(byId.get("opus")?.label).toBe("[High]deepseek-v4-pro[1m]");
-    expect(byId.get("haiku")).toBeUndefined();
+    expect(byId.get("mid")?.label).toBe("[Mid]deepseek-v4.1-flash");
+    expect(byId.get("high")?.label).toBe("[High]deepseek-v4-pro");
+    expect(byId.get("low")).toBeUndefined();
     // 就绪判定此时已成立（配置与目录都返回），档位别名也必须被判定为可服务。
     expect(latest.readyEngines.claude).toBe(true);
-    expect(latest.sessionIdsByEngine.claude?.has("sonnet")).toBe(true);
+    expect(latest.sessionIdsByEngine.claude?.has("mid")).toBe(true);
   });
 
   it("回落时把 stored=default 归一化到中档档位", async () => {
@@ -347,7 +349,17 @@ describe("useEngineModels default normalization", () => {
       },
     } as never);
     await render({ models: { claude: "default" }, pinModels });
-    expect(pinModels).toHaveBeenCalledWith({ claude: "sonnet" });
+    expect(pinModels).toHaveBeenCalledWith({ claude: "mid" });
+  });
+
+  it("stored 是旧别名时先归一写回（不按失效重置）", async () => {
+    engines = [engineInfo("claude", true)];
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(
+      CLAUDE_CATALOG as unknown as EngineCatalog,
+    );
+    const pinModels = vi.fn(async () => {});
+    await render({ models: { claude: "sonnet" }, pinModels });
+    expect(pinModels).toHaveBeenCalledWith({ claude: "mid" });
   });
 
   it("渠道配了显式默认模型时保持 default", async () => {
@@ -375,7 +387,7 @@ describe("useEngineModels default normalization", () => {
     );
     const pinModels = vi.fn(async () => {});
     await render({ models: {}, pinModels });
-    expect(pinModels).toHaveBeenCalledWith({ claude: "sonnet" });
+    expect(pinModels).toHaveBeenCalledWith({ claude: "mid" });
   });
 
   it("就绪门槛要求渠道配置与目录都已加载", async () => {

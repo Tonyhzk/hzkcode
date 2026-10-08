@@ -118,6 +118,8 @@ describe("identity send path", () => {
       null,
       customAgent({
         tools: ["Bash", "Read"],
+        // A legacy family alias (opus/sonnet/haiku) normalizes on the send
+        // path to the 3.1.1 tier spell.
         model: "haiku",
         context: ["claudemd"],
         effort: "high",
@@ -128,14 +130,14 @@ describe("identity send path", () => {
 
     const sent = sentArgs();
     expect(sent.agentTools).toEqual(["Bash", "Read"]);
-    expect(sent.model).toBe("haiku");
+    expect(sent.model).toBe("low");
     expect(sent.effort).toBe("high");
     const defs = JSON.parse(sent.agentsJson ?? "{}") as Record<
       string,
       { prompt: string; tools?: string[]; model?: string; effort?: string; context: string[] }
     >;
     expect(defs["审查员"]?.tools).toEqual(["Bash", "Read"]);
-    expect(defs["审查员"]?.model).toBe("haiku");
+    expect(defs["审查员"]?.model).toBe("low");
     expect(defs["审查员"]?.effort).toBe("high");
     expect(defs["审查员"]?.context).toEqual(["claudemd"]);
   });

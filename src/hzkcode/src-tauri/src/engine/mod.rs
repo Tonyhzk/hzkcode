@@ -1349,6 +1349,83 @@ fn cleanup_staged_files(paths: &[PathBuf]) {
 }
 
 #[cfg(test)]
+mod edit_message_tests {
+    use super::*;
+
+    fn line(value: serde_json::Value) -> String {
+        format!("{}\n", serde_json::to_string(&value).unwrap())
+    }
+
+    #[test]
+    fn accepts_a_matching_success_line_with_a_zero_exit() {
+        let stdout = line(serde_json::json!({
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "message_uuid": "m-1",
+            "error_code": null,
+            "archived": true,
+            "result": "Edited message m-1",
+        }));
+        let outcome = parse_edit_result(&stdout, "m-1", true).unwrap();
+        assert_eq!(outcome.error_code, None);
+        assert!(outcome.archived);
+        assert_eq!(outcome.detail, "Edited message m-1");
+    }
+
+    #[test]
+    fn returns_a_classified_failure_from_its_line() {
+        let stdout = line(serde_json::json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "message_uuid": "m-1",
+            "error_code": "session_live",
+            "archived": null,
+            "errors": ["session is live"],
+        }));
+        let outcome = parse_edit_result(&stdout, "m-1", false).unwrap();
+        assert_eq!(outcome.error_code.as_deref(), Some("session_live"));
+        assert_eq!(outcome.detail, "session is live");
+    }
+
+    #[test]
+    fn rejects_errors_without_a_code_and_foreign_result_lines() {
+        let bare_error = line(serde_json::json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "message_uuid": "m-1",
+        }));
+        assert!(parse_edit_result(&bare_error, "m-1", false).is_err());
+
+        // A result naming another message never counts as this edit's verdict.
+        let foreign = line(serde_json::json!({
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "message_uuid": "other",
+        }));
+        assert!(parse_edit_result(&foreign, "m-1", true).is_err());
+
+        assert!(parse_edit_result("not json\n", "m-1", false).is_err());
+    }
+
+    #[test]
+    fn rejects_a_success_line_with_a_nonzero_exit() {
+        let stdout = line(serde_json::json!({
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "message_uuid": "m-1",
+            "archived": false,
+            "result": "Edited message m-1",
+        }));
+        assert!(parse_edit_result(&stdout, "m-1", false).is_err());
+    }
+}
+
+#[cfg(test)]
 mod staging_tests {
     use super::*;
 
@@ -2157,6 +2234,182 @@ pub async fn rewind_files(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// One edited message's outcome (the CLI's stream-json result line unwrapped).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditMessageOutcome {
+    /// The CLI's failure code: None on success, else one of
+    /// invalid_session / session_live / rotation_pending / not_found /
+    /// not_editable / file_changed / write_failed / unsupported_platform.
+    pub error_code: Option<String>,
+    /// True when the message lives in an archived pre-compaction segment:
+    /// its text updates, but the compaction summary does not.
+    pub archived: bool,
+    /// Human-readable detail from the CLI (success note or failure text).
+    pub detail: String,
+}
+
+/// Rewrite one user message's text in place (the CLI's hidden
+/// `--edit-message <user-message-uuid>`, which requires `--resume`): a pure
+/// transcript operation — a one-shot CLI run that exits right after the edit,
+/// touching no hooks, history or model. The new text travels on stdin (the
+/// CLI accepts the prompt argument or stdin; stdin avoids argv limits and
+/// quoting). The CLI prints one stream-json result line carrying a stable
+/// error_code; failures still produce that line, so the outcome — not the
+/// exit status — is the verdict. A live session is refused up front (this
+/// app's process registry) and again by the CLI (session_live).
+#[tauri::command]
+pub async fn edit_message(
+    state: tauri::State<'_, crate::AppState>,
+    engine: String,
+    session_id: String,
+    workspace_path: String,
+    message_id: String,
+    text: String,
+) -> Result<EditMessageOutcome, String> {
+    if engine != "claude" {
+        return Err(format!("edit_message: unknown engine {engine}"));
+    }
+    let session_id = session_id.trim().to_string();
+    let message_id = message_id.trim().to_string();
+    if !is_uuid_shaped(&session_id) || !is_uuid_shaped(&message_id) {
+        return Err("edit_message: invalid session or message id".into());
+    }
+    if !std::path::Path::new(&workspace_path).is_dir() {
+        return Err("edit_message: workspace not found".into());
+    }
+    if text.trim().is_empty() {
+        // The engine refuses an empty rewrite; surface it before spawning.
+        return Err("edit_message: the new text is empty".into());
+    }
+    if state
+        .processes
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .get(&session_id)
+        .is_some()
+    {
+        return Err("该会话仍在运行，回合结束后再编辑这条消息".into());
+    }
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        let settings = crate::settings::read_settings().unwrap_or_default();
+        let bin = engine_bin(&settings, &engine);
+        let mut child = std::process::Command::new(&bin)
+            .current_dir(&workspace_path)
+            // The dev CLI keys the session's project directory off this
+            // variable (see the send path); without it the resume may look
+            // in the launcher's cwd instead of the workspace.
+            .env("HZKCODE_DEV_CALLER_CWD", &workspace_path)
+            .arg("-p")
+            .arg("--resume")
+            .arg(&session_id)
+            .arg("--edit-message")
+            .arg(&message_id)
+            .arg("--output-format")
+            .arg("stream-json")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("edit message: {e}"))?;
+        {
+            use std::io::Write;
+            let stdin = child
+                .stdin
+                .as_mut()
+                .ok_or("edit message: no stdin handle")?;
+            stdin
+                .write_all(text.as_bytes())
+                .map_err(|e| format!("edit message: stdin {e}"))?;
+        } // Dropping the handle closes the pipe → EOF for the CLI.
+        let output = child
+            .wait_with_output()
+            .map_err(|e| format!("edit message: {e}"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        match parse_edit_result(&stdout, &message_id, output.status.success()) {
+            Ok(outcome) => Ok(outcome),
+            Err(reason) => Err(if stderr.trim().is_empty() {
+                format!("edit message: {reason}")
+            } else {
+                stderr.trim().to_string()
+            }),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    if outcome.error_code.is_none() {
+        // The transcript on disk changed: every window re-reads the session
+        // list (the first message doubles as the list summary), the same
+        // notification the other file-level session operations send.
+        state.sink.emit_sessions_changed();
+    }
+    Ok(outcome)
+}
+
+/// Unwrap the CLI's edit result line. The line must name the edited message
+/// (`message_uuid`) so a result from any other flow can never be mistaken
+/// for this edit's verdict; a classified failure (`error_code`) is returned
+/// as an outcome, while everything else that is not an explicit success
+/// (`is_error:false` + `subtype:"success"` + a zero exit) is an error.
+fn parse_edit_result(
+    stdout: &str,
+    message_id: &str,
+    exit_ok: bool,
+) -> Result<EditMessageOutcome, String> {
+    let Some(value) = stdout
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find(|v| {
+            v.get("type").and_then(|t| t.as_str()) == Some("result")
+                && v.get("message_uuid").and_then(|u| u.as_str()) == Some(message_id)
+        })
+    else {
+        return Err("no edit result line".into());
+    };
+    let detail = value
+        .get("result")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            value
+                .get("errors")
+                .and_then(|v| v.as_array())
+                .and_then(|list| list.first())
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_default();
+    if let Some(code) = value.get("error_code").and_then(|v| v.as_str()) {
+        return Ok(EditMessageOutcome {
+            error_code: Some(code.to_string()),
+            archived: false,
+            detail,
+        });
+    }
+    let is_error = value.get("is_error").and_then(|v| v.as_bool());
+    let subtype = value.get("subtype").and_then(|v| v.as_str());
+    if is_error != Some(false) || subtype != Some("success") {
+        return Err(if detail.is_empty() {
+            "edit did not succeed".into()
+        } else {
+            detail
+        });
+    }
+    if !exit_ok {
+        return Err("edit reported success but exited non-zero".into());
+    }
+    Ok(EditMessageOutcome {
+        error_code: None,
+        archived: value
+            .get("archived")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        detail,
+    })
 }
 
 #[tauri::command]

@@ -5,6 +5,7 @@ import type { ChannelOption } from "@/components/application/ai-chat/engine-mode
 import { ipc, type CliConfig, type EngineCatalog, type EngineInfo } from "@/lib/ipc";
 import {
   CLI_CONFIG_CHANGED_EVENT,
+  normalizeTierAlias,
   providerEntries,
   PSEUDO_LOCAL,
   type EngineId,
@@ -295,12 +296,19 @@ export function useEngineModels(
       // and persist that id over the user's saved default. 远端 catalog
       // 永不触发 pin;用户在远端的模型选择走引擎端 resume,不落地。
       if (catalogs[engine.id]?.remote === true) continue;
-      const stored = models[engine.id]?.trim();
+      const raw = models[engine.id]?.trim() ?? "";
+      // Legacy family aliases normalize before any verdict: a stored
+      // "sonnet" is the mid tier now, not a dead id to reset in one jump.
+      const stored = normalizeTierAlias(raw);
+      if (raw && stored !== raw) {
+        updates[engine.id] = stored;
+        continue;
+      }
       const explicitDefault = configuredModel(engine.id, cliConfig);
       const catalogModels = catalogs[engine.id]?.models;
       const fallback =
         explicitDefault ||
-        catalogModels?.find((m) => m.id === "sonnet")?.id ||
+        catalogModels?.find((m) => m.id === "mid")?.id ||
         catalogModels?.find((m) => m.id !== "default")?.id ||
         channelCustomModels(engine.id, cliConfig)[0];
       if (!stored) {
@@ -311,7 +319,7 @@ export function useEngineModels(
       // that the explicit default model is unknown, and normalizing early
       // would move a channel that sets one off its default.
       if (stored === "default" && cliConfig && !explicitDefault) {
-        updates[engine.id] = "sonnet";
+        updates[engine.id] = "mid";
         continue;
       }
       const catalog = catalogs[engine.id];

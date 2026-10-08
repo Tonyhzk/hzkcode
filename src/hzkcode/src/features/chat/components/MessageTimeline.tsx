@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import Copy from "lucide-react/dist/esm/icons/copy";
 import Check from "lucide-react/dist/esm/icons/check";
+import Pencil from "lucide-react/dist/esm/icons/pencil";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch";
 import Undo2 from "lucide-react/dist/esm/icons/undo-2";
@@ -49,6 +50,7 @@ const TimelineRowView = memo(function TimelineRowView({
   branchTarget,
   onBranch,
   onRewind,
+  onEdit,
 }: {
   row: TimelineRow;
   workspacePath: string;
@@ -68,6 +70,7 @@ const TimelineRowView = memo(function TimelineRowView({
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;
   onRewind?: (target: { uuid: string; role: "user" | "assistant" }) => void;
+  onEdit?: (target: { uuid: string; text: string; tail?: string }) => void;
 }) {
   // Plugin-defined row kinds (plan §4.2 #5) dispatch to the registered
   // renderer before the builtin switch below; builtin kinds never hit this
@@ -108,6 +111,7 @@ const TimelineRowView = memo(function TimelineRowView({
       branchTarget={branchTarget}
       onBranch={onBranch}
       onRewind={onRewind}
+      onEdit={onEdit}
     />
   );
 });
@@ -282,12 +286,14 @@ function UserMessageCopy({
   branchTarget,
   onBranch,
   onRewind,
+  onEdit,
 }: {
   text: string;
   onRetry?: () => void;
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;
   onRewind?: (targetUuid: string) => void;
+  onEdit?: (targetUuid: string) => void;
 }) {
   const { t } = useTranslation();
   const { copied, copy } = useCopied();
@@ -295,7 +301,8 @@ function UserMessageCopy({
     "flex size-6 cursor-pointer items-center justify-center rounded-md bg-transparent text-foreground-icon-secondary opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-background-tertiary-hover hover:text-foreground-icon-primary";
   const canBranch = Boolean(branchTarget && onBranch);
   const canRewind = Boolean(branchTarget && onRewind);
-  if (!text.trim() && !onRetry && !canBranch && !canRewind) return null;
+  const canEdit = Boolean(branchTarget && onEdit);
+  if (!text.trim() && !onRetry && !canBranch && !canRewind && !canEdit) return null;
   return (
     <div className="flex items-center gap-0.5">
       {text.trim() && (
@@ -311,6 +318,17 @@ function UserMessageCopy({
           ) : (
             <Copy className="size-3.5" aria-hidden />
           )}
+        </button>
+      )}
+      {canEdit && (
+        <button
+          type="button"
+          aria-label={t("chat.edit")}
+          title={t("chat.edit")}
+          onClick={() => onEdit!(branchTarget!)}
+          className={iconBtn}
+        >
+          <Pencil className="size-3.5" aria-hidden />
         </button>
       )}
       {onRetry && (
@@ -359,12 +377,14 @@ function UserMessageRow({
   branchTarget,
   onBranch,
   onRewind,
+  onEdit,
 }: {
   message: Message;
   onRetry?: () => void;
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;
   onRewind?: (targetUuid: string) => void;
+  onEdit?: (target: { uuid: string; text: string; tail?: string }) => void;
 }) {
   const { t } = useTranslation();
   const stripped = useMemo(() => stripAgentBlock(message.text), [message.text]);
@@ -396,6 +416,11 @@ function UserMessageRow({
         branchTarget={branchTarget}
         onBranch={onBranch}
         onRewind={onRewind}
+        onEdit={
+          onEdit
+            ? (uuid) => onEdit({ uuid, text: stripped.text, tail: stripped.tail })
+            : undefined
+        }
       />
     </div>
   );
@@ -432,6 +457,7 @@ export const MessageRow = memo(function MessageRow({
   branchTarget,
   onBranch,
   onRewind,
+  onEdit,
 }: {
   message: Message;
   workspacePath: string;
@@ -450,6 +476,10 @@ export const MessageRow = memo(function MessageRow({
    *  read from an archived (pre-compaction) segment: the CLI's
    *  `--resume-session-at` cannot resolve those. */
   onRewind?: (target: { uuid: string; role: "user" | "assistant" }) => void;
+  /** Edit affordance (the CLI's --edit-message): the row's own transcript
+   *  uuid, the visible body and any hidden legacy tail block to keep. User
+   *  rows only — the engine edits nothing else. */
+  onEdit?: (target: { uuid: string; text: string; tail?: string }) => void;
 }) {
   // A live row's text grows per store flush; a full markdown reparse per
   // flush scales linearly with reply length (~30ms at 32KB) and starves the
@@ -482,6 +512,7 @@ export const MessageRow = memo(function MessageRow({
             ? (uuid) => onRewind({ uuid, role: "user" })
             : undefined
         }
+        onEdit={onEdit}
       />
     );
   }
@@ -535,6 +566,7 @@ export const MessageTimeline = memo(function MessageTimeline({
   onRetry,
   onBranch,
   onRewind,
+  onEdit,
 }: {
   session: SessionState;
   streaming: boolean;
@@ -551,6 +583,9 @@ export const MessageTimeline = memo(function MessageTimeline({
    *  the workspace files to the state at it. Shown on every row that
    *  resolves a transcript uuid. */
   onRewind?: (target: { uuid: string; role: "user" | "assistant" }) => void;
+  /** Edit affordance (the CLI's --edit-message): the target carries the row's
+   *  transcript uuid, its visible body and any hidden legacy tail to keep. */
+  onEdit?: (target: { uuid: string; text: string; tail?: string }) => void;
 }) {
 
   const { t } = useTranslation();
@@ -776,6 +811,7 @@ export const MessageTimeline = memo(function MessageTimeline({
                     }
                     onBranch={onBranch}
                     onRewind={onRewind}
+                    onEdit={onEdit}
                   />
                 )}
               </div>

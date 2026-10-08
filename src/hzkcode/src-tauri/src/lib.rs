@@ -276,6 +276,7 @@ pub fn run() {
             // engine
             engine::send_message,
             engine::rewind_files,
+            engine::edit_message,
             engine::session_file_history_available,
             engine::session_rewindable_uuids,
             engine::default_auto_compact_window,

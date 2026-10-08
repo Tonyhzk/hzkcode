@@ -4,10 +4,12 @@
  * Names must match the bundled CLI's tool names exactly: the engine silently
  * ignores unknown names, and under a whitelist (`--tools`) every unlisted
  * built-in tool is auto-denied — so a typo would silently strip the wrong
- * tools. Verified against hzk-code-agent 3.1.0 (`getAllBaseTools()` in
+ * tools. Verified against hzk-code-agent 3.1.2 (`getAllBaseTools()` in
  * src/tools.ts and the NAME constants under
- * packages/builtin-tools/src/tools/*), limited to tools the bundled build
- * can actually expose. Labels are localized data (the agent catalog uses the
+ * packages/builtin-tools/src/tools/*), cross-checked against the two
+ * binaries' stream-json `system/init` tool lists (the 3.1.0 → 3.1.2 diff is
+ * the single SessionGroups addition), limited to tools the bundled build can
+ * actually expose. Labels are localized data (the agent catalog uses the
  * same per-language shape) rather than i18n keys — this list is content, not
  * UI chrome.
  */
@@ -92,6 +94,7 @@ export const TOOL_CATALOG: readonly ToolCatalogGroup[] = [
         label: { zh: "跨会话消息", en: "Cross-session messages" },
       },
       { name: "ListPeers", label: { zh: "列出本机会话", en: "List local sessions" } },
+      { name: "SessionGroups", label: { zh: "会话群组", en: "Session groups" } },
       { name: "TeamCreate", label: { zh: "创建协作团队", en: "Create a team" } },
       { name: "TeamDelete", label: { zh: "解散协作团队", en: "Delete a team" } },
       {
@@ -129,6 +132,14 @@ export const TOOL_CATALOG: readonly ToolCatalogGroup[] = [
       { name: "CronDelete", label: { zh: "删除定时任务", en: "Delete scheduled tasks" } },
       { name: "CronList", label: { zh: "列出定时任务", en: "List scheduled tasks" } },
       { name: "GoalTool", label: { zh: "目标管理", en: "Goal tracking" } },
+      {
+        name: "ListMcpResourcesTool",
+        label: { zh: "列出 MCP 资源", en: "List MCP resources" },
+      },
+      {
+        name: "ReadMcpResourceTool",
+        label: { zh: "读取 MCP 资源", en: "Read MCP resources" },
+      },
     ],
   },
 ];

@@ -25,45 +25,139 @@ const ENV_MODEL_KEY: Partial<Record<EngineId, string>> = {
 };
 
 /**
- * Model id for the picker: the flat `model` field first, then the legacy
- * imported shape (`settingsConfig.env.<ENGINE_MODEL_VAR>` / `env.<…>`).
+ * Model id for the picker, read in the order the backend actually injects:
+ * `settingsConfig.env.HZKCODE_MODEL`, then `env.HZKCODE_MODEL`, then the
+ * flat `model` field, then the legacy top-level `settingsConfig.model` —
+ * a record whose spellings disagree resolves to the one the engine will
+ * honor. Values normalize on read: the retired context suffix is stripped
+ * and the pre-3.1.1 family aliases map to their tier spell, so display,
+ * send resolution and validity checks all agree on one spelling.
  */
 export function providerModel(engine: EngineId, raw: unknown): string {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const flat = asString(o.model).trim();
-  if (flat) return flat;
   const key = ENV_MODEL_KEY[engine];
   if (!key) return "";
-  const settingsEnv = (o.settingsConfig as Record<string, unknown> | undefined)?.env;
-  for (const source of [settingsEnv, o.env]) {
+  const settingsConfig = o.settingsConfig as Record<string, unknown> | undefined;
+  for (const source of [settingsConfig?.env, o.env]) {
     if (source && typeof source === "object") {
       const value = asString((source as Record<string, unknown>)[key]).trim();
-      if (value) return value;
+      if (value) return normalizeTierAlias(stripContextSuffix(value));
     }
   }
+  const flat = asString(o.model).trim();
+  if (flat) return normalizeTierAlias(stripContextSuffix(flat));
+  const legacy = asString(settingsConfig?.model).trim();
+  if (legacy) return normalizeTierAlias(stripContextSuffix(legacy));
   return "";
 }
 
-/** The only bracket suffix the CLI reads as "1M context" (`model[1m]`); the
- *  channel form's 1M switch appends or replaces it. */
-export const MODEL_1M_SUFFIX = "[1m]";
+/** The model-name context suffix the CLI retired in 3.1.2 (`model[1m]` /
+ *  `model[2m]`); stored values may still carry it, so every read path strips
+ *  it through [`stripContextSuffix`]. */
+const MODEL_CONTEXT_SUFFIX = /(\[(1|2)m\])+$/i;
 
-/** Whether a model id already carries the 1M-context suffix. */
-export function has1mSuffix(model: string): boolean {
-  return model.trim().endsWith(MODEL_1M_SUFFIX);
+/** Model id with the retired context suffix removed. */
+export function stripContextSuffix(model: string): string {
+  return model.trim().replace(MODEL_CONTEXT_SUFFIX, "").trim();
 }
 
-/** Model id with the 1M suffix ensured: appended when absent, replacing any
- *  other trailing bracket suffix ("x[2m]" → "x[1m]"). Empty input stays empty. */
-export function with1mSuffix(model: string): string {
+/** The 3.1.1 tier rename: the old family aliases (opus/sonnet/haiku) became
+ *  high/mid/low with no alias kept. Tier spells match case-insensitively
+ *  (the CLI lowercases before matching) and normalize to their lowercase
+ *  spell; whole-value match only, so real model ids that merely contain a
+ *  family word (claude-sonnet-4-6) are untouched. */
+export function normalizeTierAlias(model: string): string {
   const trimmed = model.trim();
-  if (!trimmed) return trimmed;
-  return trimmed.replace(/\[[^\]]*\]$/, "") + MODEL_1M_SUFFIX;
+  switch (trimmed.toLowerCase()) {
+    case "opus":
+      return "high";
+    case "sonnet":
+      return "mid";
+    case "haiku":
+      return "low";
+    case "high":
+    case "mid":
+    case "low":
+      return trimmed.toLowerCase();
+    default:
+      return trimmed;
+  }
 }
 
-/** Model id with the 1M suffix removed; other suffixes are left alone. */
-export function without1mSuffix(model: string): string {
-  return model.trim().replace(/\[1m\]$/, "");
+/** Whether the value is a capability-tier spelling (high/mid/low, any case).
+ *  Tier bindings (HZKCODE_DEFAULT_*_MODEL) must hold concrete model ids —
+ *  the engine drops a tier spelling there, so reads treat it as unset. */
+export function isTierSpell(model: string): boolean {
+  const normalized = normalizeTierAlias(model);
+  return normalized === "high" || normalized === "mid" || normalized === "low";
+}
+
+/** Model-valued env keys whose retired suffix strips on read (the engine's
+ *  injection-side normalization covers the same set). */
+const MODEL_ENV_KEYS: readonly string[] = [
+  "HZKCODE_MODEL",
+  "HZKCODE_SMALL_FAST_MODEL",
+  "HZKCODE_SUBAGENT_MODEL",
+  "HZKCODE_DEFAULT_HIGH_MODEL",
+  "HZKCODE_DEFAULT_MID_MODEL",
+  "HZKCODE_DEFAULT_LOW_MODEL",
+  "HZKCODE_READ_MODEL",
+  "HZKCODE_READ_IMAGE_MODEL",
+  "HZKCODE_READ_VIDEO_MODEL",
+  "HZKCODE_READ_AUDIO_MODEL",
+];
+
+/** Main-loop models: only their suffix implies the conversation's 1M window. */
+const MAIN_LOOP_ENV_KEYS: readonly string[] = [
+  "HZKCODE_MODEL",
+  "HZKCODE_DEFAULT_HIGH_MODEL",
+  "HZKCODE_DEFAULT_MID_MODEL",
+  "HZKCODE_DEFAULT_LOW_MODEL",
+];
+
+/** Editing a channel reads its env through the same legacy migration the
+ *  engine applies when injecting:
+ *
+ *  - every model key loses the retired [1m]/[2m] suffix;
+ *  - when a main-loop model carried the suffix and the channel has no
+ *    explicit window, HZKCODE_MAX_CONTEXT_TOKENS=1000000 is added — the
+ *    send-time derivation is only a fallback, so saving must land the 1M
+ *    window in the config or it would fall back to the default once the
+ *    user edits the model;
+ *  - HZKCODE_MODEL / HZKCODE_SUBAGENT_MODEL (resolved by the CLI) map the
+ *    old family aliases to the current tier spell.
+ *
+ *  Returns the original object when nothing changes. */
+export function migrateChannelEnv(
+  env: Record<string, unknown>,
+): Record<string, unknown> {
+  let next: Record<string, unknown> | null = null;
+  const ensure = (): Record<string, unknown> => (next ??= { ...env });
+  let mainHadSuffix = false;
+  for (const key of MODEL_ENV_KEYS) {
+    const value = env[key];
+    if (typeof value !== "string") continue;
+    const stripped = stripContextSuffix(value);
+    if (!stripped) continue;
+    const isResolved = key === "HZKCODE_MODEL" || key === "HZKCODE_SUBAGENT_MODEL";
+    const out = isResolved ? normalizeTierAlias(stripped) : stripped;
+    if (stripped !== value.trim() && MAIN_LOOP_ENV_KEYS.includes(key)) {
+      mainHadSuffix = true;
+    }
+    if (out !== value) ensure()[key] = out;
+  }
+  const window = env.HZKCODE_MAX_CONTEXT_TOKENS;
+  // Scalar truth mirrors the engine's collection rules: a non-empty string
+  // or any number/boolean counts as an explicitly configured window and is
+  // never overwritten.
+  const windowConfigured =
+    (typeof window === "string" && window.trim() !== "") ||
+    typeof window === "number" ||
+    typeof window === "boolean";
+  if (mainHadSuffix && !windowConfigured) {
+    ensure().HZKCODE_MAX_CONTEXT_TOKENS = "1000000";
+  }
+  return next ?? env;
 }
 
 /**

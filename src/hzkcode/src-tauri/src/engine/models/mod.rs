@@ -19,6 +19,35 @@ pub(crate) fn resolve_claude_launch_model(selector: &str) -> String {
     claude::resolve_launch_model(selector)
 }
 
+/// The model-name context suffix the CLI retired in 3.1.2 (`model[1m]` /
+/// `model[2m]`; the CLI itself now only strips it as input tolerance).
+/// Transcripts, channel configs and identity definitions may still carry it,
+/// so every read path normalizes through here.
+pub(crate) fn strip_context_suffix(model: &str) -> String {
+    static SUFFIX_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?i)(\[(1|2)m\])+$").expect("context-suffix pattern")
+    });
+    SUFFIX_RE.replace(model.trim(), "").trim().to_string()
+}
+
+/// The 3.1.1 tier rename: the old family aliases (opus/sonnet/haiku) became
+/// high/mid/low with no alias kept. Tier spells match case-insensitively
+/// (the CLI lowercases before matching) and normalize to their lowercase
+/// spell; whole-value match only, so real model ids that merely contain a
+/// family word (`claude-sonnet-4-6`) are untouched.
+pub(crate) fn normalize_tier_alias(model: &str) -> String {
+    let trimmed = model.trim();
+    match trimmed.to_ascii_lowercase().as_str() {
+        "opus" => "high".to_string(),
+        "sonnet" => "mid".to_string(),
+        "haiku" => "low".to_string(),
+        "high" => "high".to_string(),
+        "mid" => "mid".to_string(),
+        "low" => "low".to_string(),
+        _ => trimmed.to_string(),
+    }
+}
+
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]

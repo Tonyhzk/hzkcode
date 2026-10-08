@@ -20,6 +20,7 @@ import { subscribeTauriEvent } from "@/hooks/use-tauri-event";
 import {
   CLI_CONFIG_CHANGED_EVENT,
   engineCurrents,
+  normalizeTierAlias,
   notifyCliConfigChanged,
 } from "@/features/settings/providers";
 import {
@@ -362,7 +363,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
         // not read a definition's tool list. An empty list (disable every
         // tool) is preserved as-is.
         agentTools = selectedAgent.tools ?? null;
-        identityModel = selectedAgent.model ?? null;
+        identityModel = selectedAgent.model
+          ? normalizeTierAlias(selectedAgent.model)
+          : null;
         identityEffort = selectedAgent.effort ?? null;
         agentsJson = JSON.stringify({
           [resolvedName]: {
@@ -1402,8 +1405,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
      *  default instead of the engine-name placeholder. */
     repairSessionModel: (engine, sessionId, workspacePath, staleStamp) => {
       set((s) => {
+        // staleStamp arrives normalized (the hook normalizes before the
+        // servability check); a stored legacy alias ("sonnet") matches its
+        // tier ("mid") here so the stale pick still clears.
         const clear = (t: ActiveSession): ActiveSession =>
-          t.model === staleStamp ? { ...t, model: undefined } : t;
+          t.model && normalizeTierAlias(t.model) === staleStamp
+            ? { ...t, model: undefined }
+            : t;
         let changed = false;
         const openTabs = s.openTabs.map((t) => {
           if (!sameTab(t, engine, sessionId, workspacePath)) return t;
@@ -1809,6 +1817,23 @@ export const useChatStore = create<ChatStore>((set, get) => {
       } catch (error) {
         set({ actionError: errorText(error) });
       }
+    },
+
+    applyEditedMessage: (key, uuid, text) => {
+      set((s) => {
+        const session = s.bySession[key];
+        if (!session) return {};
+        let changed = false;
+        const messages = session.messages.map((m) => {
+          if (m.uuid !== uuid || m.role !== "user" || m.text === text) return m;
+          changed = true;
+          return { ...m, text };
+        });
+        if (!changed) return {};
+        return {
+          bySession: { ...s.bySession, [key]: { ...session, messages } },
+        };
+      });
     },
 
     /** Fork the conversation at one message (the CLI's /branch): the host

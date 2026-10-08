@@ -11,27 +11,35 @@ use std::path::PathBuf;
 
 use super::EngineModel;
 /// The model registry the CLI embeds in its binary (native build or cli.js
-/// bundle alike): per-family alias defaults (`aliases.<family>.default`),
-/// the `best` alias used when nothing is configured, and each model's
-/// human display name. Extracted from raw bytes; the JS object survives
-/// bundling verbatim.
+/// bundle alike): the tier config table (`ALL_MODEL_CONFIGS`: key →
+/// `CLAUDE_*_CONFIG` constant), each constant's first-party model id
+/// (`firstParty:`), and the public display names the CLI's
+/// `getPublicModelDisplayName` switch maps them to. Extracted from raw
+/// bytes; the JS source survives bundling verbatim.
 #[derive(Clone, Debug, Default)]
 pub(super) struct EmbeddedRegistry {
-    /// alias family → resolved first-party model id ("opus" → "claude-opus-5").
-    alias_defaults: std::collections::HashMap<String, String>,
-    /// model id → human name ("claude-opus-5" → "Opus 5").
+    /// Config key → first-party model id ("opus47" → "claude-opus-4-7").
+    config_ids: std::collections::HashMap<String, String>,
+    /// Model id → human name ("claude-opus-4-7" → "Opus 4.7").
     display_names: std::collections::HashMap<String, String>,
-    /// The CLI's built-in default alias when no model is configured.
-    best: Option<String>,
 }
 
 impl EmbeddedRegistry {
-    /// "Opus 5 · claude-opus-5" for a known selector (alias or id, with or
-    /// without the [1m] suffix); the selector verbatim when the registry
-    /// can't resolve it.
+    /// "Opus 4.7 · claude-opus-4-7" for a known selector (tier spell or model
+    /// id, with or without a retired context suffix); the selector verbatim
+    /// when the registry can't resolve it. A bare tier spell falls back to the
+    /// first-party default — callers that know the provider resolve the tier
+    /// through [`tier_default_id`] first.
     fn display_line(&self, selector: &str) -> String {
-        let bare = selector.strip_suffix("[1m]").unwrap_or(selector);
-        let id = self.alias_defaults.get(bare).map(String::as_str).unwrap_or(bare);
+        let bare = super::normalize_tier_alias(&super::strip_context_suffix(selector));
+        let id = match bare.as_str() {
+            "high" => self.config_ids.get("opus47"),
+            "mid" => self.config_ids.get("sonnet46"),
+            "low" => self.config_ids.get("haiku45"),
+            _ => None,
+        }
+        .map(String::as_str)
+        .unwrap_or(bare.as_str());
         match self.display_names.get(id) {
             Some(name) => format!("{name} · {id}"),
             None => id.to_string(),
@@ -43,34 +51,40 @@ impl EmbeddedRegistry {
 fn parse_registry(bytes: &[u8]) -> EmbeddedRegistry {
     use regex::bytes::Regex;
     let mut registry = EmbeddedRegistry::default();
-    // Models array: `id:"claude-opus-5",family:"opus",display_name:"Opus 5"`.
-    let models_re = Regex::new(r#"id:"([^"]+)",family:"[a-z]+",display_name:"([^"]+)""#).unwrap();
-    for m in models_re.captures_iter(bytes) {
-        registry.display_names.insert(
-            String::from_utf8_lossy(&m[1]).into_owned(),
-            String::from_utf8_lossy(&m[2]).into_owned(),
+    // `CLAUDE_OPUS_4_7_CONFIG = {\n    firstParty: "claude-opus-4-7",` — the
+    // first-party id of every config constant.
+    let const_re =
+        Regex::new(r#"(CLAUDE_[\w]+_CONFIG) = \{\s*firstParty: "([^"]+)""#).unwrap();
+    // The table itself: `opus47: CLAUDE_OPUS_4_7_CONFIG` (trailing entries may
+    // lack the comma, so no line-tail anchor).
+    let table_re = Regex::new(r"(\w+): (CLAUDE_[\w]+_CONFIG)").unwrap();
+    // `case getModelStrings2().opus47:\n      return "Opus 4.7";` — the public
+    // display names.
+    let name_re = Regex::new(r#"getModelStrings2\(\)\.(\w+):\s*return "([^"]+)""#).unwrap();
+
+    let mut config_ids: std::collections::HashMap<String, String> = Default::default();
+    for c in const_re.captures_iter(bytes) {
+        config_ids.insert(
+            String::from_utf8_lossy(&c[1]).into_owned(),
+            String::from_utf8_lossy(&c[2]).into_owned(),
         );
     }
-    // `aliases:{opus:{default:"claude-opus-5",per_provider:{…}},…}` followed
-    // by `defaults:{…},best:"fable"` — one compact object, so bound the
-    // window to keep unrelated `{default:"…"}` code from leaking in.
-    let aliases_re = Regex::new(r"aliases:\{").unwrap();
-    let family_re = Regex::new(r#"([a-z]+):\{default:"([^"]+)""#).unwrap();
-    let best_re = Regex::new(r#",best:"([^"]+)""#).unwrap();
-    for m in aliases_re.find_iter(bytes) {
-        let window = &bytes[m.start()..(m.start() + 2048).min(bytes.len())];
-        for f in family_re.captures_iter(window) {
-            registry.alias_defaults.insert(
-                String::from_utf8_lossy(&f[1]).into_owned(),
-                String::from_utf8_lossy(&f[2]).into_owned(),
-            );
-        }
-        if registry.best.is_none() {
-            if let Some(b) = best_re.captures(window) {
-                registry.best = Some(String::from_utf8_lossy(&b[1]).into_owned());
-            }
+    let mut key_ids: std::collections::HashMap<String, String> = Default::default();
+    for m in table_re.captures_iter(bytes) {
+        let key = String::from_utf8_lossy(&m[1]).into_owned();
+        let cname = String::from_utf8_lossy(&m[2]).into_owned();
+        if let Some(id) = config_ids.get(&cname) {
+            key_ids.insert(key, id.clone());
         }
     }
+    for m in name_re.captures_iter(bytes) {
+        let key = String::from_utf8_lossy(&m[1]).into_owned();
+        let name = String::from_utf8_lossy(&m[2]).into_owned();
+        if let Some(id) = key_ids.get(&key) {
+            registry.display_names.insert(id.clone(), name);
+        }
+    }
+    registry.config_ids.extend(key_ids);
     registry
 }
 
@@ -96,7 +110,7 @@ fn embedded_registry(bin: &std::path::Path) -> Option<EmbeddedRegistry> {
     let registry = std::fs::read(bin)
         .ok()
         .map(|bytes| parse_registry(&bytes))
-        .filter(|r| !r.alias_defaults.is_empty());
+        .filter(|r| !r.config_ids.is_empty());
     *CACHE.lock() = Some(CacheEntry {
         len,
         modified,
@@ -105,17 +119,17 @@ fn embedded_registry(bin: &std::path::Path) -> Option<EmbeddedRegistry> {
     registry
 }
 
-/// Selectors `--model` accepts out of the box, in menu order, carrying the
-/// app's display names: "default" is this app's own row (it sends no flag
-/// and lets the CLI pick), and the three capability aliases surface as the
-/// tier names the app uses everywhere (High/Mid/Low), never the CLI's family
-/// spells. The catalog is advisory: an unresolvable pick fails at launch
-/// with the CLI's own error.
+/// Selectors the picker offers, in menu order, carrying the app's display
+/// names: "default" is this app's own row (it sends no explicit tier and lets
+/// the CLI pick), and the three capability tiers surface as High/Mid/Low —
+/// since 3.1.1 these are the CLI's own alias spell (the old
+/// opus/sonnet/haiku family names no longer resolve). The catalog is
+/// advisory: an unresolvable pick fails at launch with the CLI's own error.
 const CLI_ALIASES: &[(&str, &str)] = &[
     ("default", "Default"),
-    ("opus", "High"),
-    ("sonnet", "Mid"),
-    ("haiku", "Low"),
+    ("high", "High"),
+    ("mid", "Mid"),
+    ("low", "Low"),
 ];
 
 /// The CLI's config root: `$HZKCODE_CONFIG_DIR` when set, else `~/.hzkcode`
@@ -124,16 +138,13 @@ fn claude_config_dir() -> PathBuf {
     crate::engine::engine_home(Some("HZKCODE_CONFIG_DIR"), ".hzkcode")
 }
 
-/// env keys that remap a built-in alias family to a custom model id,
-/// mirroring the CLI's own /model menu ("Custom High model" rows). The CLI
-/// names the three capability tiers high/mid/low — opus, sonnet and haiku
-/// resolve through them, but the app labels them by the tier name it uses
-/// everywhere else (the env variables).
+/// env keys that remap a capability tier to a custom model id (the CLI's
+/// /model menu "Custom <tier> model" rows), with the tier's display name.
 const FAMILY_ENV_KEYS: &[(&str, &str, &str)] = &[
-    // (alias family, env key, display name)
-    ("opus", "HZKCODE_DEFAULT_HIGH_MODEL", "High"),
-    ("sonnet", "HZKCODE_DEFAULT_MID_MODEL", "Mid"),
-    ("haiku", "HZKCODE_DEFAULT_LOW_MODEL", "Low"),
+    // (tier, env key, display name)
+    ("high", "HZKCODE_DEFAULT_HIGH_MODEL", "High"),
+    ("mid", "HZKCODE_DEFAULT_MID_MODEL", "Mid"),
+    ("low", "HZKCODE_DEFAULT_LOW_MODEL", "Low"),
 ];
 
 /// The CLI's model configuration from ~/.hzkcode/settings.json, merged per
@@ -142,26 +153,154 @@ const FAMILY_ENV_KEYS: &[(&str, &str, &str)] = &[
 struct CliModelConfig {
     /// env.HZKCODE_MODEL — the CLI's effective default model id.
     env_model: Option<String>,
-    /// Top-level `model` key (an alias like "opus" or a raw id).
+    /// Top-level `model` key (an alias like "mid" or a raw id).
     model_key: Option<String>,
-    /// The capability tiers' model overrides, keyed by alias family.
+    /// The capability tiers' model overrides, keyed by tier.
     overrides: std::collections::HashMap<String, String>,
+    /// env.HZKCODE_PROVIDER — the provider brand, when set.
+    provider: Option<String>,
+    /// env.HZKCODE_API_MODE — the API format, when set.
+    api_mode: Option<String>,
+    /// Top-level `modelType` — the stored provider kind, when set.
+    model_type: Option<String>,
 }
 
 impl CliModelConfig {
-    /// The custom id a family alias resolves to, when overridden.
-    fn override_for(&self, family: &str) -> Option<&str> {
-        self.overrides.get(family).map(String::as_str)
+    /// The custom id a capability tier resolves to, when overridden.
+    fn override_for(&self, tier: &str) -> Option<&str> {
+        self.overrides.get(tier).map(String::as_str)
     }
 
     /// The CLI's effective default model id: env.HZKCODE_MODEL beats the
     /// `model` key (the CLI applies settings env as real environment
-    /// variables); a bare family alias there resolves through its override.
+    /// variables); a bare tier alias there resolves through its override.
+    /// Legacy family aliases and retired context suffixes normalize first, so
+    /// a config written for an older CLI still names the right model.
     fn resolved_default(&self) -> Option<String> {
         let raw = self.env_model.as_deref().or(self.model_key.as_deref())?;
-        let family = raw.strip_suffix("[1m]").unwrap_or(raw);
-        Some(self.override_for(family).unwrap_or(raw).to_string())
+        let bare = super::normalize_tier_alias(&super::strip_context_suffix(raw));
+        Some(self.override_for(&bare).unwrap_or(&bare).to_string())
     }
+
+    /// The API provider the CLI would resolve (getAPIProvider): an explicit
+    /// brand wins, then the API format, then the stored modelType; with
+    /// nothing configured 3.1.2 defaults to the OpenAI-compatible channel.
+    fn provider_kind(&self) -> &'static str {
+        if let Some(kind) = self.provider.as_deref() {
+            match kind {
+                "anthropic" => return "firstParty",
+                "openai" => return "openai",
+                "gemini" => return "gemini",
+                "grok" => return "grok",
+                "bedrock" => return "bedrock",
+                "vertex" => return "vertex",
+                "foundry" => return "foundry",
+                _ => {}
+            }
+        }
+        if let Some(mode) = self.api_mode.as_deref() {
+            match mode {
+                "anthropic" => return "firstParty",
+                "responses" | "chat_completions" => return "openai",
+                _ => {}
+            }
+        }
+        if let Some(kind) = self.model_type.as_deref() {
+            match kind {
+                "anthropic" => return "firstParty",
+                "openai" => return "openai",
+                "gemini" => return "gemini",
+                "grok" => return "grok",
+                "bedrock" => return "bedrock",
+                "vertex" => return "vertex",
+                "foundry" => return "foundry",
+                _ => {}
+            }
+        }
+        "openai"
+    }
+
+    /// The OpenAI-compatible channels' primary model (the CLI's
+    /// getProviderPrimaryModel reading HZKCODE_MODEL): the tier fallback
+    /// chain uses it before the hardcoded family defaults. Tiers spelled as
+    /// bare aliases are not concrete models and are ignored; the grok
+    /// channel's own variable is not one the app configures.
+    fn primary_model(&self) -> Option<String> {
+        let kind = self.provider_kind();
+        if kind != "openai" && kind != "gemini" {
+            return None;
+        }
+        let raw = self.env_model.as_deref()?;
+        let bare = super::normalize_tier_alias(&super::strip_context_suffix(raw));
+        if matches!(bare.as_str(), "high" | "mid" | "low") {
+            return None;
+        }
+        Some(bare)
+    }
+}
+
+/// The model id a tier resolves to when the channel carries no mapping: the
+/// CLI's getDefaultHigh/Mid/LowModel chain — the OpenAI-compatible channels'
+/// primary model first, then the family defaults. High and low resolve to
+/// the same config on every provider; mid is firstParty-only sonnet46, every
+/// other channel falls back to sonnet45.
+fn tier_default_id(
+    config: &CliModelConfig,
+    registry: &EmbeddedRegistry,
+    tier: &str,
+) -> Option<String> {
+    if let Some(primary) = config.primary_model() {
+        return Some(primary);
+    }
+    let key = match (tier, config.provider_kind()) {
+        ("high", _) => "opus47",
+        ("mid", "firstParty") => "sonnet46",
+        ("mid", _) => "sonnet45",
+        ("low", _) => "haiku45",
+        _ => return None,
+    };
+    registry.config_ids.get(key).cloned()
+}
+
+/// A tier's actual model line: the channel's tier mapping
+/// (`HZKCODE_DEFAULT_<TIER>_MODEL`) when set, else the CLI's default chain.
+fn tier_effective_line(
+    config: &CliModelConfig,
+    registry: Option<&EmbeddedRegistry>,
+    tier: &str,
+) -> Option<String> {
+    if let Some(custom) = config.override_for(tier) {
+        let custom = super::strip_context_suffix(custom);
+        return Some(match registry {
+            Some(r) => r.display_line(&custom),
+            None => custom,
+        });
+    }
+    let registry = registry?;
+    let id = tier_default_id(config, registry, tier)?;
+    Some(registry.display_line(&id))
+}
+
+/// The "default" row's subtitle: the CLI's configured default when one
+/// exists (a bare tier spell runs that tier's chain), else the mid tier the
+/// CLI falls back to when nothing is configured — the mid tier's own mapping
+/// wins there too. None without a registry and without a configured value.
+fn default_line(
+    config: &CliModelConfig,
+    registry: Option<&EmbeddedRegistry>,
+    resolved_default: Option<&str>,
+) -> Option<String> {
+    let line = match resolved_default {
+        Some(value) if matches!(value, "high" | "mid" | "low") => {
+            tier_effective_line(config, registry, value)?
+        }
+        Some(value) => match registry {
+            Some(r) => r.display_line(value),
+            None => value.to_string(),
+        },
+        None => tier_effective_line(config, registry, "mid")?,
+    };
+    Some(format!("Use the default model (currently {line})"))
 }
 
 fn read_cli_config() -> CliModelConfig {
@@ -180,16 +319,17 @@ pub(crate) fn resolve_launch_model(selector: &str) -> String {
 }
 
 fn resolve_launch_model_from(config: &CliModelConfig, selector: &str) -> String {
-    let bare = selector.strip_suffix("[1m]").unwrap_or(selector);
+    let bare = super::normalize_tier_alias(&super::strip_context_suffix(selector));
     if bare == "default" {
-        return config
-            .resolved_default()
-            .unwrap_or_else(|| selector.to_string());
+        // 3.1.2 的默认档是 mid（getDefaultMainLoopModelSetting），"default"
+        // 本身不再是 CLI 别名（会作为字面模型名发出去），因此无配置时收口
+        // 到 mid；有配置时照旧走 CLI 的默认模型链。
+        return config.resolved_default().unwrap_or_else(|| "mid".to_string());
     }
     config
-        .override_for(bare)
+        .override_for(&bare)
         .map(str::to_string)
-        .unwrap_or_else(|| selector.to_string())
+        .unwrap_or(bare)
 }
 
 fn read_cli_config_from(dir: &std::path::Path) -> CliModelConfig {
@@ -223,9 +363,18 @@ fn merge_settings_json(config: &mut CliModelConfig, content: &str) {
     if let Some(m) = pick(v.get("model")) {
         config.model_key = Some(m);
     }
-    for (family, key, _) in FAMILY_ENV_KEYS {
+    if let Some(m) = pick(env.and_then(|e| e.get("HZKCODE_PROVIDER"))) {
+        config.provider = Some(m);
+    }
+    if let Some(m) = pick(env.and_then(|e| e.get("HZKCODE_API_MODE"))) {
+        config.api_mode = Some(m);
+    }
+    if let Some(m) = pick(v.get("modelType")) {
+        config.model_type = Some(m);
+    }
+    for (tier, key, _) in FAMILY_ENV_KEYS {
         if let Some(m) = pick(env.and_then(|e| e.get(key))) {
-            config.overrides.insert(family.to_string(), m);
+            config.overrides.insert(tier.to_string(), m);
         }
     }
 }
@@ -257,10 +406,7 @@ fn claude_models_from(
     config: CliModelConfig,
     registry: Option<&EmbeddedRegistry>,
 ) -> Vec<EngineModel> {
-    // Nothing configured: the CLI runs the registry's `best` alias.
-    let resolved_default = config
-        .resolved_default()
-        .or_else(|| registry.and_then(|r| r.best.clone()));
+    let resolved_default = config.resolved_default();
     CLI_ALIASES
         .iter()
         .map(|(id, name)| {
@@ -268,26 +414,21 @@ fn claude_models_from(
                 .iter()
                 .find(|(f, _, _)| *f == *id)
                 .map(|(_, _, d)| *d);
-            let custom = config.override_for(id);
+            let custom = config.override_for(id).map(super::strip_context_suffix);
             let (name, description) = match (display, custom) {
                 (Some(display), Some(custom)) => (
-                    Some(custom.to_string()),
+                    Some(custom),
                     Some(format!("Custom {display} model")),
                 ),
                 _ if *id == "default" => (
                     Some(name.to_string()),
-                    resolved_default.as_ref().map(|d| {
-                        let line = registry
-                            .map(|r| r.display_line(d))
-                            .unwrap_or_else(|| d.clone());
-                        format!("Use the default model (currently {line})")
-                    }),
+                    default_line(&config, registry, resolved_default.as_deref()),
                 ),
                 _ => (
                     Some(name.to_string()),
-                    registry.and_then(|r| {
-                        r.alias_defaults.get(*id).map(|model_id| r.display_line(model_id))
-                    }),
+                    // The custom branch above already claimed a mapped tier,
+                    // so this resolves through the default chain.
+                    tier_effective_line(&config, registry, id),
                 ),
             };
             EngineModel {
@@ -311,7 +452,7 @@ mod tests {
     #[test]
     fn aliases_cover_the_cli_model_menu() {
         let ids: Vec<&str> = CLI_ALIASES.iter().map(|(id, _)| *id).collect();
-        assert_eq!(ids, vec!["default", "opus", "sonnet", "haiku"]);
+        assert_eq!(ids, vec!["default", "high", "mid", "low"]);
     }
 
     #[test]
@@ -327,10 +468,11 @@ mod tests {
         let config = read_cli_config_from(&dir);
         std::fs::remove_dir_all(&dir).ok();
         // Local `model` wins its field; the user file's env fields survive.
+        // Stored values keep their spelling — normalization happens on read.
         assert_eq!(config.model_key.as_deref(), Some("haiku"));
         assert_eq!(config.env_model.as_deref(), Some("sonnet"));
-        assert_eq!(config.override_for("opus"), Some("grok-4.5"));
-        assert_eq!(config.override_for("sonnet"), None);
+        assert_eq!(config.override_for("high"), Some("grok-4.5"));
+        assert_eq!(config.override_for("mid"), None);
     }
 
     #[test]
@@ -344,18 +486,21 @@ mod tests {
         .unwrap();
         let config = read_cli_config_from(&dir);
         std::fs::remove_dir_all(&dir).ok();
-        // Overridden alias → custom id (what the picker names it).
+        // Tier alias → custom id (what the picker names it).
+        assert_eq!(resolve_launch_model_from(&config, "high"), "gemini-3.8-flash");
+        // A legacy family alias and a retired context suffix normalize first.
         assert_eq!(resolve_launch_model_from(&config, "opus"), "gemini-3.8-flash");
         assert_eq!(resolve_launch_model_from(&config, "opus[1m]"), "gemini-3.8-flash");
         // "default" → the CLI's configured default, override applied.
         assert_eq!(resolve_launch_model_from(&config, "default"), "gemini-3.8-flash");
-        // Unmapped aliases and raw ids pass through for the CLI to resolve.
-        assert_eq!(resolve_launch_model_from(&config, "sonnet"), "sonnet");
+        // Unmapped aliases normalize to the 3.1.2 spell; raw ids pass through.
+        assert_eq!(resolve_launch_model_from(&config, "sonnet"), "mid");
         assert_eq!(resolve_launch_model_from(&config, "claude-opus-5"), "claude-opus-5");
-        // Nothing configured: "default" stays an alias for the CLI's `best`.
+        // Nothing configured: "default" collapses to the CLI's mid tier —
+        // the literal word is no longer an alias the CLI resolves.
         assert_eq!(
             resolve_launch_model_from(&CliModelConfig::default(), "default"),
-            "default"
+            "mid"
         );
     }
 
@@ -375,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_labels_overridden_aliases_like_the_cli_menu() {
+    fn catalog_labels_overridden_tiers_like_the_cli_menu() {
         let dir = std::env::temp_dir().join(format!("hzkcode-claude-test3-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
@@ -391,20 +536,20 @@ mod tests {
         let config = read_cli_config_from(&dir);
         std::fs::remove_dir_all(&dir).ok();
         // The /model menu's main label is the resolved custom id, with the
-        // "Custom <Family> model" subtitle the CLI shows.
+        // "Custom <tier> model" subtitle the CLI shows.
         let models = claude_models_from(config, None);
         let by_id = |id: &str| models.iter().find(|m| m.id == id).unwrap();
-        let opus = by_id("opus");
-        assert_eq!(opus.name.as_deref(), Some("grok-4.5"));
-        assert_eq!(opus.description.as_deref(), Some("Custom High model"));
+        let high = by_id("high");
+        assert_eq!(high.name.as_deref(), Some("grok-4.5"));
+        assert_eq!(high.description.as_deref(), Some("Custom High model"));
         let default = by_id("default");
         assert_eq!(default.name.as_deref(), Some("Default"));
         assert_eq!(
             default.description.as_deref(),
             Some("Use the default model (currently grok-4.5)")
         );
-        // The app's own "default" row plus the CLI's three family aliases —
-        // no extra "configured" row, no [1m] variants.
+        // The app's own "default" row plus the CLI's three tier aliases —
+        // no extra "configured" row, no suffix variants.
         assert_eq!(models.len(), 4);
         assert_eq!(models[0].id, "default");
     }
@@ -414,9 +559,10 @@ mod tests {
         let config = CliModelConfig {
             env_model: None,
             model_key: Some("opus[1m]".to_string()),
-            overrides: [("opus".to_string(), "grok-4.5".to_string())]
+            overrides: [("high".to_string(), "grok-4.5".to_string())]
                 .into_iter()
                 .collect(),
+            ..CliModelConfig::default()
         };
         assert_eq!(config.resolved_default().as_deref(), Some("grok-4.5"));
         // A raw id passes through untouched.
@@ -425,79 +571,190 @@ mod tests {
             ..CliModelConfig::default()
         };
         assert_eq!(config.resolved_default().as_deref(), Some("k3"));
+        // A legacy family alias with no override normalizes to its tier.
+        let config = CliModelConfig {
+            env_model: Some("sonnet".to_string()),
+            ..CliModelConfig::default()
+        };
+        assert_eq!(config.resolved_default().as_deref(), Some("mid"));
     }
 
     /// A registry snippet shaped exactly like the CLI binary's embedded
-    /// object: models array, then aliases/defaults/best.
+    /// source: the config constants, the ALL_MODEL_CONFIGS table, then the
+    /// public display-name switch.
     fn fake_registry() -> EmbeddedRegistry {
         parse_registry(
-            br#"[{id:"claude-opus-4-5",family:"opus",display_name:"Opus 4.5"},{id:"claude-opus-5",family:"opus",display_name:"Opus 5"},{id:"claude-fable-5",family:"fable",display_name:"Fable 5"}],aliases:{opus:{default:"claude-opus-5",per_provider:{bedrock:"claude-opus-5",gateway:"claude-opus-4-7"}},fable:{default:"claude-fable-5"}},defaults:{},best:"fable",latest_per_family:{opus:"claude-opus-5"}});"#,
+            br#"CLAUDE_OPUS_4_7_CONFIG = {
+    firstParty: "claude-opus-4-7",
+    bedrock: "us.anthropic.claude-opus-4-7-v1",
+    vertex: "claude-opus-4-7"
+  };
+  CLAUDE_SONNET_4_6_CONFIG = {
+    firstParty: "claude-sonnet-4-6",
+    bedrock: "us.anthropic.claude-sonnet-4-6-v1"
+  };
+  CLAUDE_SONNET_4_5_CONFIG = {
+    firstParty: "claude-sonnet-4-5-20250929",
+    bedrock: "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+  };
+  CLAUDE_HAIKU_4_5_CONFIG = {
+    firstParty: "claude-haiku-4-5-20251001",
+    bedrock: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+  };
+  ALL_MODEL_CONFIGS = {
+    haiku45: CLAUDE_HAIKU_4_5_CONFIG,
+    sonnet45: CLAUDE_SONNET_4_5_CONFIG,
+    sonnet46: CLAUDE_SONNET_4_6_CONFIG,
+    opus47: CLAUDE_OPUS_4_7_CONFIG
+  };
+  getPublicModelDisplayName(model) {
+  switch (model) {
+    case getModelStrings2().opus47:
+      return "Opus 4.7";
+    case getModelStrings2().sonnet46:
+      return "Sonnet 4.6";
+    case getModelStrings2().sonnet45:
+      return "Sonnet 4.5";
+    case getModelStrings2().haiku45:
+      return "Haiku 4.5";
+    default:
+      return null;
+  }
+}"#,
         )
     }
 
     #[test]
-    fn parse_registry_extracts_aliases_displays_and_best() {
+    fn parse_registry_extracts_config_ids_and_display_names() {
         let registry = fake_registry();
         assert_eq!(
-            registry.alias_defaults.get("opus").map(String::as_str),
-            Some("claude-opus-5")
+            registry.config_ids.get("opus47").map(String::as_str),
+            Some("claude-opus-4-7")
         );
         assert_eq!(
-            registry.alias_defaults.get("fable").map(String::as_str),
-            Some("claude-fable-5")
+            registry.config_ids.get("sonnet46").map(String::as_str),
+            Some("claude-sonnet-4-6")
         );
         assert_eq!(
-            registry.display_names.get("claude-opus-5").map(String::as_str),
-            Some("Opus 5")
+            registry.config_ids.get("sonnet45").map(String::as_str),
+            Some("claude-sonnet-4-5-20250929")
         );
-        assert_eq!(registry.best.as_deref(), Some("fable"));
+        assert_eq!(
+            registry.config_ids.get("haiku45").map(String::as_str),
+            Some("claude-haiku-4-5-20251001")
+        );
+        assert_eq!(
+            registry
+                .display_names
+                .get("claude-opus-4-7")
+                .map(String::as_str),
+            Some("Opus 4.7")
+        );
         // Noise without the registry's shape contributes nothing.
         assert!(parse_registry(br#"aliases:Qn(N(),cyg()),foo:{default:32000}"#)
-            .alias_defaults
+            .config_ids
             .is_empty());
     }
 
     #[test]
-    fn display_line_resolves_aliases_suffixes_and_unknowns() {
+    fn display_line_resolves_tiers_suffixes_and_unknowns() {
         let registry = fake_registry();
-        assert_eq!(registry.display_line("opus"), "Opus 5 · claude-opus-5");
+        // A bare tier spell falls back to the first-party default.
+        assert_eq!(registry.display_line("high"), "Opus 4.7 · claude-opus-4-7");
+        assert_eq!(registry.display_line("mid"), "Sonnet 4.6 · claude-sonnet-4-6");
+        // Legacy aliases and retired context suffixes normalize first.
+        assert_eq!(registry.display_line("opus"), "Opus 4.7 · claude-opus-4-7");
         assert_eq!(
             registry.display_line("opus[1m]"),
-            "Opus 5 · claude-opus-5"
+            "Opus 4.7 · claude-opus-4-7"
         );
         // A raw id resolves to its display name; an unknown selector passes
         // through verbatim.
         assert_eq!(
-            registry.display_line("claude-fable-5"),
-            "Fable 5 · claude-fable-5"
+            registry.display_line("claude-sonnet-4-6"),
+            "Sonnet 4.6 · claude-sonnet-4-6"
         );
         assert_eq!(registry.display_line("k3"), "k3");
     }
 
     #[test]
-    fn catalog_names_the_concrete_model_each_alias_runs() {
+    fn tier_defaults_follow_provider_branches() {
         let registry = fake_registry();
+        let description = |models: &[EngineModel], id: &str| {
+            models
+                .iter()
+                .find(|m| m.id == id)
+                .unwrap()
+                .description
+                .clone()
+        };
+        // The default channel (3.1.2 falls back to the OpenAI-compatible
+        // provider when nothing is configured): mid runs sonnet45, not 46.
+        let models = claude_models_from(CliModelConfig::default(), Some(&registry));
+        assert_eq!(
+            description(&models, "high").as_deref(),
+            Some("Opus 4.7 · claude-opus-4-7")
+        );
+        assert_eq!(
+            description(&models, "mid").as_deref(),
+            Some("Sonnet 4.5 · claude-sonnet-4-5-20250929")
+        );
+        assert_eq!(
+            description(&models, "low").as_deref(),
+            Some("Haiku 4.5 · claude-haiku-4-5-20251001")
+        );
+        // firstParty: mid runs sonnet46.
         let config = CliModelConfig {
-            model_key: Some("opus".to_string()),
+            api_mode: Some("anthropic".to_string()),
             ..CliModelConfig::default()
         };
         let models = claude_models_from(config, Some(&registry));
-        let by_id = |id: &str| models.iter().find(|m| m.id == id).unwrap();
         assert_eq!(
-            by_id("opus").description.as_deref(),
-            Some("Opus 5 · claude-opus-5")
+            description(&models, "mid").as_deref(),
+            Some("Sonnet 4.6 · claude-sonnet-4-6")
         );
+        // OpenAI-compatible channels fall back to the primary model
+        // (HZKCODE_MODEL) before the family defaults.
+        let config = CliModelConfig {
+            api_mode: Some("responses".to_string()),
+            env_model: Some("deepseek-v4-pro".to_string()),
+            ..CliModelConfig::default()
+        };
+        let models = claude_models_from(config, Some(&registry));
+        for tier in ["high", "mid", "low"] {
+            assert_eq!(description(&models, tier).as_deref(), Some("deepseek-v4-pro"));
+        }
+        // A bare tier spell is not a concrete primary: the family default
+        // stands instead of echoing the alias back.
+        let config = CliModelConfig {
+            api_mode: Some("responses".to_string()),
+            env_model: Some("mid".to_string()),
+            ..CliModelConfig::default()
+        };
+        let models = claude_models_from(config, Some(&registry));
         assert_eq!(
-            by_id("default").description.as_deref(),
-            Some("Use the default model (currently Opus 5 · claude-opus-5)")
+            description(&models, "mid").as_deref(),
+            Some("Sonnet 4.5 · claude-sonnet-4-5-20250929")
         );
-        // No registry entry (sonnet/haiku absent from the fake) → no
-        // description, same as a CLI too old to embed one.
-        assert_eq!(by_id("sonnet").description, None);
     }
 
     #[test]
-    fn catalog_names_tiers_by_app_language_not_cli_aliases() {
+    fn catalog_default_row_follows_a_configured_tier_spell() {
+        let registry = fake_registry();
+        let config = CliModelConfig {
+            model_key: Some("high".to_string()),
+            ..CliModelConfig::default()
+        };
+        let models = claude_models_from(config, Some(&registry));
+        let default = models.iter().find(|m| m.id == "default").unwrap();
+        assert_eq!(
+            default.description.as_deref(),
+            Some("Use the default model (currently Opus 4.7 · claude-opus-4-7)")
+        );
+    }
+
+    #[test]
+    fn catalog_names_tiers_by_app_language() {
         let models = claude_models_from(CliModelConfig::default(), None);
         let name = |id: &str| {
             models
@@ -507,23 +764,52 @@ mod tests {
                 .name
                 .clone()
         };
-        assert_eq!(name("opus").as_deref(), Some("High"));
-        assert_eq!(name("sonnet").as_deref(), Some("Mid"));
-        assert_eq!(name("haiku").as_deref(), Some("Low"));
+        assert_eq!(name("high").as_deref(), Some("High"));
+        assert_eq!(name("mid").as_deref(), Some("Mid"));
+        assert_eq!(name("low").as_deref(), Some("Low"));
     }
 
     #[test]
-    fn catalog_falls_back_to_registry_best_when_unconfigured() {
+    fn catalog_defaults_to_mid_when_unconfigured() {
         let registry = fake_registry();
+        // Unconfigured default = the mid tier chain (default channel →
+        // sonnet45).
         let models = claude_models_from(CliModelConfig::default(), Some(&registry));
         let default = models.iter().find(|m| m.id == "default").unwrap();
         assert_eq!(
             default.description.as_deref(),
-            Some("Use the default model (currently Fable 5 · claude-fable-5)")
+            Some("Use the default model (currently Sonnet 4.5 · claude-sonnet-4-5-20250929)")
         );
         // Without a registry an unconfigured default stays silent.
         let models = claude_models_from(CliModelConfig::default(), None);
         assert_eq!(models[0].description, None);
+    }
+
+    #[test]
+    fn catalog_default_row_names_a_mapped_mid_tier() {
+        let registry = fake_registry();
+        // Only the mid tier is mapped: the CLI's default chain starts at
+        // getDefaultMidModel, which uses the mapping — the default row must
+        // name it, not the built-in Sonnet.
+        let mid_only = || CliModelConfig {
+            overrides: [("mid".to_string(), "custom-mid".to_string())]
+                .into_iter()
+                .collect(),
+            ..CliModelConfig::default()
+        };
+        let models = claude_models_from(mid_only(), Some(&registry));
+        let default = models.iter().find(|m| m.id == "default").unwrap();
+        assert_eq!(
+            default.description.as_deref(),
+            Some("Use the default model (currently custom-mid)")
+        );
+        // Without a registry the mapped value still shows verbatim.
+        let models = claude_models_from(mid_only(), None);
+        let default = models.iter().find(|m| m.id == "default").unwrap();
+        assert_eq!(
+            default.description.as_deref(),
+            Some("Use the default model (currently custom-mid)")
+        );
     }
 }
 

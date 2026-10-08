@@ -9,6 +9,7 @@ import { ModalShell } from "@/components/dialogs";
 import { cx } from "@/utils/cx";
 import type { AgentConfig } from "@/lib/ipc";
 import { TOOL_CATALOG, TOOL_CATALOG_NAMES } from "@/features/agents/tool-catalog";
+import { normalizeTierAlias } from "@/features/settings/providers";
 import i18n from "@/lib/i18n";
 
 /** Emoji quick-pick row under the icon field — one click fills the input. */
@@ -18,12 +19,13 @@ const NAME_MAX = 64;
 const PROMPT_MAX = 100000;
 const UNSET_OPTION_ID = "__unset__";
 
-/** Identity model: an engine alias resolved against the channel, or follow. */
+/** Identity model: an engine tier alias resolved against the channel, or
+ *  follow. The tier spell is the CLI's own (high/mid/low since 3.1.1). */
 const MODEL_OPTIONS: readonly { id: string; labelKey: string }[] = [
   { id: UNSET_OPTION_ID, labelKey: "settings.agentModelFollow" },
-  { id: "opus", labelKey: "settings.agentModelHigh" },
-  { id: "sonnet", labelKey: "settings.agentModelMid" },
-  { id: "haiku", labelKey: "settings.agentModelLow" },
+  { id: "high", labelKey: "settings.agentModelHigh" },
+  { id: "mid", labelKey: "settings.agentModelMid" },
+  { id: "low", labelKey: "settings.agentModelLow" },
 ];
 
 const EFFORT_OPTIONS = ["low", "medium", "high", "xhigh", "max"] as const;
@@ -41,7 +43,7 @@ export interface AgentEditorValue {
   icon?: string;
   /** Tool whitelist; null keeps every tool available (all boxes checked). */
   tools: string[] | null;
-  /** Engine alias (opus/sonnet/haiku) or null to follow the session. */
+  /** Engine tier alias (high/mid/low) or null to follow the session. */
   model: string | null;
   /** Context components; null injects the full set. */
   context: string[] | null;
@@ -75,7 +77,11 @@ export function AgentEditorDialog({
   const [tools, setTools] = useState<Set<string>>(
     () => new Set(initial?.tools ?? TOOL_CATALOG_NAMES),
   );
-  const [model, setModel] = useState(initial?.model ?? "");
+  // A stored legacy alias (opus/sonnet/haiku) normalizes to its tier spell,
+  // so an identity written before 3.1.1 shows — and saves — the current one.
+  const [model, setModel] = useState(
+    initial?.model ? normalizeTierAlias(initial.model) : "",
+  );
   const [context, setContext] = useState<Set<string>>(
     () => new Set(initial?.context ?? CONTEXT_COMPONENTS.map((c) => c.id)),
   );

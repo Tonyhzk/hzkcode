@@ -1,9 +1,12 @@
 import type { CliConfig, EngineCatalog } from "@/lib/ipc";
 import {
   isPseudoProvider,
+  isTierSpell,
+  normalizeTierAlias,
   providerCustomModels,
   providerModel,
   PSEUDO_LOCAL,
+  stripContextSuffix,
   type EngineId,
 } from "@/features/settings/providers";
 
@@ -42,22 +45,21 @@ export function channelCustomModels(
   return providerCustomModels(channelRaw(engineId, cliConfig, channelId));
 }
 
-/** Alias → channel env key: the picker's alias ids (opus/sonnet/haiku) run
- *  whichever model the active channel maps them to, so they must display
- *  that model instead of the bare alias name. */
+/** Tier → channel env key: the picker's tier ids (high/mid/low — the CLI's
+ *  own alias spell since 3.1.1) run whichever model the active channel maps
+ *  them to, so they must display that model instead of the bare tier name. */
 export const TIER_ENV_KEYS: Record<string, string> = {
-  opus: "HZKCODE_DEFAULT_HIGH_MODEL",
-  sonnet: "HZKCODE_DEFAULT_MID_MODEL",
-  haiku: "HZKCODE_DEFAULT_LOW_MODEL",
+  high: "HZKCODE_DEFAULT_HIGH_MODEL",
+  mid: "HZKCODE_DEFAULT_MID_MODEL",
+  low: "HZKCODE_DEFAULT_LOW_MODEL",
 };
 
-/** Alias → the tier name the UI shows. The app speaks High/Mid/Low, matching
- *  the env variables; the CLI's own aliases (what --model accepts) stay
- *  opus/sonnet/haiku. */
+/** Tier → the tier name the UI shows. The app speaks High/Mid/Low, matching
+ *  the env variables and (since 3.1.1) the CLI's own aliases. */
 export const TIER_LABELS: Record<string, string> = {
-  opus: "High",
-  sonnet: "Mid",
-  haiku: "Low",
+  high: "High",
+  mid: "Mid",
+  low: "Low",
 };
 
 /** The explicit default's effective value: raw ids pass through; a tier
@@ -74,11 +76,12 @@ function effectiveExplicit(
 }
 
 /** Alias → configured model id of the channel (settingsConfig.env first,
- *  then the flat env shape — the same order providerModel reads). The
- *  "default" alias stands for the explicit default model — displayed as the
- *  tier it names when the value is one of the aliases (the dialog's default
- *  picker stores "sonnet" etc.) — or the mid tier when that is blank (the
- *  app's default tier). */
+ *  then the flat env shape — the same order providerModel reads). Values
+ *  normalize on read: the retired context suffix is stripped and legacy
+ *  family aliases map to their tier spell. The "default" alias stands for
+ *  the explicit default model — displayed as the tier it names when the
+ *  value is one of the tiers (the dialog's default picker stores "mid"
+ *  etc.) — or the mid tier when that is blank (the app's default tier). */
 export function channelTierModels(
   engineId: string,
   cliConfig: CliConfig | null,
@@ -92,7 +95,13 @@ export function channelTierModels(
     for (const source of [settingsEnv, flatEnv]) {
       if (source && typeof source === "object") {
         const value = (source as Record<string, unknown>)[key];
-        if (typeof value === "string" && value.trim()) return value.trim();
+        if (typeof value === "string" && value.trim()) {
+          const normalized = normalizeTierAlias(stripContextSuffix(value));
+          // A tier binding must hold a concrete model id: the engine drops a
+          // tier spelling when injecting, so reads treat it as unset too.
+          if (isTierSpell(normalized)) return "";
+          return normalized;
+        }
       }
     }
     return "";
@@ -107,7 +116,7 @@ export function channelTierModels(
     out,
   );
   const modelDefault =
-    (configured && out[configured]) || configured || out.sonnet || out.opus;
+    (configured && out[configured]) || configured || out.mid || out.high;
   if (modelDefault) out.default = modelDefault;
   return out;
 }
@@ -129,12 +138,12 @@ export function channelDefaultPick(
     tiers,
   );
   if (explicit) return explicit;
-  if (tiers.sonnet) return "sonnet";
-  if (tiers.opus) return "opus";
-  if (tiers.haiku) return "haiku";
+  if (tiers.mid) return "mid";
+  if (tiers.high) return "high";
+  if (tiers.low) return "low";
   const custom = channelCustomModels(engineId, cliConfig, channelId)[0];
   if (custom) return custom;
-  return "sonnet";
+  return "mid";
 }
 
 /** engine → channel id → default pick, for every configured channel plus the

@@ -47,7 +47,7 @@ export interface EnvField {
   options?: readonly string[];
   /** select: option value → i18n label key. Present for labeled picks (the
    *  model-tier default); a stored value outside `options` then renders as
-   *  the custom option — a free-text model id with its own 1M switch. */
+   *  the custom option — a free-text model id. */
   optionLabelKeys?: Record<string, string>;
   /** select: allow a value beyond `options` through the custom option. */
   allowCustom?: boolean;
@@ -57,9 +57,6 @@ export interface EnvField {
   labelKey: string;
   hintKey?: string;
   placeholderKey?: string;
-  /** Model-id field: gets the 1M-context switch that appends/replaces the
-   *  `[1m]` suffix on the value. */
-  oneM?: boolean;
 }
 
 /** The channel fields the dialog exposes, grouped in display order. These are
@@ -81,6 +78,12 @@ export const CLAUDE_ENV_GROUPS: readonly {
         hintKey: "settings.cliFieldApiModeHint",
       },
       {
+        envKey: "HZKCODE_MAX_CONTEXT_TOKENS",
+        kind: "number",
+        labelKey: "settings.cliFieldMaxContextTokens",
+        hintKey: "settings.cliFieldMaxContextTokensHint",
+      },
+      {
         envKey: "HZKCODE_AUTO_COMPACT_WINDOW",
         kind: "number",
         labelKey: "settings.cliFieldCompactWindow",
@@ -95,17 +98,17 @@ export const CLAUDE_ENV_GROUPS: readonly {
       {
         // Tier picker, not a raw id: the default is one of the configured
         // tiers or a custom model; nothing stored shows (and resolves as)
-        // the mid tier.
+        // the mid tier. Values are the CLI's own tier aliases (3.1.1+).
         envKey: "HZKCODE_MODEL",
         kind: "select",
-        options: ["haiku", "sonnet", "opus"],
+        options: ["low", "mid", "high"],
         optionLabelKeys: {
-          haiku: "settings.cliFieldLowModel",
-          sonnet: "settings.cliFieldMidModel",
-          opus: "settings.cliFieldHighModel",
+          low: "settings.cliFieldLowModel",
+          mid: "settings.cliFieldMidModel",
+          high: "settings.cliFieldHighModel",
         },
         allowCustom: true,
-        emptyShows: "sonnet",
+        emptyShows: "mid",
         labelKey: "settings.cliFieldDefaultModel",
         hintKey: "settings.cliFieldDefaultModelHint",
       },
@@ -114,21 +117,18 @@ export const CLAUDE_ENV_GROUPS: readonly {
         kind: "text",
         labelKey: "settings.cliFieldHighModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
-        oneM: true,
       },
       {
         envKey: "HZKCODE_DEFAULT_MID_MODEL",
         kind: "text",
         labelKey: "settings.cliFieldMidModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
-        oneM: true,
       },
       {
         envKey: "HZKCODE_DEFAULT_LOW_MODEL",
         kind: "text",
         labelKey: "settings.cliFieldLowModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
-        oneM: true,
       },
       {
         envKey: "HZKCODE_READ_MODEL",
@@ -136,7 +136,6 @@ export const CLAUDE_ENV_GROUPS: readonly {
         labelKey: "settings.cliFieldReadModel",
         hintKey: "settings.cliFieldReadModelHint",
         placeholderKey: "settings.cliFieldModelPlaceholder",
-        oneM: true,
       },
     ],
   },
@@ -232,12 +231,15 @@ export const PRESETS: Partial<Record<EngineId, ProviderPreset[]>> = {
     {
       name: "DeepSeek",
       baseUrl: "https://api.deepseek.com/anthropic",
-      model: "deepseek-v4-pro[1m]",
+      model: "deepseek-v4-pro",
       iconSrc: deepseekIcon,
       env: {
         HZKCODE_DEFAULT_LOW_MODEL: "deepseek-v4-flash",
-        HZKCODE_DEFAULT_MID_MODEL: "deepseek-v4-pro[1m]",
-        HZKCODE_DEFAULT_HIGH_MODEL: "deepseek-v4-pro[1m]",
+        HZKCODE_DEFAULT_MID_MODEL: "deepseek-v4-pro",
+        HZKCODE_DEFAULT_HIGH_MODEL: "deepseek-v4-pro",
+        // The old preset spelled the 1M window as a [1m] model suffix; the
+        // CLI retired that for HZKCODE_MAX_CONTEXT_TOKENS.
+        HZKCODE_MAX_CONTEXT_TOKENS: "1000000",
         HZKCODE_EFFORT_LEVEL: "max",
       },
     },
