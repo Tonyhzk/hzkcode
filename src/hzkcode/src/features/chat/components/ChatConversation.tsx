@@ -59,7 +59,7 @@ const SessionTimeline = memo(function SessionTimeline({
   const session = useChatStore((s) => s.bySession[key]);
   // The retry icon repeats the last prompt (the terminal's `//`); the store
   // action already guards mid-turn sends and finds the last user message.
-  const resendLastUser = useChatStore((s) => s.resendLastUser);
+  const retryLastTurn = useChatStore((s) => s.retryLastTurn);
   // The branch icon forks the conversation at one message (the CLI's
   // /branch) and opens the fork in place.
   const branchFromMessage = useChatStore((s) => s.branchFromMessage);
@@ -131,7 +131,7 @@ const SessionTimeline = memo(function SessionTimeline({
         streaming={session.streaming}
         onLoadEarlier={onLoadEarlier}
         workspacePath={workspacePath}
-        onRetry={() => void resendLastUser(key)}
+        onRetry={() => void retryLastTurn(key)}
         onBranch={(targetUuid) => void branchFromMessage(key, targetUuid)}
         onRewind={setRewindTarget}
         onEdit={setEditTarget}

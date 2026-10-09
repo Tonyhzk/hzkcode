@@ -261,6 +261,90 @@ describe("a rewinded send", () => {
     );
   });
 
+  it("retry rewinds to the node before the last prompt and re-asks it", async () => {
+    // 普通末轮「重试」= 撤回该轮后重问：锚点=该提问之前的最后一个可定位
+    // 节点（不含提问本身），重发的提问成为该轮唯一的一份，旧回复不在
+    // 截断后的链上。
+    const tab = { engine: "claude", sessionId: SID, workspacePath: WS };
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [KEY]: {
+          ...EMPTY_SESSION,
+          messages: [
+            msg("user", "一问", "u1"),
+            msg("assistant", "答一", "a1"),
+            msg("user", "二问", "u2"),
+            msg("assistant", "答二", "a2"),
+          ],
+        },
+      },
+    });
+    await useChatStore.getState().retryLastTurn(KEY);
+    expect(readAnchors()).toEqual({ [KEY]: "a1" });
+    // 内存侧同步截断：发送时按锚点裁掉旧回合（旧回复不会再出现在时间线，
+    // 只保留锚点之前的「一问/答一」与刚重发的「二问」）。
+    const msgs = useChatStore.getState().bySession[KEY]?.messages ?? [];
+    expect(msgs.some((m) => m.text === "答二")).toBe(false);
+    expect(msgs.some((m) => m.text === "答一")).toBe(true);
+    expect(vi.mocked(ipc.sendMessage)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rewindTo: "a1", prompt: "二问" }),
+    );
+  });
+
+  it("retry still rewinds when the last prompt has no uuid yet", async () => {
+    // 回合刚 settle、uuid 回填（400ms 定时器）之前的窗口内点重试：提问行
+    // 还是本地回显（无 uuid），锚点仍必须落在其前方的节点上，否则就会
+    // 退化成「再发一遍」——正是用户报告的现象。
+    const tab = { engine: "claude", sessionId: SID, workspacePath: WS };
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [KEY]: {
+          ...EMPTY_SESSION,
+          messages: [
+            msg("user", "一问", "u1"),
+            msg("assistant", "答一", "a1"),
+            msg("user", "二问"),
+            msg("assistant", "答二", "a2"),
+          ],
+        },
+      },
+    });
+    await useChatStore.getState().retryLastTurn(KEY);
+    expect(readAnchors()).toEqual({ [KEY]: "a1" });
+    const msgs = useChatStore.getState().bySession[KEY]?.messages ?? [];
+    expect(msgs.some((m) => m.text === "答二")).toBe(false);
+    expect(vi.mocked(ipc.sendMessage)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rewindTo: "a1", prompt: "二问" }),
+    );
+  });
+
+  it("retry of a session's first prompt starts a fresh session", async () => {
+    // 首条提问没有可截断的前置节点（`--resume-session-at` 无法表达
+    // 「截断到空」）：改用新会话重问，避免同一转录里留下两份相同提问。
+    const tab = { engine: "claude", sessionId: SID, workspacePath: WS };
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: {
+        [KEY]: {
+          ...EMPTY_SESSION,
+          messages: [msg("user", "首问", "u1"), msg("assistant", "首答", "a1")],
+        },
+      },
+    });
+    await useChatStore.getState().retryLastTurn(KEY);
+    // 新会话承接这次重问；旧会话不留待回退点。
+    expect(readAnchors()).toEqual({});
+    expect(useChatStore.getState().active?.sessionId).toBeNull();
+    expect(vi.mocked(ipc.sendMessage)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prompt: "首问" }),
+    );
+  });
+
   it("spends the anchor once the run produced output before an error", async () => {
     // The CLI persists the user message before entering its query loop
     // (QueryEngine), so any content event proves the new chain was written:

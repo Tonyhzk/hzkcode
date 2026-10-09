@@ -184,6 +184,9 @@ export interface ChatStore {
   /** Re-send the session's last user message (grant card's one-click retry
    * after a directory grant takes effect on the next launch). */
   resendLastUser: (key: string) => Promise<void>;
+  /** 「重试」（消息操作栏）：撤回最后一轮后重新生成（首条提问改在新会话
+   *  重问）；与 resendLastUser（批准后重发）语义不同。 */
+  retryLastTurn: (key: string) => Promise<void>;
   /** Fork the conversation at one message (the CLI's /branch): a new session
    *  file next to the source, title inherited, then opened in place. */
   branchFromMessage: (key: string, targetUuid: string) => Promise<void>;

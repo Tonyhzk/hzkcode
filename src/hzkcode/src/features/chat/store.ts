@@ -1761,6 +1761,62 @@ export const useChatStore = create<ChatStore>((set, get) => {
       if (tab) await sendPrompt(tab, lastUser.text, lastUser.images ?? []);
     },
 
+    /** 「重试」（消息操作栏）：撤回最后一轮后重问——待回退点设在「该提问
+     *  之前的最后一个可定位节点」上（截断到它为止、不含提问本身），重发的
+     *  提问成为该轮唯一的一份，旧提问与旧回复都不在截断后的链上。首条提问
+     *  没有可截断的前置节点（`--resume-session-at` 无法表达「截断到空」），
+     *  改在新会话里重问。与 resendLastUser（GrantCard 批准后重发）区分：
+     *  那个是「再发一次」，不改动已有轮次。 */
+    retryLastTurn: async (key) => {
+      const s = get();
+      if (s.streamingByKey[key]) return; // a turn is already running
+      const state = s.bySession[key];
+      const messages = state?.messages ?? [];
+      const anchor = state?.rewindAnchor ?? null;
+      const anchorIndex = anchor
+        ? lastRowIndexByUuid(messages, anchor)
+        : -1;
+      const scope =
+        anchorIndex >= 0 ? messages.slice(0, anchorIndex + 1) : messages;
+      const lastUser = [...scope].reverse().find((m) => m.role === "user");
+      if (!lastUser) return;
+      const tab =
+        s.openTabs.find(
+          (t) => sessionKey(t.engine, t.sessionId, t.workspacePath) === key,
+        ) ?? s.active;
+      if (!tab) return;
+      // Locate the prompt by array position, not by its uuid: a round that
+      // just settled may still carry a local echo row without a uuid yet
+      // (the backfill lands up to 400ms later, or never when the CLI failed
+      // before writing it) — the anchor only needs the node BEFORE it.
+      const userIndex = scope.lastIndexOf(lastUser);
+      if (userIndex === 0 && tab.sessionId) {
+        // The prompt is the session's first message: `--resume-session-at`
+        // cannot express "truncate to nothing" (it needs a resolvable
+        // uuid), so re-ask it in a fresh session — nothing precedes it, so
+        // the new session is equivalent, and the old prompt/reply cannot
+        // pile up as a duplicate in the same transcript.
+        get().startNewChat(tab.workspacePath);
+        const fresh = get().active;
+        if (fresh) {
+          await sendPrompt(fresh, lastUser.text, lastUser.images ?? []);
+        }
+        return;
+      }
+      let prevUuid: string | null = null;
+      for (let i = userIndex - 1; i >= 0; i--) {
+        const uuid = scope[i].uuid;
+        if (uuid) {
+          prevUuid = uuid;
+          break;
+        }
+      }
+      if (prevUuid && tab.sessionId) {
+        get().setRewindAnchor(key, prevUuid);
+      }
+      await sendPrompt(tab, lastUser.text, lastUser.images ?? []);
+    },
+
     /** Per-session proxy switch (the composer's 会话开关, the CLI's /proxy):
      *  true = 开启, false = 关闭, null = 跟随默认。每次发送随进程注入。 */
     setSessionProxy: (key, value) => {
