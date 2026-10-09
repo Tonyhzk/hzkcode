@@ -208,6 +208,11 @@ export const zh = {
     editErrWriteFailed: "写入会话文件失败。",
     editErrUnsupported: "当前平台暂不支持编辑消息。",
     editErrUnknown: "编辑失败。",
+    delete: "删除",
+    deleteTitle: "删除这条消息？",
+    deleteDesc:
+      "删除会直接改写会话文件，删掉的内容无法恢复。后面的消息会自动接上继续保留；如该消息包含工具调用，其执行记录会一并删除。",
+    deleteConfirm: "删除",
     branch: "分支",
     rewind: "回退",
     rewindTitle: "回退到此条",

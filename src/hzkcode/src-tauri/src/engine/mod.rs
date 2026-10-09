@@ -2120,7 +2120,7 @@ mod default_window_tests {
 /// it can be joined into a path or handed to the CLI (path traversal, stale
 /// ids). The CLI resolves `--resume` from the workspace cwd, so a session of
 /// another workspace simply won't resolve there.
-fn is_uuid_shaped(value: &str) -> bool {
+pub(crate) fn is_uuid_shaped(value: &str) -> bool {
     let value = value.trim();
     value.len() == 36
         && value.bytes().enumerate().all(|(i, b)| {

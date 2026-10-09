@@ -220,6 +220,11 @@ export const en: Messages = {
     editErrWriteFailed: "Writing the session file failed.",
     editErrUnsupported: "Editing messages is not supported on this platform.",
     editErrUnknown: "Editing failed.",
+    delete: "Delete",
+    deleteTitle: "Delete this message?",
+    deleteDesc:
+      "This rewrites the session file directly and cannot be undone. Later messages stay and reconnect; a tool call's execution record is removed with its own message.",
+    deleteConfirm: "Delete",
     branch: "Branch",
     rewind: "Rewind",
     rewindTitle: "Rewind to this message",

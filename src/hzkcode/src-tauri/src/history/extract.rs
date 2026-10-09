@@ -56,7 +56,7 @@ const CHAIN_TYPES: [&str; 4] = ["user", "assistant", "attachment", "system"];
 /// (uuid → (parentUuid, logicalParentUuid)), its transcript chain nodes in
 /// file order, and the parallel-tool topology (assistant siblings by
 /// `message.id`, tool results by parent) the recovery pass needs.
-struct SegmentChain {
+pub(super) struct SegmentChain {
     links: HashMap<String, (Option<String>, Option<String>)>,
     order: Vec<String>,
     /// Chain-node uuid → transcript `type` ("user"/"assistant"/…): the
@@ -135,7 +135,7 @@ pub(super) fn dead_branch_uuids_for_chain(files: &[std::path::PathBuf]) -> Chain
 
 /// Index one segment file: positioned entries, transcript chain nodes in
 /// file order, and the parallel-tool topology.
-fn segment_chain(reader: impl BufRead) -> SegmentChain {
+pub(super) fn segment_chain(reader: impl BufRead) -> SegmentChain {
     let mut chain = SegmentChain {
         links: HashMap::new(),
         order: Vec::new(),
@@ -328,6 +328,75 @@ fn relink_preserved(segment: &SegmentChain) -> RelinkOutcome {
     RelinkOutcome::Patched(patched)
 }
 
+/// The uuids of a segment's live preserved slice — the entries the last
+/// compact boundary kept, `tail` through `head` — or None when a slice
+/// exists but cannot be confirmed (a missing anchor or a tail → head walk
+/// that does not close: the same conditions leaving `relink_preserved`
+/// unresolved). No live boundary records a slice: `Some(empty)`.
+pub(super) fn preserved_slice_uuids(
+    segment: &SegmentChain,
+) -> Option<std::collections::HashSet<String>> {
+    let Some(last_boundary) = segment.boundaries.last() else {
+        return Some(std::collections::HashSet::new());
+    };
+    let Some(preserved) = segment
+        .preserved
+        .iter()
+        .find(|preserved| preserved.boundary == *last_boundary)
+    else {
+        return Some(std::collections::HashSet::new());
+    };
+    if preserved.anchor.is_none() {
+        return None;
+    }
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut out: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut cur = Some(preserved.tail.as_str());
+    while let Some(uuid) = cur {
+        if uuid == preserved.head {
+            out.insert(uuid.to_string());
+            return Some(out);
+        }
+        if !seen.insert(uuid) {
+            return None;
+        }
+        out.insert(uuid.to_string());
+        let Some((parent, logical)) = segment.links.get(uuid) else {
+            return None;
+        };
+        cur = parent.as_deref().or(logical.as_deref());
+        if let Some(next) = cur {
+            if !segment.links.contains_key(next) {
+                cur = None;
+            }
+        }
+    }
+    None
+}
+
+/// Every uuid this segment's entries declare (chain nodes and auxiliary rows
+/// alike). Callers build the cross-segment "known anywhere" set from it, the
+/// way the read-side chain analysis does.
+pub(super) fn segment_known_uuids(
+    segment: &SegmentChain,
+) -> std::collections::HashSet<String> {
+    segment.links.keys().cloned().collect()
+}
+
+/// Whether any entry of this segment links (by `parentUuid` or
+/// `logicalParentUuid`) into the given uuid set. File-level rewrites use it
+/// to refuse when a removed entry still carries a cross-segment reference
+/// the write could not repair.
+pub(super) fn segment_references_into(
+    segment: &SegmentChain,
+    uuids: &std::collections::HashSet<String>,
+) -> bool {
+    segment.links.values().any(|(parent, logical)| {
+        parent.as_deref().is_some_and(|p| uuids.contains(p))
+            || logical.as_deref().is_some_and(|l| uuids.contains(l))
+    })
+}
+
 /// Kept uuids of one segment's chain walk, including the CLI's parallel-tool
 /// recovery (streaming writes one assistant entry per content block, all
 /// sharing `message.id`, and each tool result parents to its own block's
@@ -350,7 +419,7 @@ fn relink_preserved(segment: &SegmentChain) -> RelinkOutcome {
 /// `bail_on_dangling` — a reference to a uuid no segment knows). Without
 /// `bail_on_dangling` such a reference just ends the walk, the way
 /// `buildConversationChain` silently truncates the chain.
-fn segment_kept_uuids(
+pub(super) fn segment_kept_uuids(
     segment: &SegmentChain,
     anywhere: &std::collections::HashSet<String>,
     follow_logical: bool,
@@ -861,7 +930,10 @@ fn extract_line_messages(engine: &str, value: &Value, images: ImageMode) -> Line
     }
 }
 
-/// Flush buffered claude text as a row carrying the line's usage/model/effort.
+/// Flush buffered claude text as a row carrying the line's usage/model/effort
+/// — and its entry uuid: a reply split by thinking or tool calls produces one
+/// text row per segment, and every segment belongs to the same transcript
+/// entry (the row actions address the entry by that uuid).
 fn claude_flush_text(
     out: &mut LineRows,
     text: &mut String,
@@ -870,12 +942,14 @@ fn claude_flush_text(
     usage: &Option<Value>,
     model: &Option<String>,
     effort: &Option<String>,
+    uuid: &Option<String>,
 ) {
     if !text.trim().is_empty() {
         out.push(LineRow {
             usage: usage.clone(),
             model: model.clone(),
             effort: effort.clone(),
+            uuid: uuid.clone(),
             ..LineRow::new(role, std::mem::take(text), ts.clone())
         });
     }
@@ -893,16 +967,17 @@ fn claude_block_rows(
     usage: &Option<Value>,
     model: &Option<String>,
     effort: &Option<String>,
+    uuid: &Option<String>,
 ) {
     match block.get("type").and_then(Value::as_str) {
         Some("thinking") => {
-            claude_flush_text(out, text, role, ts, usage, model, effort);
+            claude_flush_text(out, text, role, ts, usage, model, effort, uuid);
             if let Some(t) = block.get("thinking").and_then(Value::as_str) {
                 out.push(LineRow::new("thinking", t.to_string(), ts.clone()));
             }
         }
         Some("tool_use") => {
-            claude_flush_text(out, text, role, ts, usage, model, effort);
+            claude_flush_text(out, text, role, ts, usage, model, effort, uuid);
             let name = block
                 .get("name")
                 .and_then(Value::as_str)
@@ -1090,6 +1165,7 @@ fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
                     &usage,
                     &model,
                     &effort,
+                    &uuid,
                 );
             }
             if !text.trim().is_empty() {
@@ -1150,6 +1226,38 @@ mod tests {
         assert_eq!(rows[1].text, "reply");
         assert_eq!(rows[2].text, "Bash");
         assert_eq!(rows[2].args, Some(serde_json::json!({"command": "ls"})));
+    }
+
+    #[test]
+    fn claude_split_text_segments_all_carry_the_entry_uuid() {
+        let line: Value = serde_json::json!({
+            "uuid": "entry-1",
+            "type": "assistant",
+            "timestamp": "2026-09-05T11:12:16.469Z",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "先改文件"},
+                    {"type": "tool_use", "name": "Edit", "input": {}},
+                    {"type": "text", "text": "改完了"}
+                ]
+            }
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        let seen: Vec<(&str, &str, Option<&str>)> = rows
+            .iter()
+            .map(|r| (r.role.as_str(), r.text.as_str(), r.uuid.as_deref()))
+            .collect();
+        // 工具调用前后的文本段都属于同一条目：各段都带条目 uuid（行操作
+        // 按它定位），工具行保持无入口。
+        assert_eq!(
+            seen,
+            [
+                ("assistant", "先改文件", Some("entry-1")),
+                ("tool", "Edit", None),
+                ("assistant", "改完了", Some("entry-1")),
+            ]
+        );
     }
 
     #[test]

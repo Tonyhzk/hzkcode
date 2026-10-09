@@ -7,6 +7,7 @@ import Pencil from "lucide-react/dist/esm/icons/pencil";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch";
 import Undo2 from "lucide-react/dist/esm/icons/undo-2";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2";
 import AlertCircle from "lucide-react/dist/esm/icons/alert-circle";
 import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle";
 import Info from "lucide-react/dist/esm/icons/info";
@@ -51,6 +52,7 @@ const TimelineRowView = memo(function TimelineRowView({
   onBranch,
   onRewind,
   onEdit,
+  onDelete,
 }: {
   row: TimelineRow;
   workspacePath: string;
@@ -71,6 +73,10 @@ const TimelineRowView = memo(function TimelineRowView({
   onBranch?: (targetUuid: string) => void;
   onRewind?: (target: { uuid: string; role: "user" | "assistant" }) => void;
   onEdit?: (target: { uuid: string; text: string; tail?: string }) => void;
+  /** Delete affordance: the row's own transcript uuid (the entry is removed
+   *  from the active segment; later messages reconnect). Hidden for rows
+   *  read from archived segments — the write only covers the active file. */
+  onDelete?: (targetUuid: string) => void;
 }) {
   // Plugin-defined row kinds (plan §4.2 #5) dispatch to the registered
   // renderer before the builtin switch below; builtin kinds never hit this
@@ -112,6 +118,7 @@ const TimelineRowView = memo(function TimelineRowView({
       onBranch={onBranch}
       onRewind={onRewind}
       onEdit={onEdit}
+      onDelete={onDelete}
     />
   );
 });
@@ -212,12 +219,14 @@ function MessageActions({
   branchTarget,
   onBranch,
   onRewind,
+  onDelete,
 }: {
   text: string;
   onRetry?: () => void;
   branchTarget?: string;
   onBranch?: (targetUuid: string) => void;
   onRewind?: (targetUuid: string) => void;
+  onDelete?: () => void;
 }) {
   const { t } = useTranslation();
   const { copied, copy } = useCopied();
@@ -270,6 +279,17 @@ function MessageActions({
           <GitBranch className="size-3.5" aria-hidden />
         </button>
       )}
+      {branchTarget && onDelete && (
+        <button
+          type="button"
+          aria-label={t("chat.delete")}
+          title={t("chat.delete")}
+          onClick={onDelete}
+          className={iconBtn}
+        >
+          <Trash2 className="size-3.5" aria-hidden />
+        </button>
+      )}
     </div>
   );
 }
@@ -287,6 +307,7 @@ function UserMessageCopy({
   onBranch,
   onRewind,
   onEdit,
+  onDelete,
 }: {
   text: string;
   onRetry?: () => void;
@@ -294,6 +315,7 @@ function UserMessageCopy({
   onBranch?: (targetUuid: string) => void;
   onRewind?: (targetUuid: string) => void;
   onEdit?: (targetUuid: string) => void;
+  onDelete?: (targetUuid: string) => void;
 }) {
   const { t } = useTranslation();
   const { copied, copy } = useCopied();
@@ -302,7 +324,9 @@ function UserMessageCopy({
   const canBranch = Boolean(branchTarget && onBranch);
   const canRewind = Boolean(branchTarget && onRewind);
   const canEdit = Boolean(branchTarget && onEdit);
-  if (!text.trim() && !onRetry && !canBranch && !canRewind && !canEdit) return null;
+  const canDelete = Boolean(branchTarget && onDelete);
+  if (!text.trim() && !onRetry && !canBranch && !canRewind && !canEdit && !canDelete)
+    return null;
   return (
     <div className="flex items-center gap-0.5">
       {text.trim() && (
@@ -364,6 +388,17 @@ function UserMessageCopy({
           <GitBranch className="size-3.5" aria-hidden />
         </button>
       )}
+      {canDelete && (
+        <button
+          type="button"
+          aria-label={t("chat.delete")}
+          title={t("chat.delete")}
+          onClick={() => onDelete!(branchTarget!)}
+          className={iconBtn}
+        >
+          <Trash2 className="size-3.5" aria-hidden />
+        </button>
+      )}
     </div>
   );
 }
@@ -378,6 +413,7 @@ function UserMessageRow({
   onBranch,
   onRewind,
   onEdit,
+  onDelete,
 }: {
   message: Message;
   onRetry?: () => void;
@@ -385,6 +421,7 @@ function UserMessageRow({
   onBranch?: (targetUuid: string) => void;
   onRewind?: (targetUuid: string) => void;
   onEdit?: (target: { uuid: string; text: string; tail?: string }) => void;
+  onDelete?: (targetUuid: string) => void;
 }) {
   const { t } = useTranslation();
   const stripped = useMemo(() => stripAgentBlock(message.text), [message.text]);
@@ -421,6 +458,7 @@ function UserMessageRow({
             ? (uuid) => onEdit({ uuid, text: stripped.text, tail: stripped.tail })
             : undefined
         }
+        onDelete={onDelete}
       />
     </div>
   );
@@ -458,6 +496,7 @@ export const MessageRow = memo(function MessageRow({
   onBranch,
   onRewind,
   onEdit,
+  onDelete,
 }: {
   message: Message;
   workspacePath: string;
@@ -480,6 +519,10 @@ export const MessageRow = memo(function MessageRow({
    *  uuid, the visible body and any hidden legacy tail block to keep. User
    *  rows only — the engine edits nothing else. */
   onEdit?: (target: { uuid: string; text: string; tail?: string }) => void;
+  /** Delete affordance: the row's own transcript uuid. User and assistant
+   *  rows only, and never for archived (pre-compaction) segments — the
+   *  rewrite covers the active file alone. */
+  onDelete?: (targetUuid: string) => void;
 }) {
   // A live row's text grows per store flush; a full markdown reparse per
   // flush scales linearly with reply length (~30ms at 32KB) and starves the
@@ -513,6 +556,7 @@ export const MessageRow = memo(function MessageRow({
             : undefined
         }
         onEdit={onEdit}
+        onDelete={onDelete && !message.archived ? onDelete : undefined}
       />
     );
   }
@@ -522,6 +566,10 @@ export const MessageRow = memo(function MessageRow({
   const rewindForRow =
     onRewind && !message.archived
       ? (uuid: string) => onRewind({ uuid, role: "assistant" })
+      : undefined;
+  const deleteForRow =
+    onDelete && !message.archived && branchTarget
+      ? () => onDelete(branchTarget)
       : undefined;
   return (
     <div className="group flex flex-col text-left">
@@ -534,24 +582,38 @@ export const MessageRow = memo(function MessageRow({
             branchTarget={branchTarget}
             onBranch={onBranch}
             onRewind={rewindForRow}
+            onDelete={deleteForRow}
           />
           <MessageMeta message={message} />
         </div>
       )}
       {/* A mid-turn assistant segment keeps its own rewind entry (the row
           resolves its own transcript uuid); the copy/meta footer stays
-          turn-final-only. */}
-      {!turnFinal && branchTarget && rewindForRow && (
-        <div className="mt-1 flex items-center opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-          <button
-            type="button"
-            aria-label={t("chat.rewind")}
-            title={t("chat.rewind")}
-            onClick={() => rewindForRow(branchTarget)}
-            className="flex size-6 cursor-pointer items-center justify-center rounded-md text-foreground-icon-secondary transition-colors hover:bg-background-tertiary-hover hover:text-foreground-icon-primary"
-          >
-            <Undo2 className="size-3.5" aria-hidden />
-          </button>
+          turn-final-only. Delete rides the same row-level affordances. */}
+      {!turnFinal && branchTarget && (rewindForRow || deleteForRow) && (
+        <div className="mt-1 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          {rewindForRow && (
+            <button
+              type="button"
+              aria-label={t("chat.rewind")}
+              title={t("chat.rewind")}
+              onClick={() => rewindForRow(branchTarget)}
+              className="flex size-6 cursor-pointer items-center justify-center rounded-md text-foreground-icon-secondary transition-colors hover:bg-background-tertiary-hover hover:text-foreground-icon-primary"
+            >
+              <Undo2 className="size-3.5" aria-hidden />
+            </button>
+          )}
+          {deleteForRow && (
+            <button
+              type="button"
+              aria-label={t("chat.delete")}
+              title={t("chat.delete")}
+              onClick={deleteForRow}
+              className="flex size-6 cursor-pointer items-center justify-center rounded-md text-foreground-icon-secondary transition-colors hover:bg-background-tertiary-hover hover:text-foreground-icon-primary"
+            >
+              <Trash2 className="size-3.5" aria-hidden />
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -567,6 +629,7 @@ export const MessageTimeline = memo(function MessageTimeline({
   onBranch,
   onRewind,
   onEdit,
+  onDelete,
 }: {
   session: SessionState;
   streaming: boolean;
@@ -586,6 +649,10 @@ export const MessageTimeline = memo(function MessageTimeline({
   /** Edit affordance (the CLI's --edit-message): the target carries the row's
    *  transcript uuid, its visible body and any hidden legacy tail to keep. */
   onEdit?: (target: { uuid: string; text: string; tail?: string }) => void;
+  /** Delete affordance (删除): the target is the row's transcript uuid — the
+   *  entry is removed from the active segment and later messages reconnect.
+   *  Hidden on archived rows: the rewrite only covers the active file. */
+  onDelete?: (targetUuid: string) => void;
 }) {
 
   const { t } = useTranslation();
@@ -812,6 +879,7 @@ export const MessageTimeline = memo(function MessageTimeline({
                     onBranch={onBranch}
                     onRewind={onRewind}
                     onEdit={onEdit}
+                    onDelete={onDelete}
                   />
                 )}
               </div>

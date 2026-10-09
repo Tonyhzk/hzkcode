@@ -804,6 +804,10 @@ export const ipc = {
     sessionId: string,
     messageId: string,
   ) => invoke<boolean>("session_file_history_available", { engine, sessionId, messageId }),
+  /** 删除一条消息：把该条目从会话的活跃段文件移除并把直接子链重接
+   *  （文件级改写，服务端做并发与结构校验）。成功后调用方重读会话。 */
+  deleteMessage: (engine: string, sessionId: string, messageId: string) =>
+    invoke<void>("delete_message", { engine, sessionId, messageId }),
   /** Uuids the CLI can still resume at (`--resume-session-at`): the active
    *  file's own chain. Re-read after a mid-turn compaction; null when it
    *  cannot be read (the caller then leaves its rewind entries as they are). */

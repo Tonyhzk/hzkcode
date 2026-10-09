@@ -1,3 +1,4 @@
+pub(crate) mod delete;
 mod extract;
 pub mod reader;
 pub mod scanner;

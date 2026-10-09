@@ -305,6 +305,7 @@ pub fn run() {
             history::reader::remember_session_effort,
             history::reader::remember_session_provider,
             history::reader::rescan_sessions,
+            history::delete::delete_message,
             history::reader::list_workspaces,
             history::reader::add_workspace,
             history::reader::reorder_workspaces,

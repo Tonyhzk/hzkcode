@@ -171,7 +171,7 @@ pub fn remember_session_provider(
     Ok(())
 }
 
-fn session_file_path(
+pub(super) fn session_file_path(
     db: &crate::db::Db,
     engine: &str,
     session_id: &str,
@@ -549,7 +549,7 @@ fn is_safe_session_id(session_id: &str) -> bool {
 /// a session created moments ago may not be scanned yet, and one filed under
 /// a wrong project dir (an inherited `HZKCODE_DEV_CALLER_CWD`, pinned at
 /// spawn) is never scanned at all — deleting must still work.
-fn session_files_by_id(engine: &str, session_id: &str) -> Vec<PathBuf> {
+pub(super) fn session_files_by_id(engine: &str, session_id: &str) -> Vec<PathBuf> {
     if engine != "claude" || !is_safe_session_id(session_id) {
         return Vec::new();
     }

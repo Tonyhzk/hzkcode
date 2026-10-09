@@ -23,6 +23,7 @@ import { MessageTimeline } from "./MessageTimeline";
 import { ConversationFooter } from "./ConversationFooter";
 import { RewindDialog } from "./RewindDialog";
 import { EditMessageDialog } from "./EditMessageDialog";
+import { DeleteMessageDialog } from "./DeleteMessageDialog";
 import { useComposerActions } from "./use-composer-actions";
 import { filterEngineOptions } from "./engine-options";
 import { ErrorBanner } from "./ErrorBanner";
@@ -68,6 +69,8 @@ const SessionTimeline = memo(function SessionTimeline({
   const rewindWorkspaceFiles = useChatStore((s) => s.rewindWorkspaceFiles);
   const applyEditedMessage = useChatStore((s) => s.applyEditedMessage);
   const refreshRewindable = useChatStore((s) => s.refreshRewindable);
+  const consumeRewindAnchor = useChatStore((s) => s.consumeRewindAnchor);
+  const reloadSession = useChatStore((s) => s.reloadSession);
   const { t } = useTranslation();
   const [rewindTarget, setRewindTarget] = useState<{
     uuid: string;
@@ -78,6 +81,7 @@ const SessionTimeline = memo(function SessionTimeline({
     text: string;
     tail?: string;
   } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ uuid: string } | null>(null);
   const handleRewindPick = (mode: "conversation" | "files" | "both") => {
     const target = rewindTarget;
     setRewindTarget(null);
@@ -135,6 +139,7 @@ const SessionTimeline = memo(function SessionTimeline({
         onBranch={(targetUuid) => void branchFromMessage(key, targetUuid)}
         onRewind={setRewindTarget}
         onEdit={setEditTarget}
+        onDelete={(targetUuid) => setDeleteTarget({ uuid: targetUuid })}
       />
       {editTarget && sessionId && (
         <EditMessageDialog
@@ -152,6 +157,22 @@ const SessionTimeline = memo(function SessionTimeline({
             return refreshRewindable(key);
           }}
           onClose={() => setEditTarget(null)}
+        />
+      )}
+      {deleteTarget && sessionId && (
+        <DeleteMessageDialog
+          engine={engine}
+          sessionId={sessionId}
+          target={deleteTarget}
+          onDeleted={async () => {
+            // 锚点指向被删消息时先结算掉：紧接着的发送不能携带不存在的
+            // 锚点（CLI 会拒绝整轮）。再按删除前的消息集合校正回退入口
+            // 与失效锚点，最后重读消息列表（重读失败走全局错误横幅）。
+            consumeRewindAnchor(key, deleteTarget.uuid);
+            await refreshRewindable(key).catch(() => {});
+            await reloadSession(key);
+          }}
+          onClose={() => setDeleteTarget(null)}
         />
       )}
       {rewindTarget && (

@@ -241,4 +241,7 @@ export interface ChatStore {
    *  rewind entries (a mid-turn compaction archives most of them while the
    *  preserved slice stays resumable). */
   refreshRewindable: (key?: string) => Promise<void>;
+  /** 重新读取会话的最近一页（删除消息后刷新消息列表与 usage 快照）；
+   *  正在流式时不动作。先刷新回退锚点再调用，避免读到失效锚点。 */
+  reloadSession: (key?: string) => Promise<void>;
 }

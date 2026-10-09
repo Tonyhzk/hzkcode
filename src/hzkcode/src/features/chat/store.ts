@@ -2363,6 +2363,44 @@ export const useChatStore = create<ChatStore>((set, get) => {
       }
     },
 
+    /** 重新读取会话的最近一页（删除消息等文件级改写后）：替换消息列表、
+     *  nextBefore 与 usage 快照；正在流式时不动作，读取失败走全局错误横幅。
+     *  调用方先刷新回退锚点（refreshRewindable 依据删除前的消息集合校正），
+     *  再调用这里。 */
+    reloadSession: async (key?: string) => {
+      const { active, openTabs } = get();
+      const targetKey =
+        key ??
+        (active
+          ? sessionKey(active.engine, active.sessionId, active.workspacePath)
+          : "");
+      if (!targetKey) return;
+      const targetTab = openTabs.find(
+        (t) => sessionKey(t.engine, t.sessionId, t.workspacePath) === targetKey,
+      );
+      if (!targetTab?.sessionId) return;
+      if (get().streamingByKey[targetKey]) return;
+      try {
+        const page = await loadHistoryPage(
+          targetTab.engine,
+          targetTab.sessionId,
+          targetTab.workspacePath,
+          100,
+        );
+        patchSession(set, targetKey, {
+          messages: page.messages,
+          subagentHistory: page.subagentHistory,
+          nextBefore: page.nextBefore,
+          // Live "usage" events only cover fresh turns; the reload adopts the
+          // newest usage snapshot the history carries (same as selectSession).
+          usage:
+            [...page.messages].reverse().find((m) => m.usage)?.usage ?? null,
+        });
+      } catch (e) {
+        set({ actionError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
     refreshSessionUuids: async (key?: string) => {
       const { active, openTabs } = get();
       const targetKey =

@@ -1022,6 +1022,13 @@ struct SessionFileHistoryArgs {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct DeleteMessageArgs {
+    engine: String,
+    session_id: String,
+    message_id: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SessionRewindableArgs {
     engine: String,
     session_id: String,
@@ -1595,6 +1602,18 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
         "delete_session" => {
             let a: EngineSessionArgs = parse_args(&raw)?;
             ser(crate::history::reader::delete_session(app.state(), a.engine, a.session_id).await)
+        }
+        "delete_message" => {
+            let a: DeleteMessageArgs = parse_args(&raw)?;
+            ser(
+                crate::history::delete::delete_message(
+                    app.state(),
+                    a.engine,
+                    a.session_id,
+                    a.message_id,
+                )
+                .await,
+            )
         }
         "clone_session" => {
             let a: EngineSessionWorkspaceArgs = parse_args(&raw)?;
