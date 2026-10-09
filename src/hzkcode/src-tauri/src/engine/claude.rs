@@ -404,11 +404,29 @@ impl Engine for ClaudeEngine {
                     .unwrap_or(false);
                 let subtype = value.get("subtype").and_then(Value::as_str).unwrap_or("");
                 if is_error || subtype.starts_with("error") {
+                    // Failure results carry their details in `errors[]` (the
+                    // CLI's error_during_execution, load failures and process
+                    // exceptions all emit `errors`, never a `result` string);
+                    // `result` stays the first choice for older shapes.
                     let message = value
                         .get("result")
                         .and_then(Value::as_str)
-                        .unwrap_or("claude turn failed")
-                        .to_string();
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .or_else(|| {
+                            let joined = value
+                                .get("errors")
+                                .and_then(Value::as_array)?
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            (!joined.is_empty()).then_some(joined)
+                        })
+                        .unwrap_or_else(|| "claude turn failed".to_string());
                     out.push(EngineEvent::Error(message));
                 } else {
                     out.push(EngineEvent::Done { session_id, usage });
@@ -815,6 +833,67 @@ fn parse_content_block_stop(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_result_reads_error_details_from_errors_array() {
+        // 3.1.x 的 error_during_execution 把细节放在 errors[]（没有 result 字符串）
+        let line = serde_json::json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "session_id": "s-1",
+            "errors": [
+                "[ede_diagnostic] result_type=user last_content_type=tool_result stop_reason=null",
+                "API Error: 500"
+            ]
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        match &out[..] {
+            [EngineEvent::Error(message)] => assert_eq!(
+                message,
+                "[ede_diagnostic] result_type=user last_content_type=tool_result stop_reason=null\nAPI Error: 500"
+            ),
+            other => panic!("expected error event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn failed_result_prefers_the_result_string() {
+        let line = serde_json::json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "result": "API Error: 401",
+            "errors": ["ignored detail"]
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        match &out[..] {
+            [EngineEvent::Error(message)] => assert_eq!(message, "API Error: 401"),
+            other => panic!("expected error event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn failed_result_without_details_keeps_the_fallback() {
+        let line = serde_json::json!({
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "result": "   ",
+            "errors": ["", "  "]
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        match &out[..] {
+            [EngineEvent::Error(message)] => assert_eq!(message, "claude turn failed"),
+            other => panic!("expected error event, got {other:?}"),
+        }
+    }
 
     #[test]
     fn ask_user_question_control_request_emits_question() {
