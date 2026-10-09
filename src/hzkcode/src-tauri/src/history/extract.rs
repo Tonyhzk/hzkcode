@@ -59,6 +59,9 @@ const CHAIN_TYPES: [&str; 4] = ["user", "assistant", "attachment", "system"];
 struct SegmentChain {
     links: HashMap<String, (Option<String>, Option<String>)>,
     order: Vec<String>,
+    /// Chain-node uuid → transcript `type` ("user"/"assistant"/…): the
+    /// trailing-prompt trim needs to tell an unanswered prompt from a reply.
+    node_types: HashMap<String, String>,
     assistants: Vec<(String, String)>,
     tool_results: Vec<(String, String)>,
     boundaries: Vec<String>,
@@ -115,10 +118,11 @@ pub(super) fn dead_branch_uuids_for_chain(files: &[std::path::PathBuf]) -> Chain
         }
         segments.push(segment);
     }
-    let rewindable = segments
-        .last()
-        .and_then(|segment| segment.as_ref())
-        .and_then(|segment| segment_kept_uuids(segment, &anywhere, false, false));
+    let active = segments.last().and_then(|segment| segment.as_ref());
+    let rewindable = active.and_then(|segment| {
+        let kept = segment_kept_uuids(segment, &anywhere, false, false)?;
+        Some(drop_unanswered_tail_prompts(segment, kept))
+    });
     let dead = segments
         .iter()
         .map(|segment| match segment {
@@ -135,6 +139,7 @@ fn segment_chain(reader: impl BufRead) -> SegmentChain {
     let mut chain = SegmentChain {
         links: HashMap::new(),
         order: Vec::new(),
+        node_types: HashMap::new(),
         assistants: Vec::new(),
         tool_results: Vec::new(),
         boundaries: Vec::new(),
@@ -177,6 +182,7 @@ fn segment_chain(reader: impl BufRead) -> SegmentChain {
             .map(str::to_string);
         if CHAIN_TYPES.contains(&ty) {
             chain.order.push(uuid.to_string());
+            chain.node_types.insert(uuid.to_string(), ty.to_string());
         }
         // Parallel-tool topology for the recovery pass: assistant siblings
         // share `message.id`, and a tool-result row's parentUuid points at
@@ -451,6 +457,41 @@ fn segment_kept_uuids(
         }
     }
     Some(kept)
+}
+
+/// The CLI resolves `--resume-session-at` only against the chain it loads
+/// (`buildConversationChain` over the active file): a trailing prompt with
+/// no reply yet — the orphaned input of a turn that failed before producing
+/// anything — is not part of that chain. Trim the tail run of such prompt
+/// nodes from the resumable set, or the page would offer a rewind point the
+/// CLI rejects — and a rejected resume keeps its anchor, wedging every
+/// retry. Tool-result rows are not prompt inputs and stay.
+fn drop_unanswered_tail_prompts(
+    segment: &SegmentChain,
+    kept: std::collections::HashSet<String>,
+) -> std::collections::HashSet<String> {
+    let mut result = kept;
+    let mut tail = segment
+        .order
+        .iter()
+        .rev()
+        .find(|uuid| result.contains(uuid.as_str()))
+        .cloned();
+    while let Some(uuid) = tail {
+        let is_prompt = segment.node_types.get(&uuid).map(String::as_str) == Some("user")
+            && !segment.tool_results.iter().any(|(u, _)| u == &uuid);
+        if !is_prompt {
+            break;
+        }
+        result.remove(&uuid);
+        tail = segment
+            .links
+            .get(&uuid)
+            .and_then(|(parent, _)| parent.as_ref())
+            .filter(|parent| result.contains(parent.as_str()))
+            .cloned();
+    }
+    result
 }
 
 /// Dead uuids of one segment; empty when nothing is dead, None when the
@@ -1741,6 +1782,44 @@ mod tests {
         found.sort();
         assert_eq!(found, expected);
         assert_eq!(texts, ["问一", "第一块", "第二块", "回退后的问", "回退后的答"]);
+    }
+
+    #[test]
+    fn an_unanswered_tail_prompt_is_not_rewindable() {
+        // A turn that failed before producing anything leaves its prompt as
+        // the chain's tail with no reply. The CLI's resume walk does not
+        // reach it (`--resume-session-at` reports 未找到 message.uuid), so it
+        // must carry no rewind entry — offering one wedges every retry: the
+        // rejected send keeps its anchor and fails again forever.
+        let (dir, file) = rewind_fixture(&[
+            msg("user", "u1", None, None, "问一", "2026-10-05T01:00:00.000Z"),
+            msg("assistant", "a1", Some("u1"), None, "答一", "2026-10-05T01:00:01.000Z"),
+            msg("user", "u2", Some("a1"), None, "失败后残留的问", "2026-10-05T01:00:02.000Z"),
+        ]);
+        let filter = super::dead_branch_uuids_for_chain(&[file.clone()]);
+        let parsed = parse_session_file("claude", &file).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let rewindable = filter.rewindable.expect("walk understood");
+        assert!(rewindable.contains("u1"), "a replied prompt stays rewindable");
+        assert!(rewindable.contains("a1"), "the reply stays rewindable");
+        assert!(
+            !rewindable.contains("u2"),
+            "the unanswered tail prompt must not be rewindable: {rewindable:?}"
+        );
+        // The page keeps showing the lingering prompt (it is not dead
+        // history), but its rewind entry is withdrawn.
+        let archived: Vec<(&str, bool)> = parsed
+            .messages
+            .iter()
+            .filter(|m| m.role != "__usage__")
+            .map(|m| (m.text.as_str(), m.archived))
+            .collect();
+        assert_eq!(
+            archived,
+            [("问一", false), ("答一", false), ("失败后残留的问", true)]
+        );
+        let texts = page_texts(&parsed);
+        assert_eq!(texts, ["问一", "答一", "失败后残留的问"]);
     }
 
     #[test]

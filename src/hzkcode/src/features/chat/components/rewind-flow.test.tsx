@@ -179,13 +179,13 @@ describe("a rewinded send", () => {
           engine: "claude",
           seq: 1,
           kind: "error",
-          data: "未找到 message.uuid 为 u1 的消息",
+          data: "对话加载失败",
         },
       ],
       deps(),
     );
     expect(useChatStore.getState().bySession[KEY]?.error).toBe(
-      "未找到 message.uuid 为 u1 的消息",
+      "对话加载失败",
     );
     expect(readAnchors()).toEqual({ [KEY]: "u1" });
     // The finished run's provisional registration is gone (it must not pile
@@ -200,6 +200,64 @@ describe("a rewinded send", () => {
     await useChatStore.getState().resendLastUser(KEY);
     expect(vi.mocked(ipc.sendMessage)).toHaveBeenLastCalledWith(
       expect.objectContaining({ rewindTo: "u1", prompt: "继续" }),
+    );
+  });
+
+  it("drops the anchor when the CLI rejects it as unresolvable", async () => {
+    // 「未找到 message.uuid 为 …」 means the point is not in the chain the
+    // CLI will load (e.g. an unanswered tail prompt after a failed turn):
+    // keeping it would fail every retry forever, so the anchor is spent and
+    // the next send goes through as a plain resume.
+    const tab = { engine: "claude", sessionId: SID, workspacePath: WS };
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: { [KEY]: { ...EMPTY_SESSION, messages: [msg("user", "一问", "u1"), msg("user", "二问", "u2")] } },
+    });
+    act(() => {
+      useChatStore.getState().setRewindAnchor(KEY, "u1");
+    });
+    await useChatStore.getState().send("继续", []);
+    handleEngineEvents(
+      [
+        {
+          runId: "run-1",
+          sessionId: SID,
+          engine: "claude",
+          seq: 1,
+          kind: "error",
+          data: "未找到 message.uuid 为 u1 的消息",
+        },
+      ],
+      deps(),
+    );
+    expect(readAnchors()).toEqual({});
+    await useChatStore.getState().resendLastUser(KEY);
+    expect(vi.mocked(ipc.sendMessage)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rewindTo: null, prompt: "继续" }),
+    );
+  });
+
+  it("after an edit's resumable refresh a stale anchor no longer rides the next send", async () => {
+    // The edit-save flow refreshes the resumable set (ChatConversation →
+    // refreshRewindable); when the anchor is outside the engine's true set
+    // it is dropped, so a prompt continue/retry afterwards must send
+    // without `--resume-session-at`.
+    const tab = { engine: "claude", sessionId: SID, workspacePath: WS };
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: { [KEY]: { ...EMPTY_SESSION, messages: [msg("user", "一问", "u1"), msg("user", "二问", "u2")] } },
+    });
+    act(() => {
+      useChatStore.getState().setRewindAnchor(KEY, "u1");
+    });
+    vi.mocked(ipc.sessionRewindableUuids).mockResolvedValueOnce(["u2"]);
+    await useChatStore.getState().refreshRewindable(KEY);
+    expect(readAnchors()).toEqual({});
+    await useChatStore.getState().send("继续", []);
+    expect(vi.mocked(ipc.sendMessage)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rewindTo: null }),
     );
   });
 

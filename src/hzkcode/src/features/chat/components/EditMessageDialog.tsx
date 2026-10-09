@@ -21,8 +21,10 @@ export function EditMessageDialog({
   workspacePath: string;
   /** uuid、正文（编辑框初值）与需原样保留的隐藏尾块（旧身份块）。 */
   target: { uuid: string; text: string; tail?: string };
-  /** 保存成功：把新文本落到内存（磁盘已由编辑命令改好）。 */
-  onSaved: (uuid: string, text: string) => void;
+  /** 保存成功：把新文本落到内存（磁盘已由编辑命令改好）。返回的 Promise
+   *  在可回退集合刷新（含失效回退点清理）完成后 resolve——保存流程会等它
+   *  完成再关闭对话框，避免随即重试/继续时读到旧的待回退点。 */
+  onSaved: (uuid: string, text: string) => void | Promise<void>;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -72,7 +74,7 @@ export function EditMessageDialog({
         setBusy(false);
         return;
       }
-      onSaved(target.uuid, full);
+      await onSaved(target.uuid, full);
       if (outcome.archived) {
         setArchived(true);
         setBusy(false);

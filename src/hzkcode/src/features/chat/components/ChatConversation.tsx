@@ -67,6 +67,7 @@ const SessionTimeline = memo(function SessionTimeline({
   const setRewindAnchor = useChatStore((s) => s.setRewindAnchor);
   const rewindWorkspaceFiles = useChatStore((s) => s.rewindWorkspaceFiles);
   const applyEditedMessage = useChatStore((s) => s.applyEditedMessage);
+  const refreshRewindable = useChatStore((s) => s.refreshRewindable);
   const { t } = useTranslation();
   const [rewindTarget, setRewindTarget] = useState<{
     uuid: string;
@@ -141,7 +142,15 @@ const SessionTimeline = memo(function SessionTimeline({
           sessionId={sessionId}
           workspacePath={workspacePath}
           target={editTarget}
-          onSaved={(uuid, text) => applyEditedMessage(key, uuid, text)}
+          onSaved={(uuid, text) => {
+            applyEditedMessage(key, uuid, text);
+            // The edit rewrote the transcript: re-read the resumable set so
+            // the rewind entries and affordances match the file the CLI will
+            // walk, and a stale anchor pointing outside it is dropped. The
+            // dialog waits for this before closing (a prompt continue/retry
+            // must not read the stale anchor).
+            return refreshRewindable(key);
+          }}
           onClose={() => setEditTarget(null)}
         />
       )}

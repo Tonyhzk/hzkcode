@@ -188,4 +188,24 @@ describe("EditMessageDialog", () => {
     });
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("waits for the save callback before closing", async () => {
+    // onSaved hands back the resumable-set refresh (and stale-anchor
+    // cleanup): the dialog must stay open until it resolves, or an
+    // immediate continue/retry would still read the old anchor.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    onSaved = vi.fn(() => gate);
+    render({ uuid: "u-1", text: "hello" });
+    setDraft("hello world");
+    await clickSave();
+    expect(onSaved).toHaveBeenCalledWith("u-1", "hello world");
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => {
+      release();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

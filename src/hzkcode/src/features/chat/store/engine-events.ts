@@ -649,7 +649,19 @@ function consumePendingRewind(
   if (event.kind === "error" && !runsWithContent.has(event.runId)) {
     // The CLI failed before producing anything (a failed resume or startup)
     // and wrote no new chain: the persisted anchor stays for the retry,
-    // which will rewind again.
+    // which will rewind again — unless the CLI rejected the anchor itself
+    // (「未找到 message.uuid 为 … 的消息」/ "No message found with
+    // message.uuid of: …"): retrying with it would fail forever, so drop it
+    // and let the next send go through as a plain resume.
+    // The CLI's own rejection strings (both locales) for an unresolvable
+    // resume point: matched in full so unrelated errors never drop an anchor.
+    const rejectedResume =
+      typeof event.data === "string" &&
+      (event.data.includes("未找到 message.uuid 为") ||
+        event.data.includes("No message found with message.uuid of:"));
+    if (rejectedResume) {
+      deps.get().consumeRewindAnchor(key, anchor);
+    }
     return;
   }
   deps.get().consumeRewindAnchor(key, anchor);
