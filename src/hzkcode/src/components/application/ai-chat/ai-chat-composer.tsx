@@ -638,8 +638,8 @@ function SessionToggles() {
                 type="button"
                 onClick={() => {
                   setIsOpen(false);
-                  // The session proxy address lives on the 功能开关 page.
-                  navigate("/settings?page=features");
+                  // The session proxy address lives on the 网络代理 page.
+                  navigate("/settings?page=proxy");
                 }}
                 className="shrink-0 cursor-pointer text-caption-1-medium text-text-link-default outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring"
               >

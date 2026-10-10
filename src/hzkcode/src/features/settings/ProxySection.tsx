@@ -10,6 +10,7 @@ import {
   SettingsSectionLabel,
 } from "@/components/application/settings/settings-rows";
 import { ipc, type AppSettings } from "@/lib/ipc";
+import { CliEnvCards } from "./CliEnvGroupCard";
 
 /** Shown as the draft when no proxy URL has been configured yet. */
 export const DEFAULT_PROXY_URL = "http://127.0.0.1:7890";
@@ -17,10 +18,11 @@ export const DEFAULT_PROXY_URL = "http://127.0.0.1:7890";
 type ProxyPatch = Pick<AppSettings, "systemProxyEnabled" | "systemProxyUrl">;
 
 /**
- * Network proxy page: master switch (persists immediately, applies to new
- * requests) plus the proxy URL (draft until 保存). The backend applies the
- * saved values to the app process env, so every engine/terminal spawned
- * afterwards inherits HTTP(S)_PROXY/ALL_PROXY; in-flight turns are untouched.
+ * Network proxy page: the app-wide proxy (master switch plus address, applied
+ * to the app process env so every engine/terminal spawned afterwards inherits
+ * HTTP(S)_PROXY/ALL_PROXY) and, below it, the engine's own session proxy —
+ * the same pair the CLI exposes as its generic proxy variables and `/proxy`.
+ * In-flight turns are untouched by either.
  */
 export function ProxySection() {
   const { t } = useTranslation();
@@ -135,7 +137,7 @@ export function ProxySection() {
   return (
     <div className="flex w-full flex-col gap-6">
       <div className="flex w-full flex-col gap-2">
-        <SettingsSectionLabel>{t("settings.proxy")}</SettingsSectionLabel>
+        <SettingsSectionLabel>{t("settings.proxyAppCard")}</SettingsSectionLabel>
         <p className="px-3 text-body-2-regular text-text-secondary">
           {t("settings.proxyDesc")}
         </p>
@@ -187,6 +189,7 @@ export function ProxySection() {
           {t("settings.proxyHint")}
         </p>
       </div>
+      <CliEnvCards ids={["sessionProxy"]} />
     </div>
   );
 }

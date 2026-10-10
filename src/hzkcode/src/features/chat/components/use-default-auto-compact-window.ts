@@ -11,8 +11,8 @@ import { CLI_CONFIG_CHANGED_EVENT } from "@/features/settings/providers";
  * boundary).
  *
  * Re-reads when a channel is edited (settings tree) or app settings change
- * (功能开关), and only the newest read is applied: a slow older response
- * cannot clobber a newer channel's value.
+ * (the assistant cards), and only the newest read is applied: a slow older
+ * response cannot clobber a newer channel's value.
  */
 export function useDefaultAutoCompactWindow(
   engine: string,

@@ -8,7 +8,7 @@
 
 ## 引擎支持
 
-当前只保留 Claude Code 一个引擎（HZKCode CLI 的基座）：CLI 驱动协议与 Claude Code SDK 同源，Rust 侧 `ENGINES = ["claude"]`；设置页按「模型与能力 / 应用 / 数据与连接 / 其他（+插件）」分组，「模型配置」板块只有供应商渠道（渠道对话框：预设、API URL / API Key、默认模型（档位下拉：低阶/中阶/高阶/自定义，默认中阶）、上下文窗口（`HZKCODE_MAX_CONTEXT_TOKENS`，令牌数、留空跟随默认）、模型映射、自定义模型列表——随渠道记录保存，支持逗号分隔批量添加，模型选择器按当前渠道读取并参与失效判定），与独立的「功能开关」页同属「模型与能力」，没有启用开关（引擎固定启用）。功能开关（联网搜索、OSS、飞书、用户记忆、第二大脑、自动模式、工作状态汇报、会话代理、多模态读取、行为与工作流）只在该独立页维护，不再塞进模型配置页；界面不提供外部程序路径与程序自身配置文件的编辑入口。
+当前只保留 Claude Code 一个引擎（HZKCode CLI 的基座）：CLI 驱动协议与 Claude Code SDK 同源，Rust 侧 `ENGINES = ["claude"]`；设置页按「模型与能力 / 应用 / 数据与连接 / 其他（+插件）」分组，「模型配置」板块只有供应商渠道（渠道对话框：预设、API URL / API Key、默认模型（档位下拉：低阶/中阶/高阶/自定义，默认中阶）、上下文窗口（`HZKCODE_MAX_CONTEXT_TOKENS`，令牌数、留空跟随默认）、模型映射、自定义模型列表——随渠道记录保存，支持逗号分隔批量添加，模型选择器按当前渠道读取并参与失效判定），与「工具」「后台助手」同属「模型与能力」，没有启用开关（引擎固定启用）。引擎的功能变量（联网搜索、多模态读取、任务与计划、用户记忆、第二大脑、自动模式分类器、会话代理、工作状态汇报、CLAUDE.md 与 Skills 加载、OSS、飞书）由 `features/settings/cliFeatureEnv.ts` 单表定义，按用途分散在「工具 / 后台助手 / 外部服务 / 网络代理 / 智能体与提示词 · 行为」各页，经 `CliEnvGroupCard` 渲染、`useCliEnv` 读改写合并保存（没有独立的「功能开关」页）；界面不提供外部程序路径与程序自身配置文件的编辑入口。
 
 - 已删除引擎：Codex、Kimi、Grok、Antigravity、OpenCode、Qoder、PI/OMP、DeepSeek Harness（适配器、会话扫描/解析、渠道注入、CLI 生命周期、二进制搜索路径均已裁剪）。
 - 模型第三方厂商徽标（GPT/DeepSeek/Kimi/Grok 等）保留：claude 渠道可服务第三方模型，模型列表按厂商显示图标；claude 的徽标已替换为 H 标（界面不出现 Claude 星标）。
@@ -20,7 +20,7 @@
 - 渠道 env 注入端归一（`provider_files.rs::normalize_legacy_model_env`，对齐 CLI 3.1.2）：模型键的 `[1m]`/`[2m]` 后缀一律剥离，主会话模型（渠道默认或三档）曾带后缀时推导注入 `HZKCODE_MAX_CONTEXT_TOKENS=1000000`（显式窗口不覆盖，遗留 `settingsConfig.model` 仅在 `HZKCODE_MODEL` 缺失时参与推导）；旧档位别名按消费方式分三组处理（解析组归一为 high/mid/low、绑定组把档位拼写视为无效绑定删键、直接消费组迁移到对应绑定值或保留剥离值）；打开渠道编辑时做同样的读时迁移并随保存写回配置。
 - 终端可见信息不隐藏：CLI 的 `system/informational` 通知（第二大脑指导意见与调用失败、个人记忆提示、模型降级、Stop Hook 失败）实时渲染为时间线通知行（引擎事件 `notice`），历史解析同样保留（`info` 级不显示，与 CLI 默认一致）；重试原因直接显示在「重试中 x/y」下方。
 - 设置「通用 → 行为 → 详细显示」：开启后过程行默认展开、工具调用参数与结果内联显示；关闭时保持折叠与点击展开。
-- 第二大脑与用户记忆在 GUI 会话中的口径：无头会话（querySource `sdk`）与 REPL 同为主对话（已并入 fork 判定），由「功能开关」里的对应开关启用；GUI 每次发送都是新进程，观察者的间隔与请求计数随之从零开始，指导意见/调用失败通常在同一轮的下一次请求前出现，把请求数门槛设为 0 可让任意工具轮次后立即复核。
+- 第二大脑与用户记忆在 GUI 会话中的口径：无头会话（querySource `sdk`）与 REPL 同为主对话（已并入 fork 判定），由「后台助手」页里的对应开关启用；GUI 每次发送都是新进程，观察者的间隔与请求计数随之从零开始，指导意见/调用失败通常在同一轮的下一次请求前出现，把请求数门槛设为 0 可让任意工具轮次后立即复核。
 - 旧数据迁移逻辑（`~/.ccgui` 配置、legacy prompts 等）保留兼容，迁移源只处理 claude section。
 
 ## 界面布局与多窗口
@@ -47,7 +47,7 @@
 - 会话分支（`branch_session`）：按消息 uuid 定位源会话（记录路径，缺失时按 id 全目录兜底），分支包含所选消息本身（助手回复与用户提问都含本条；用户提问含本条是 GUI 的既定行为，CLI `/branch` 对提问是不含的）；逐条改写 `sessionId`、重建 `parentUuid`、写入 `forkedFrom`，携带 content-replacement 记录；标题继承为「原名 (分支[ n])」写 `custom-title` 条目并即时入库。消息 uuid 由历史解析（`extract`）与实时流（`message_uuid` 事件）共同提供，前端消息行操作栏据此显示「分支」图标。
 - 会话分段读取（CLI 3.1.0）：压缩后旧内容归档为段文件（`<会话ID>/segments/` 与清单 `<会话ID>/segments.json`，活跃段固定为 `<会话ID>.jsonl`）；GUI 的历史读取、扫描摘要与分支定位都沿清单父链拼接 root → active（`history/segments.rs`，含旋转过渡态的只读对账、片段缺失跳过、无法确认时回退单文件），缓存签名 `session_stat_signature` 把清单与链上段文件的大小与 mtime 折入，扫描缓存版本（`CACHE_VERSION`）随之推进。
 - 跨会话通信（CLI 3.1.0 默认启用，用户确认保持行为一致）：本机 UDS 消息套接字随会话进程注册，GUI 无头会话在轮次存活期间可被本机其他会话注入消息触发一轮执行（与 CLI 交互式一致，界面不显示来源）；注入消息写入会话文件、执行受权限模式约束，GUI 不拦截、不加额外 UI。`HZKCODE_RESPONSES_WEBSOCKET` 不在 GUI 暴露（每次发送都是新进程，跨轮复用收益有限）。
-- 会话开关（对话输入区的「会话开关」菜单）：按会话固定 `HZKCODE_PROXY_ENABLED`（等价 `/proxy on|off`）、`HZKCODE_ENABLE_SECOND_BRAIN`（等价 `/second-brain on|off`）与 `HZKCODE_AUTO_COMPACT_WINDOW`（等价 `/maxtokens`，正整数的会话上下文窗口覆盖，留空＝跟随默认；该覆盖值同时作为主界面进度分母优先显示，设置后即时生效），随每次发送注入子进程、覆盖应用级默认（`SendRequest.proxy_enabled` / `second_brain_enabled` / `auto_compact_window`，状态存 `SessionState.proxyEnabled` / `secondBrainEnabled` / `autoCompactWindow`，null＝跟随）；未设置会话值时进度分母取渠道配置/功能开关里的同名变量（`default_auto_compact_window` 命令，按与启动一致的层序解析），显式会话值优先于渠道配置自带的同名变量；上下文窗口输入在回车、点「应用」或关闭弹层时都会提交合法草稿。新增同类「进程启动期读环境」的会话级开关沿用这一形态。
+- 会话开关（对话输入区的「会话开关」菜单）：按会话固定 `HZKCODE_PROXY_ENABLED`（等价 `/proxy on|off`）、`HZKCODE_ENABLE_SECOND_BRAIN`（等价 `/second-brain on|off`）与 `HZKCODE_AUTO_COMPACT_WINDOW`（等价 `/maxtokens`，正整数的会话上下文窗口覆盖，留空＝跟随默认；该覆盖值同时作为主界面进度分母优先显示，设置后即时生效），随每次发送注入子进程、覆盖应用级默认（`SendRequest.proxy_enabled` / `second_brain_enabled` / `auto_compact_window`，状态存 `SessionState.proxyEnabled` / `secondBrainEnabled` / `autoCompactWindow`，null＝跟随）；未设置会话值时进度分母取渠道配置/应用级变量里的同名变量（`default_auto_compact_window` 命令，按与启动一致的层序解析），显式会话值优先于渠道配置自带的同名变量；上下文窗口输入在回车、点「应用」或关闭弹层时都会提交合法草稿。新增同类「进程启动期读环境」的会话级开关沿用这一形态。
 - 替换内置二进制前必须做接口检查：在 fork 仓库（`hzk-code-agent`）对旧版与新版的提交/标签对比有无影响 GUI 交互的接口变化——核对 GUI 注入的环境变量（`provider_files.rs` 的 `env_names` / `is_provider_env_key` 清单：`HZKCODE_BASE_URL` / `HZKCODE_API_KEY` / `HZKCODE_MODEL` / `HZKCODE_DEFAULT_HIGH|MID|LOW_MODEL` / `HZKCODE_API_MODE` / `HZKCODE_AUTH_MODE` / `HZKCODE_PROVIDER` / `HZKCODE_CONFIG_DIR` / `HZKCODE_PROVIDER_MANAGED_BY_HOST` 等）、无头 stream-json 会话协议与启动参数、配置与会话目录、系统通知输出；CLI 纯内部改动（记忆、第二大脑、提示词等）不算接口变化。方法：对两个提交分别 `git grep` 变量名与协议字段并对比，差异逐项确认无破坏或已在 GUI 侧适配后再替换。
 - 运行时解析顺序：设置页自定义路径 → 内置二进制 → 系统 PATH；命中内置时设置页版本行显示「内置」，且不提供 npm / 官方脚本的一键安装入口（随应用一起更新）。
 - 引擎配置根目录：`~/.hzkcode`（`HZKCODE_CONFIG_DIR` 可覆盖），与单独安装的 hzkcode CLI 共用同一份配置与会话数据，因此可以同时安装使用；GUI 不再读写 `~/.claude` 与 `CLAUDE_CONFIG_DIR`。

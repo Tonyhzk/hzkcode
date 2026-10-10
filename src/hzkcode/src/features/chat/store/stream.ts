@@ -33,7 +33,7 @@ export interface SessionState {
    *  true pins HZKCODE_PROXY_ENABLED=1, false forces direct, null 跟随默认. */
   proxyEnabled?: boolean | null;
   /** Per-session second-brain switch (the CLI's /second-brain): pins
-   *  HZKCODE_ENABLE_SECOND_BRAIN per send; null 跟随功能开关的默认. */
+   *  HZKCODE_ENABLE_SECOND_BRAIN per send; null 跟随后台助手的默认. */
   secondBrainEnabled?: boolean | null;
   /** Per-session context-window override (the CLI's /maxtokens): pins
    *  HZKCODE_AUTO_COMPACT_WINDOW per send; null 跟随默认. */

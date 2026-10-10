@@ -286,8 +286,8 @@ export function ProviderBasicFields({ form }: { form: ProviderForm }) {
 
 /** One control from an env-field schema: a switch for on/off variables, a
  *  dropdown for fixed option lists, an input for text and numbers (model ids
- *  carry the 拉取模型 datalist). Shared by the channel dialog and the global
- *  feature card. */
+ *  carry the 拉取模型 datalist, secrets get a show/hide button). Shared by the
+ *  channel dialog and the feature cards. */
 export function EnvFieldControl({
   field,
   value,
@@ -304,6 +304,7 @@ export function EnvFieldControl({
   // The labeled-select branch's 自定义 state: the select must keep showing
   // 自定义 even while the free-text id is still empty.
   const [customMode, setCustomMode] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   const hint = field.hintKey ? t(field.hintKey) : undefined;
   if (field.kind === "toggle") {
     const on = value.trim() === "1";
@@ -327,20 +328,18 @@ export function EnvFieldControl({
     );
   }
   if (field.kind === "select" && field.optionLabelKeys) {
-    // Tier picker (the channel's default model): labeled options over the
-    // tier aliases; a stored value outside them — or an explicit 自定义
-    // pick — reveals the free-text model input with its 1M switch.
+    // Labeled option pick: the tier picker (assisted by the 自定义 escape
+    // hatch) and the feature cards' reads like 跟随默认 / 开启 / 关闭.
     const options = field.options ?? [];
     const labelKeys = field.optionLabelKeys;
     const stored = value.trim();
     const isCustom =
       !!field.allowCustom &&
       (customMode || (stored !== "" && !options.includes(stored)));
-    const selectedKey = isCustom
-      ? CUSTOM_OPTION_ID
-      : options.includes(stored)
-        ? stored
-        : (field.emptyShows ?? options[0] ?? UNSET_OPTION_ID);
+    const plainKey = options.includes(stored)
+      ? stored || UNSET_OPTION_ID
+      : (field.emptyShows ?? options[0] ?? UNSET_OPTION_ID) || UNSET_OPTION_ID;
+    const selectedKey = isCustom ? CUSTOM_OPTION_ID : plainKey;
     return (
       <div className="flex flex-col gap-1.5">
         <span className="text-body-medium text-text-secondary">
@@ -359,13 +358,13 @@ export function EnvFieldControl({
               return;
             }
             setCustomMode(false);
-            onChange(next);
+            onChange(next === UNSET_OPTION_ID ? "" : next);
           }}
         >
           {options.map((option) => {
             const labelKey = labelKeys[option];
             return (
-              <SelectItem key={option} id={option}>
+              <SelectItem key={option || UNSET_OPTION_ID} id={option || UNSET_OPTION_ID}>
                 {labelKey ? t(labelKey) : option}
               </SelectItem>
             );
@@ -413,12 +412,39 @@ export function EnvFieldControl({
       </div>
     );
   }
+  if (field.kind === "text" && field.secret) {
+    return (
+      <div className="relative">
+        <Input
+          label={t(field.labelKey)}
+          size="small"
+          type={showSecret ? "text" : "password"}
+          placeholder={field.placeholderKey ? t(field.placeholderKey) : undefined}
+          value={value}
+          onChange={onChange}
+          fieldClassName="pr-8"
+        />
+        <button
+          type="button"
+          aria-label={t(field.labelKey)}
+          onClick={() => setShowSecret((s) => !s)}
+          className="absolute right-2 bottom-1.5 flex size-5 items-center justify-center rounded text-foreground-icon-tertiary hover:text-foreground-icon-primary"
+        >
+          {showSecret ? (
+            <EyeOff className="size-4" aria-hidden />
+          ) : (
+            <Eye className="size-4" aria-hidden />
+          )}
+        </button>
+      </div>
+    );
+  }
   return (
     <Input
       label={t(field.labelKey)}
       size="small"
       inputMode={field.kind === "number" ? "numeric" : undefined}
-      list={field.kind === "text" ? FETCH_DATALIST_ID : undefined}
+      list={field.datalist === "models" ? FETCH_DATALIST_ID : undefined}
       placeholder={field.placeholderKey ? t(field.placeholderKey) : undefined}
       hint={grouped ? hint : undefined}
       value={value}

@@ -6,7 +6,9 @@ import Info from "lucide-react/dist/esm/icons/info";
 import Bot from "lucide-react/dist/esm/icons/bot";
 import Smartphone from "lucide-react/dist/esm/icons/smartphone";
 import ChartColumn from "lucide-react/dist/esm/icons/chart-column";
-import SlidersHorizontal from "lucide-react/dist/esm/icons/sliders-horizontal";
+import PlugZap from "lucide-react/dist/esm/icons/plug-zap";
+import Sparkles from "lucide-react/dist/esm/icons/sparkles";
+import Wrench from "lucide-react/dist/esm/icons/wrench";
 import i18n from "@/lib/i18n";
 import type { SettingsNavItem } from "@/components/application/settings/settings-modal";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
@@ -17,7 +19,9 @@ import { ProxySection } from "./ProxySection";
 import { WorkspacesSection } from "./WorkspacesSection";
 import { AgentsPromptsSection } from "./agents-prompts/AgentsPromptsSection";
 import { CliConfigSection } from "./CliConfigSection";
-import { CliFeaturesSection } from "./CliFeaturesSection";
+import { ToolsSection } from "./ToolsSection";
+import { AssistantsSection } from "./AssistantsSection";
+import { ServicesSection } from "./ServicesSection";
 import { AboutSection } from "./AboutSection";
 import { WebAccessSection } from "./WebAccessSection";
 import { UsageSection } from "./UsageSection";
@@ -31,10 +35,11 @@ import { ENGINE_IDS, type EngineId } from "./providers";
  * registry's upsert semantics make HMR re-runs harmless.
  *
  * Rail layout (see GROUP_META in SettingsPage): 模型与能力 keeps what the
- * engine runs (channels + the global feature switches), 应用 is the local
- * app's own settings, 数据与连接 covers agents/remote access/usage, and the
- * tail holds about. Feature switches live on their own page — the 模型配置
- * page stays channels + model answers only.
+ * engine runs (channels, the tools it may call, the background assistants),
+ * 应用 is the local app's own settings, 数据与连接 covers agents/remote
+ * access/usage, and the tail holds about. The engine's own feature variables
+ * are spread over the pages they belong to — there is no single switchboard
+ * page.
  */
 
 /** Nav-rail mark for one CLI engine: the rail colors every icon
@@ -62,13 +67,22 @@ ENGINE_IDS.forEach((engine) => {
   });
 });
 settingsRegistry.register({
-  id: "features",
-  key: "features",
-  label: () => i18n.t("settings.features"),
-  icon: SlidersHorizontal,
+  id: "tools",
+  key: "tools",
+  label: () => i18n.t("settings.tools"),
+  icon: Wrench,
   group: "model",
   order: 1,
-  component: CliFeaturesSection,
+  component: ToolsSection,
+});
+settingsRegistry.register({
+  id: "assistants",
+  key: "assistants",
+  label: () => i18n.t("settings.assistants"),
+  icon: Sparkles,
+  group: "model",
+  order: 2,
+  component: AssistantsSection,
 });
 settingsRegistry.register({
   id: "general",
@@ -116,12 +130,21 @@ settingsRegistry.register({
   component: AgentsPromptsSection,
 });
 settingsRegistry.register({
+  id: "services",
+  key: "services",
+  label: () => i18n.t("settings.services"),
+  icon: PlugZap,
+  group: "data",
+  order: 1,
+  component: ServicesSection,
+});
+settingsRegistry.register({
   id: "webAccess",
   key: "webAccess",
   label: () => i18n.t("settings.webAccess"),
   icon: Smartphone,
   group: "data",
-  order: 1,
+  order: 2,
   component: WebAccessSection,
 });
 settingsRegistry.register({
@@ -130,7 +153,7 @@ settingsRegistry.register({
   label: () => i18n.t("usage.title"),
   icon: ChartColumn,
   group: "data",
-  order: 2,
+  order: 3,
   component: UsageSection,
 });
 settingsRegistry.register({

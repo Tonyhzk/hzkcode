@@ -40,9 +40,9 @@ export const OFFICIAL_BASE_URL = "https://api.anthropic.com";
  *  it so the form renders as a loop over the schema. */
 export interface EnvField {
   envKey: string;
-  /** "text" = free text (model ids get the 拉取模型 datalist), "number" = a
-   *  numeric threshold, "select" = fixed option list ("" = CLI default),
-   *  "toggle" = on/off switch writing "1" / unset. */
+  /** "text" = free text, "number" = a numeric threshold, "select" = fixed
+   *  option list ("" = CLI default), "toggle" = on/off switch writing "1" /
+   *  unset. */
   kind: "text" | "number" | "select" | "toggle";
   options?: readonly string[];
   /** select: option value → i18n label key. Present for labeled picks (the
@@ -57,6 +57,19 @@ export interface EnvField {
   labelKey: string;
   hintKey?: string;
   placeholderKey?: string;
+  /** text: mask the value behind a show/hide button (keys and secrets). */
+  secret?: boolean;
+  /** text/number: attach the 拉取模型 datalist — model ids only. */
+  datalist?: "models";
+  /** feature groups: the card's master switch (at most one per group). */
+  master?: boolean;
+  /** feature groups: fold into the card's 高级设置 region. */
+  advanced?: boolean;
+  /** feature groups: render only while `showWhen.envKey` holds one of
+   *  `showWhen.oneOf` (the stored value is kept while hidden). */
+  showWhen?: { envKey: string; oneOf: readonly string[] };
+  /** feature groups: belongs to this tab (see CliEnvGroup.tabs). */
+  tabKey?: string;
 }
 
 /** The channel fields the dialog exposes, grouped in display order. These are
@@ -115,24 +128,28 @@ export const CLAUDE_ENV_GROUPS: readonly {
       {
         envKey: "HZKCODE_DEFAULT_HIGH_MODEL",
         kind: "text",
+        datalist: "models",
         labelKey: "settings.cliFieldHighModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
       },
       {
         envKey: "HZKCODE_DEFAULT_MID_MODEL",
         kind: "text",
+        datalist: "models",
         labelKey: "settings.cliFieldMidModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
       },
       {
         envKey: "HZKCODE_DEFAULT_LOW_MODEL",
         kind: "text",
+        datalist: "models",
         labelKey: "settings.cliFieldLowModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
       },
       {
         envKey: "HZKCODE_READ_MODEL",
         kind: "text",
+        datalist: "models",
         labelKey: "settings.cliFieldReadModel",
         hintKey: "settings.cliFieldReadModelHint",
         placeholderKey: "settings.cliFieldModelPlaceholder",
