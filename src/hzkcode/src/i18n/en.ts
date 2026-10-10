@@ -225,6 +225,17 @@ export const en: Messages = {
     deleteDesc:
       "This rewrites the session file directly and cannot be undone. Later messages stay and reconnect; a tool call's execution record is removed with its own message.",
     deleteConfirm: "Delete",
+    deleteErrInvalidSession: "The session could not be located.",
+    deleteErrSessionLive: "The session is still running; delete after the turn ends.",
+    deleteErrRotationPending:
+      "The session is organizing its history files; try again shortly.",
+    deleteErrNotFound: "The message was not found in the session.",
+    deleteErrNotDeletable:
+      "This message cannot be deleted (compaction boundary, preserved slice or an abandoned branch).",
+    deleteErrFileChanged: "The session file changed on disk; refresh and retry.",
+    deleteErrWriteFailed: "Writing the session file failed.",
+    deleteErrUnsupported: "Deleting messages is not supported on this platform.",
+    deleteErrUnknown: "Deleting failed.",
     branch: "Branch",
     rewind: "Rewind",
     rewindTitle: "Rewind to this message",

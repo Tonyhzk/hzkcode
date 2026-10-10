@@ -7,11 +7,17 @@ import { DeleteMessageDialog } from "./DeleteMessageDialog";
 
 vi.mock("@/lib/ipc", () => ({
   ipc: {
-    deleteMessage: vi.fn(async () => undefined),
+    deleteMessage: vi.fn(async () => ({
+      errorCode: null,
+      archived: false,
+      detail: "Deleted message u-1",
+    })),
   },
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const OUTCOME_OK = { errorCode: null, archived: false, detail: "Deleted message u-1" };
 
 function findButton(container: HTMLElement, label: string): HTMLButtonElement {
   const button = [...container.querySelectorAll("button")].find((b) =>
@@ -33,7 +39,7 @@ describe("DeleteMessageDialog", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.deleteMessage).mockResolvedValue(undefined);
+    vi.mocked(ipc.deleteMessage).mockResolvedValue(OUTCOME_OK);
     onDeleted = vi.fn();
     onClose = vi.fn();
     container = document.createElement("div");
@@ -52,6 +58,7 @@ describe("DeleteMessageDialog", () => {
         <DeleteMessageDialog
           engine="claude"
           sessionId="s-1"
+          workspacePath="/ws"
           target={{ uuid: "u-1" }}
           onDeleted={onDeleted}
           onClose={onClose}
@@ -71,7 +78,7 @@ describe("DeleteMessageDialog", () => {
   it("deletes the message and refreshes before closing", async () => {
     render();
     await clickDelete();
-    expect(ipc.deleteMessage).toHaveBeenCalledWith("claude", "s-1", "u-1");
+    expect(ipc.deleteMessage).toHaveBeenCalledWith("claude", "s-1", "/ws", "u-1");
     expect(onDeleted).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });
@@ -95,16 +102,29 @@ describe("DeleteMessageDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("surfaces a failure and keeps the dialog open for retry", async () => {
-    vi.mocked(ipc.deleteMessage).mockRejectedValue(
-      new Error("该会话仍在运行，回合结束后再删除这条消息"),
-    );
+  it("maps a classified failure to a readable alert and keeps the dialog open", async () => {
+    vi.mocked(ipc.deleteMessage).mockResolvedValue({
+      errorCode: "not_found",
+      archived: false,
+      detail: "未找到 message.uuid 为 u-1 的消息",
+    });
     render();
     await clickDelete();
     expect(onDeleted).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
     const alert = container.querySelector('[role="alert"]');
-    expect(alert?.textContent).toContain("仍在运行");
+    expect(alert?.textContent).toContain("找不到");
+    expect(isDisabled(findButton(container, "删除"))).toBe(false);
+  });
+
+  it("surfaces an unexpected rejection and keeps the dialog open for retry", async () => {
+    vi.mocked(ipc.deleteMessage).mockRejectedValue(new Error("ipc unavailable"));
+    render();
+    await clickDelete();
+    expect(onDeleted).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("ipc unavailable");
     expect(isDisabled(findButton(container, "删除"))).toBe(false);
   });
 
@@ -127,7 +147,7 @@ describe("DeleteMessageDialog", () => {
     expect(isDisabled(findButton(container, "取消"))).toBe(true);
     expect(isDisabled(findButton(container, "删除"))).toBe(true);
     await act(async () => {
-      resolve(undefined);
+      resolve(OUTCOME_OK);
       await Promise.resolve();
       await Promise.resolve();
     });

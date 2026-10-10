@@ -206,6 +206,17 @@ export interface EditMessageOutcome {
   detail: string;
 }
 
+/** One deleted message's outcome (the CLI's --delete-message result line):
+ *  `errorCode` is a stable failure code (invalid_session / session_live /
+ *  rotation_pending / not_found / not_deletable / file_changed /
+ *  write_failed / unsupported_platform); `archived` flags a pre-compaction
+ *  segment message. */
+export interface DeleteMessageOutcome {
+  errorCode: string | null;
+  archived: boolean;
+  detail: string;
+}
+
 export interface ProviderSection {
   providers: Record<string, unknown>;
   current: string | null;
@@ -804,10 +815,21 @@ export const ipc = {
     sessionId: string,
     messageId: string,
   ) => invoke<boolean>("session_file_history_available", { engine, sessionId, messageId }),
-  /** 删除一条消息：把该条目从会话的活跃段文件移除并把直接子链重接
-   *  （文件级改写，服务端做并发与结构校验）。成功后调用方重读会话。 */
-  deleteMessage: (engine: string, sessionId: string, messageId: string) =>
-    invoke<void>("delete_message", { engine, sessionId, messageId }),
+  /** 删除一条消息（引擎的隐藏参数 --delete-message）：把该条目从转录移除
+   *  并把直接子链重接，归档段（压缩前历史）同样可删。失败以 outcome 的
+   *  errorCode 返回（不 reject），调用方映射文案；成功后重读会话。 */
+  deleteMessage: (
+    engine: string,
+    sessionId: string,
+    workspacePath: string,
+    messageId: string,
+  ) =>
+    invoke<DeleteMessageOutcome>("delete_message", {
+      engine,
+      sessionId,
+      workspacePath,
+      messageId,
+    }),
   /** Uuids the CLI can still resume at (`--resume-session-at`): the active
    *  file's own chain. Re-read after a mid-turn compaction; null when it
    *  cannot be read (the caller then leaves its rewind entries as they are). */

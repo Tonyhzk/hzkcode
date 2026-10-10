@@ -163,6 +163,7 @@ const SessionTimeline = memo(function SessionTimeline({
         <DeleteMessageDialog
           engine={engine}
           sessionId={sessionId}
+          workspacePath={workspacePath}
           target={deleteTarget}
           onDeleted={async () => {
             // 锚点指向被删消息时先结算掉：紧接着的发送不能携带不存在的

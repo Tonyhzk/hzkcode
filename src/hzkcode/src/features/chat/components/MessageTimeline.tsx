@@ -73,9 +73,9 @@ const TimelineRowView = memo(function TimelineRowView({
   onBranch?: (targetUuid: string) => void;
   onRewind?: (target: { uuid: string; role: "user" | "assistant" }) => void;
   onEdit?: (target: { uuid: string; text: string; tail?: string }) => void;
-  /** Delete affordance: the row's own transcript uuid (the entry is removed
-   *  from the active segment; later messages reconnect). Hidden for rows
-   *  read from archived segments — the write only covers the active file. */
+  /** Delete affordance: the row's own transcript uuid — the entry is removed
+   *  from the transcript and later messages reconnect; archived
+   *  (pre-compaction) entries are deletable too. */
   onDelete?: (targetUuid: string) => void;
 }) {
   // Plugin-defined row kinds (plan §4.2 #5) dispatch to the registered
@@ -520,8 +520,8 @@ export const MessageRow = memo(function MessageRow({
    *  rows only — the engine edits nothing else. */
   onEdit?: (target: { uuid: string; text: string; tail?: string }) => void;
   /** Delete affordance: the row's own transcript uuid. User and assistant
-   *  rows only, and never for archived (pre-compaction) segments — the
-   *  rewrite covers the active file alone. */
+   *  rows only — archived (pre-compaction) entries are deletable too (the
+   *  engine's --delete-message covers them). */
   onDelete?: (targetUuid: string) => void;
 }) {
   // A live row's text grows per store flush; a full markdown reparse per
@@ -556,7 +556,7 @@ export const MessageRow = memo(function MessageRow({
             : undefined
         }
         onEdit={onEdit}
-        onDelete={onDelete && !message.archived ? onDelete : undefined}
+        onDelete={onDelete}
       />
     );
   }
@@ -568,9 +568,7 @@ export const MessageRow = memo(function MessageRow({
       ? (uuid: string) => onRewind({ uuid, role: "assistant" })
       : undefined;
   const deleteForRow =
-    onDelete && !message.archived && branchTarget
-      ? () => onDelete(branchTarget)
-      : undefined;
+    onDelete && branchTarget ? () => onDelete(branchTarget) : undefined;
   return (
     <div className="group flex flex-col text-left">
       <Markdown text={text} workspacePath={workspacePath} streaming={message.live} />

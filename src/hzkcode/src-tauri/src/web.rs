@@ -1025,6 +1025,7 @@ struct SessionFileHistoryArgs {
 struct DeleteMessageArgs {
     engine: String,
     session_id: String,
+    workspace_path: String,
     message_id: String,
 }
 #[derive(Deserialize)]
@@ -1610,6 +1611,7 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
                     app.state(),
                     a.engine,
                     a.session_id,
+                    a.workspace_path,
                     a.message_id,
                 )
                 .await,

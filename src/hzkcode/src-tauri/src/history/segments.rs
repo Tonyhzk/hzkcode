@@ -144,25 +144,6 @@ fn read_manifest(active_path: &Path) -> Option<Manifest> {
     Some(manifest)
 }
 
-/// Whether the session sits mid-rotation (a segment split the CLI has not
-/// finished sealing): file-level writers must refuse rather than guess the
-/// layout, the same guard the CLI's own transcript edits apply. A manifest
-/// file that exists but cannot be confirmed (unreadable, malformed, stale
-/// version) is an error too — treating it as "no manifest" would let a
-/// segmented session be rewritten as a single file.
-pub(crate) fn rotation_pending(active_path: &Path) -> Result<bool, String> {
-    let Some(path) = manifest_path(active_path) else {
-        return Ok(false); // No segment dir: a plain single-file session.
-    };
-    if !path.is_file() {
-        return Ok(false); // No manifest written yet.
-    }
-    let Some(manifest) = read_manifest(active_path) else {
-        return Err("无法确认会话的分段结构，暂不支持删除".to_string());
-    };
-    Ok(manifest.rotation.is_some())
-}
-
 fn parse_transcript_uuid(line: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
     let uuid = value.get("uuid")?.as_str()?;

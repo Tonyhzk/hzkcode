@@ -3,19 +3,20 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/base/buttons/button";
 import { ipc } from "@/lib/ipc";
 
-/** 删除消息确认 modal：删除会直接改写会话文件（把该条目从活跃段移除、
- *  后续消息重接），不可恢复，所以先确认再执行。如该消息包含工具调用，
- *  它自己的执行记录（tool_result）会随条目一并移除——否则会留下引用
- *  不存在调用的孤儿块。失败按引擎返回的中文错误直接展示，可重试。 */
+/** 删除消息确认 modal：删除会直接改写会话文件（该条目从转录移除、后续
+ *  消息重接），不可恢复，所以先确认再执行；压缩前（归档段）的消息同样
+ *  可删。失败按引擎返回的错误码映射为可读文案，保留对话框可重试。 */
 export function DeleteMessageDialog({
   engine,
   sessionId,
+  workspacePath,
   target,
   onDeleted,
   onClose,
 }: {
   engine: string;
   sessionId: string;
+  workspacePath: string;
   /** 要删除的转录条目 uuid。 */
   target: { uuid: string };
   /** 删除成功：刷新消息列表与回退锚点（返回 Promise 时等待完成再关闭）。 */
@@ -26,12 +27,37 @@ export function DeleteMessageDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const messageFor = (code: string | null, detail: string): string => {
+    const keys: Record<string, string> = {
+      invalid_session: "chat.deleteErrInvalidSession",
+      session_live: "chat.deleteErrSessionLive",
+      rotation_pending: "chat.deleteErrRotationPending",
+      not_found: "chat.deleteErrNotFound",
+      not_deletable: "chat.deleteErrNotDeletable",
+      file_changed: "chat.deleteErrFileChanged",
+      write_failed: "chat.deleteErrWriteFailed",
+      unsupported_platform: "chat.deleteErrUnsupported",
+    };
+    if (code && keys[code]) return t(keys[code]);
+    return detail || t("chat.deleteErrUnknown");
+  };
+
   const remove = async () => {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
-      await ipc.deleteMessage(engine, sessionId, target.uuid);
+      const outcome = await ipc.deleteMessage(
+        engine,
+        sessionId,
+        workspacePath,
+        target.uuid,
+      );
+      if (outcome.errorCode) {
+        setError(messageFor(outcome.errorCode, outcome.detail));
+        setBusy(false);
+        return;
+      }
       await onDeleted();
       onClose();
     } catch (e) {
