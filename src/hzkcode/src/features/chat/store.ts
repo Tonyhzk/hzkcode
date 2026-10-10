@@ -2311,7 +2311,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
      *  already holds, while the preserved slice stays resumable. Rows without
      *  a uuid, and a read that cannot be confirmed, are left alone. The
      *  update covers only what existed when the read started — a newer turn
-     *  (or a newer anchor) that lands meanwhile is never judged by it. */
+     *  (or a newer anchor) that lands meanwhile is never judged by it.
+     *  A pending anchor outside the engine's true set is dropped even when
+     *  its message is not in the loaded page: a stale anchor left behind
+     *  would ride the next send into an engine rejection. */
     refreshRewindable: async (key?: string) => {
       const { active, openTabs } = get();
       const targetKey =
@@ -2326,6 +2329,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
       if (!targetTab?.sessionId) return;
       const before = get().bySession[targetKey];
       if (!before) return;
+      // 读取开始时的锚点快照：本次读取只评判此刻已存在的锚点——读取期间
+      // 用户新设的锚点（下一轮或另一次回退）不归它管。
+      const anchorBefore =
+        before.rewindAnchor ?? readRewindAnchors()[targetKey] ?? null;
       const covered = new Set(
         before.messages
           .map((m) => m.uuid)
@@ -2354,12 +2361,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
           },
         };
       });
-      const anchor =
-        get().bySession[targetKey]?.rewindAnchor ??
-        readRewindAnchors()[targetKey] ??
-        null;
-      if (anchor && covered.has(anchor) && !allowed.has(anchor)) {
-        get().consumeRewindAnchor(targetKey, anchor);
+      // 不在真实可解析集合里的锚点一律清除——无论它是否落在当前已加载
+      // 的消息页里：陈旧/跨页锚点留着，下一次发送会携带一个引擎必然
+      // 拒绝的 uuid（「未找到 message.uuid 为 …」整轮失败）。consume 只在
+      // 锚点仍是读取开始时那个时才清，不会覆盖读取期间的新锚点。
+      if (anchorBefore && !allowed.has(anchorBefore)) {
+        get().consumeRewindAnchor(targetKey, anchorBefore);
       }
     },
 

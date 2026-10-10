@@ -261,6 +261,45 @@ describe("a rewinded send", () => {
     );
   });
 
+  it("drops an anchor whose message is outside the loaded page", async () => {
+    // 锚点指向的消息不在当前已加载页（用户此前翻过更多历史、或锚点来自
+    // 更早的窗口/回合）：只要引擎的真实可回退集合不含它，就必须清除——
+    // 否则下一次发送会携带一个引擎必然拒绝的 uuid，整轮失败。
+    const tab = { engine: "claude", sessionId: SID, workspacePath: WS };
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: { [KEY]: { ...EMPTY_SESSION, messages: [msg("user", "二问", "u2")] } },
+    });
+    act(() => {
+      useChatStore.getState().setRewindAnchor(KEY, "u-page-gone");
+    });
+    expect(readAnchors()).toEqual({ [KEY]: "u-page-gone" });
+    vi.mocked(ipc.sessionRewindableUuids).mockResolvedValueOnce(["u2"]);
+    await useChatStore.getState().refreshRewindable(KEY);
+    expect(readAnchors()).toEqual({});
+    await useChatStore.getState().send("继续", []);
+    expect(vi.mocked(ipc.sendMessage)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rewindTo: null }),
+    );
+  });
+
+  it("keeps a pending anchor still present in the engine's resumable set", async () => {
+    // 对照：锚点仍在真实可解析集合里（消息即使不在当前页也有效）→ 保留。
+    const tab = { engine: "claude", sessionId: SID, workspacePath: WS };
+    useChatStore.setState({
+      active: tab,
+      openTabs: [tab],
+      bySession: { [KEY]: { ...EMPTY_SESSION, messages: [msg("user", "二问", "u2")] } },
+    });
+    act(() => {
+      useChatStore.getState().setRewindAnchor(KEY, "u-kept");
+    });
+    vi.mocked(ipc.sessionRewindableUuids).mockResolvedValueOnce(["u-kept", "u2"]);
+    await useChatStore.getState().refreshRewindable(KEY);
+    expect(readAnchors()).toEqual({ [KEY]: "u-kept" });
+  });
+
   it("retry rewinds to the node before the last prompt and re-asks it", async () => {
     // 普通末轮「重试」= 撤回该轮后重问：锚点=该提问之前的最后一个可定位
     // 节点（不含提问本身），重发的提问成为该轮唯一的一份，旧回复不在

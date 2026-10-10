@@ -237,9 +237,10 @@ export interface ChatStore {
   refreshSessionUsage: (key?: string) => Promise<void>;
   /** Backfill engine uuids onto just-sent prompts from session history. */
   refreshSessionUuids: (key?: string) => Promise<void>;
-  /** Re-read the uuids the CLI can still resume at and realign the rows'
+  /** Re-read the uuids the CLI can still resume at, realign the rows'
    *  rewind entries (a mid-turn compaction archives most of them while the
-   *  preserved slice stays resumable). */
+   *  preserved slice stays resumable), and drop a pending anchor the CLI
+   *  could no longer resolve — even when it points outside the loaded page. */
   refreshRewindable: (key?: string) => Promise<void>;
   /** 重新读取会话的最近一页（删除消息后刷新消息列表与 usage 快照）；
    *  正在流式时不动作。先刷新回退锚点再调用，避免读到失效锚点。 */
