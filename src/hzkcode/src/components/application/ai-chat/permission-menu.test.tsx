@@ -41,6 +41,24 @@ async function click(element: Element) {
   });
 }
 
+async function activate(element: HTMLElement) {
+  // 按下与松开分开发送，让 React 提交失焦导致的更新，而不是把整次按压合并处理。
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    element.focus();
+  });
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+    element.click();
+  });
+}
+
+function permissionTrigger() {
+  return container.querySelector(
+    'button[aria-label^="chat.permissionLabel"]',
+  ) as HTMLButtonElement;
+}
+
 async function openMenu(
   onChange = vi.fn(),
   value: ComposerPermission = "default",
@@ -124,5 +142,59 @@ describe("PermissionMenu", () => {
     });
     expect(onChange).not.toHaveBeenCalled();
     outside.remove();
+  });
+});
+
+describe("PermissionMenu trigger toggle", () => {
+  it("连续点击触发按钮交替打开与关闭，关闭不提交且重开重置草稿", async () => {
+    const onChange = vi.fn();
+    await act(async () => {
+      root.render(<PermissionMenu value="default" onChange={onChange} />);
+    });
+    const trigger = permissionTrigger();
+
+    for (let cycle = 0; cycle < 2; cycle += 1) {
+      await activate(trigger);
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+      const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+      await click(dialog.querySelectorAll('[role="radio"]')[1]);
+
+      await activate(trigger);
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(onChange).not.toHaveBeenCalled();
+
+      await activate(trigger);
+      const reopened = document.querySelector('[role="dialog"]') as HTMLElement;
+      const radios = reopened.querySelectorAll('[role="radio"]');
+      expect(radios[0].getAttribute("aria-checked")).toBe("true");
+      expect(radios[1].getAttribute("aria-checked")).toBe("false");
+
+      await activate(trigger);
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+    }
+  });
+
+  it("焦点回到触发按钮不提前关闭，松开后只关闭一次", async () => {
+    await act(async () => {
+      root.render(<PermissionMenu value="default" />);
+    });
+    const trigger = permissionTrigger();
+    await activate(trigger);
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    await act(async () => {
+      dialog.focus();
+      trigger.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, button: 0 }),
+      );
+      trigger.focus();
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    await act(async () => {
+      trigger.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+      trigger.click();
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 });

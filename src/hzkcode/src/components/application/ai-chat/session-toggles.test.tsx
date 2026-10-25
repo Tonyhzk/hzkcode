@@ -160,6 +160,43 @@ async function click(element: Element) {
   });
 }
 
+async function activate(element: HTMLElement) {
+  // 按下与松开分开发送，让 React 提交失焦导致的更新，而不是把整次按压合并处理。
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    element.focus();
+  });
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+    element.click();
+  });
+}
+
+function sessionTrigger() {
+  return container.querySelector(
+    'button[aria-label="chat.sessionToggles"]',
+  ) as HTMLButtonElement;
+}
+
+async function renderToggle() {
+  await act(async () => {
+    root.render(
+      <MemoryRouter>
+        <SessionToggles />
+      </MemoryRouter>,
+    );
+  });
+  return sessionTrigger();
+}
+
+function typeInto(input: HTMLInputElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+    input,
+    value,
+  );
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 beforeEach(() => {
   container = document.createElement("div");
   document.body.append(container);
@@ -443,5 +480,64 @@ describe("SessionToggles session control", () => {
     const request = usePendingIdentityStore.getState().request;
     expect(request?.key).toBe(KEY);
     expect(request?.identity.value).toBe("simple-internal");
+  });
+});
+
+describe("会话开关弹层", () => {
+  it("连续开关只在真正打开时读取状态", async () => {
+    const refresh = vi.fn(async () => result());
+    useChatStore.setState({ refreshSessionControl: refresh });
+    setStore();
+    const trigger = await renderToggle();
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      await activate(trigger);
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+      expect(refresh).toHaveBeenCalledTimes(cycle + 1);
+      await act(async () => {
+        document.querySelector<HTMLElement>('[role="dialog"]')!.focus();
+      });
+      await activate(trigger);
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(refresh).toHaveBeenCalledTimes(cycle + 1);
+    }
+  });
+
+  it.each(["123456", "invalid"])("关闭时只提交合法窗口草稿：%s", async (draft) => {
+    const original = useChatStore.getState().setSessionAutoCompactWindow;
+    const save = vi.fn();
+    const refresh = vi.fn(async () => result());
+    useChatStore.setState({ refreshSessionControl: refresh, setSessionAutoCompactWindow: save });
+    try {
+      setStore();
+      const trigger = await renderToggle();
+      await activate(trigger);
+      const input = document.querySelector<HTMLInputElement>('input[aria-label="chat.sessionContextWindow"]')!;
+      await act(async () => {
+        input.focus();
+        typeInto(input, draft);
+      });
+      await act(async () => {
+        trigger.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+        trigger.focus();
+      });
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+      expect(save).not.toHaveBeenCalled();
+      await act(async () => {
+        trigger.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+        trigger.click();
+      });
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(refresh).toHaveBeenCalledTimes(1);
+      if (draft === "123456") {
+        expect(save).toHaveBeenCalledExactlyOnceWith(KEY, 123456);
+      } else {
+        expect(save).not.toHaveBeenCalled();
+      }
+    } finally {
+      await act(async () => {
+        useChatStore.setState({ setSessionAutoCompactWindow: original });
+      });
+    }
   });
 });

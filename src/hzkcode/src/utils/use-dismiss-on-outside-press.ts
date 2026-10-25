@@ -41,64 +41,9 @@ export function useDismissOnOutsidePress(
 }
 
 /**
- * Companion fix for the same `isNonModal` popovers: pressing the trigger
- * while the popover is open should close it (toggle), but React Aria fires
- * `onOpenChange(false)` immediately followed by `onOpenChange(true)` within
- * the same press, so the popover never actually closes.
- *
- * This watches for a pointerdown on the trigger while open and swallows the
- * spurious reopen that follows. Wire the returned guard into the component's
- * `onOpenChange`:
- *
- *   const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
- *   <AriaSelect onOpenChange={(o) => allowOpenChange(o) && setIsOpen(o)} …
- */
-export function useTriggerToggle(
-  isOpen: boolean,
-  triggerRef: RefObject<HTMLElement | null>,
-) {
-  const suppressReopenRef = useRef(false);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    let safetyTimer: number | undefined;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!triggerRef.current?.contains(event.target as Node)) return;
-      suppressReopenRef.current = true;
-      // Safety valve: only the very next open within this click may be
-      // swallowed; never leave a stale suppression behind.
-      safetyTimer = window.setTimeout(() => {
-        suppressReopenRef.current = false;
-      }, 400);
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-      clearTimeout(safetyTimer);
-      // Suppression only matters while open; never carry a stale one into
-      // the next open.
-      suppressReopenRef.current = false;
-    };
-  }, [isOpen, triggerRef]);
-
-  return (next: boolean) => {
-    if (next && suppressReopenRef.current) {
-      suppressReopenRef.current = false;
-      return false;
-    }
-    return true;
-  };
-}
-
-/**
- * The five-piece boilerplate every non-modal popover in the app repeats:
- * open state, trigger + popover refs, outside-press dismissal, and the
- * trigger-press toggle guard (see the two hooks above). `setOpen` is the
- * guarded setter to hand to `AriaDialogTrigger.onOpenChange` — it returns
- * false when the change was a spurious reopen that got swallowed, so call
- * sites with side effects on open/close can bail out early.
+ * 应用内非模态弹层重复的样板：开关状态、触发按钮与弹层引用、外部按压关闭，
+ * 以及避免失焦关闭与触发按钮自身切换互相干扰的判定。`setOpen` 直接交给
+ * `AriaDialogTrigger.onOpenChange`，`shouldCloseOnInteractOutside` 传给 `Popover`。
  */
 export function usePopoverState() {
   const [isOpen, setIsOpen] = useState(false);
@@ -109,13 +54,19 @@ export function usePopoverState() {
   const toggle = () => setIsOpen((open) => !open);
 
   useDismissOnOutsidePress(isOpen, close, [triggerRef, popoverRef]);
-  const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
 
-  const setOpen = (next: boolean): boolean => {
-    if (!allowOpenChange(next)) return false;
-    setIsOpen(next);
-    return true;
+  // 按下触发按钮时焦点会先回到按钮，随后才执行按钮自身的按压处理；
+  // 把按钮排除在外，失焦关闭不会抢先发生，一次按压只切换一次。
+  const shouldCloseOnInteractOutside = (element: Element) =>
+    !triggerRef.current?.contains(element);
+
+  return {
+    isOpen,
+    triggerRef,
+    popoverRef,
+    toggle,
+    close,
+    setOpen: setIsOpen,
+    shouldCloseOnInteractOutside,
   };
-
-  return { isOpen, triggerRef, popoverRef, toggle, close, setOpen };
 }

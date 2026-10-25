@@ -180,7 +180,8 @@ export function CliMenu({
   loadingEngines?: readonly string[];
 }) {
   const { t } = useTranslation();
-  const { isOpen, triggerRef, popoverRef, setOpen } = usePopoverState();
+  const { isOpen, triggerRef, popoverRef, setOpen, shouldCloseOnInteractOutside } =
+    usePopoverState();
   const current = options.find((o) => o.id === value);
   const engineName = CLI_DISPLAY_NAMES[value] ?? current?.label ?? value;
 
@@ -195,7 +196,7 @@ export function CliMenu({
   const [query, setQuery] = useState("");
 
   const handleOpenChange = (o: boolean) => {
-    if (!setOpen(o)) return;
+    setOpen(o);
     if (!o) setQuery("");
   };
 
@@ -217,6 +218,7 @@ export function CliMenu({
       <AriaPopover
         ref={popoverRef}
         isNonModal
+        shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
         placement="top end"
         offset={8}
         className={PANEL_POPOVER_CLASSES}

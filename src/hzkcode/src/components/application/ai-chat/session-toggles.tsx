@@ -29,7 +29,7 @@ import {
 } from "@/features/chat/session-control-view";
 import { formatTokens } from "@/utils/format-tokens";
 import { cx } from "@/utils/cx";
-import { useDismissOnOutsidePress, useTriggerToggle } from "@/utils/use-dismiss-on-outside-press";
+import { usePopoverState } from "@/utils/use-dismiss-on-outside-press";
 
 /** 会话 API 协议的可选值；reset 回到渠道模型默认。 */
 const API_MODES: Exclude<ApiModeChoice, "reset">[] = [
@@ -64,11 +64,14 @@ function apiModeLabel(mode: string, t: (key: string) => string): string {
 export function SessionToggles() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [isOpen, setIsOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLElement>(null);
-  useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef]);
-  const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
+  const {
+    isOpen,
+    triggerRef,
+    popoverRef,
+    close,
+    setOpen,
+    shouldCloseOnInteractOutside,
+  } = usePopoverState();
 
   const active = useChatStore((s) => s.active);
   const sessionKeyValue = useChatStore((s) => {
@@ -230,11 +233,11 @@ export function SessionToggles() {
 
   const selectProxy = (value: boolean | null) => {
     setSessionProxy(sessionKeyValue, value);
-    setIsOpen(false);
+    close();
   };
   const selectBrain = (value: boolean | null) => {
     setSessionSecondBrain(sessionKeyValue, value);
-    setIsOpen(false);
+    close();
   };
   // The CLI's /maxtokens as a control: a positive token count pinned on the
   // next sends; 恢复默认 clears the override (an empty draft fails validation
@@ -331,7 +334,7 @@ export function SessionToggles() {
           });
     if (!current) return;
     requestIdentity(sessionKeyValue, current);
-    setIsOpen(false);
+    close();
   };
 
   const promptModeLabel = controlState
@@ -442,10 +445,7 @@ export function SessionToggles() {
   );
 
   return (
-    <AriaDialogTrigger
-      isOpen={isOpen}
-      onOpenChange={(next) => allowOpenChange(next) && setIsOpen(next)}
-    >
+    <AriaDialogTrigger isOpen={isOpen} onOpenChange={setOpen}>
       <Tooltip>
         <AriaButton
           ref={triggerRef}
@@ -473,6 +473,7 @@ export function SessionToggles() {
       <AriaPopover
         ref={popoverRef}
         isNonModal
+        shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
         placement="top end"
         offset={8}
         className={cx(
@@ -505,7 +506,7 @@ export function SessionToggles() {
               <button
                 type="button"
                 onClick={() => {
-                  setIsOpen(false);
+                  close();
                   // The session proxy address lives on the 网络代理 page.
                   navigate("/settings?page=proxy");
                 }}

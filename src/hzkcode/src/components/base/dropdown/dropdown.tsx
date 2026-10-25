@@ -15,7 +15,7 @@ import {
   MENU_POPOVER_WIDTH,
 } from "@/components/base/dropdown/menu-styles";
 import { cx } from "@/utils/cx";
-import { useDismissOnOutsidePress, useTriggerToggle } from "@/utils/use-dismiss-on-outside-press";
+import { useDismissOnOutsidePress } from "@/utils/use-dismiss-on-outside-press";
 
 /**
  * Dropdown — the BoardUI popover-menu recipe as composable primitives, built
@@ -88,14 +88,12 @@ export function Dropdown({ isOpen: controlledOpen, onOpenChange, children }: Dro
   };
 
   useDismissOnOutsidePress(isOpen, () => setOpen(false), [triggerRef, popoverRef]);
-  // Pressing the trigger while open closes the menu instead of reopening
-  const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
 
   const contextValue = useMemo(() => ({ triggerRef, popoverRef }), [triggerRef, popoverRef]);
 
   return (
     <DropdownContext.Provider value={contextValue}>
-      <AriaDialogTrigger isOpen={isOpen} onOpenChange={(o) => allowOpenChange(o) && setOpen(o)}>
+      <AriaDialogTrigger isOpen={isOpen} onOpenChange={setOpen}>
         {children}
       </AriaDialogTrigger>
     </DropdownContext.Provider>
@@ -139,10 +137,16 @@ export function DropdownPopover({
   children,
 }: DropdownPopoverProps) {
   const context = useContext(DropdownContext);
+  // 焦点回到触发按钮时不能按失焦关闭菜单，
+  // 否则按钮自身的按压会在同一次操作中把菜单重新打开。
+  const shouldCloseOnInteractOutside = (element: Element) =>
+    !context?.triggerRef.current?.contains(element);
+
   return (
     <AriaPopover
       ref={context?.popoverRef}
       isNonModal
+      shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
       placement={placement}
       offset={offset}
       crossOffset={crossOffset}

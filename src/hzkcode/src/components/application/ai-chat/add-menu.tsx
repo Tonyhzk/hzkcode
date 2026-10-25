@@ -99,7 +99,8 @@ export function AddMenu({
   onPickSkills?: () => void;
 }) {
   const { t } = useTranslation();
-  const { isOpen, triggerRef, popoverRef, setOpen } = usePopoverState();
+  const { isOpen, triggerRef, popoverRef, setOpen, shouldCloseOnInteractOutside } =
+    usePopoverState();
   // Plugin rows (plan §4.2 #3): registered via ctx.ui.registerAddMenuRow;
   // labels are thunks so a language flip re-labels live rows.
   const pluginDefs = useRegistry(addMenuRegistry);
@@ -165,6 +166,7 @@ export function AddMenu({
       <AriaPopover
         ref={popoverRef}
         isNonModal
+        shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
         placement="top start"
         offset={8}
         className={ADD_POPOVER_CLASSES}

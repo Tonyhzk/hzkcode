@@ -45,7 +45,8 @@ export function BranchMenu({
   const { t } = useTranslation();
   // `isNonModal` popovers don't dismiss on outside press and don't toggle
   // closed on a trigger press — usePopoverState restores both (hook doc).
-  const { isOpen, triggerRef, popoverRef, close, setOpen } = usePopoverState();
+  const { isOpen, triggerRef, popoverRef, close, setOpen, shouldCloseOnInteractOutside } =
+    usePopoverState();
 
   return (
     <AriaDialogTrigger isOpen={isOpen} onOpenChange={setOpen}>
@@ -87,6 +88,7 @@ export function BranchMenu({
       <AriaPopover
         ref={popoverRef}
         isNonModal
+        shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
         placement="top start"
         offset={8}
         className={POPOVER_CLASSES}

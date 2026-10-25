@@ -24,7 +24,7 @@ import {
 } from "@/components/base/dropdown/menu-styles";
 import { ChevronDownSmall } from "@/components/foundations/icons/chevrons";
 import { cx } from "@/utils/cx";
-import { useDismissOnOutsidePress, useTriggerToggle } from "@/utils/use-dismiss-on-outside-press";
+import { useDismissOnOutsidePress } from "@/utils/use-dismiss-on-outside-press";
 
 /**
  * Figma source: Board UI → dashboard 1 dropdown triggers ("All prices" filter
@@ -87,21 +87,30 @@ export function Select<T extends object>({
   const popoverRef = useRef<HTMLElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef]);
-  // Pressing the trigger while open closes the popover instead of reopening
-  const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
+  // 列表打开后焦点会移到列表上，按下触发按钮时列表先失焦；
+  // 把按钮排除在失焦关闭之外，按钮按压只切换一次，不会先关闭再重开。
+  const shouldCloseOnInteractOutside = (element: Element) =>
+    !triggerRef.current?.contains(element);
 
   return (
     <AriaSelect
       ref={ref}
       {...props}
       isOpen={isOpen}
-      onOpenChange={(o) => allowOpenChange(o) && setIsOpen(o)}
+      onOpenChange={setIsOpen}
       className={cx("group flex flex-col", className)}
     >
       {({ isOpen }) => (
         <>
           <AriaButton
             ref={triggerRef}
+            onPressStart={(event) => {
+              // Select 默认对鼠标和虚拟按压只执行打开；已打开时需明确关闭。
+              // 触摸和键盘已有独立切换处理，不能重复切换。
+              if (isOpen && event.pointerType !== "touch" && event.pointerType !== "keyboard") {
+                setIsOpen(false);
+              }
+            }}
             className={cx(
               "flex w-full cursor-pointer items-center justify-between rounded-2lg",
               "border border-border-button-default bg-background-primary-default shadow-xs",
@@ -135,6 +144,7 @@ export function Select<T extends object>({
           <AriaPopover
             ref={popoverRef}
             isNonModal
+            shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
             offset={4}
             className={cx(
               MENU_POPOVER_WIDTH,

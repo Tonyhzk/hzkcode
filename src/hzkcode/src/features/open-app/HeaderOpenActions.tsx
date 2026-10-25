@@ -170,6 +170,7 @@ export function HeaderOpenActions({ workspacePath }: { workspacePath: string }) 
     popoverRef,
     close: closeMenu,
     setOpen,
+    shouldCloseOnInteractOutside,
   } = usePopoverState();
 
   const openTarget = useCallback(
@@ -373,6 +374,7 @@ export function HeaderOpenActions({ workspacePath }: { workspacePath: string }) 
         <AriaPopover
           ref={popoverRef}
           isNonModal
+          shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
           placement="bottom end"
           offset={6}
           className={POPOVER_CLASSES}

@@ -66,7 +66,7 @@ import {
   usePromptHistoryNav,
 } from "@/components/application/ai-chat/use-prompt-history";
 import { cx } from "@/utils/cx";
-import { useDismissOnOutsidePress, useTriggerToggle } from "@/utils/use-dismiss-on-outside-press";
+import { usePopoverState } from "@/utils/use-dismiss-on-outside-press";
 import {
   compareByOrder,
   composerStatusRegistry,
@@ -533,16 +533,14 @@ export function StatusBar({
   canCompact?: boolean;
 }) {
   const { t } = useTranslation();
-  // `isNonModal` popovers don't dismiss on outside press (react-aria couples
-  // the two); restore it manually — same fix as Select (see the hook doc).
-  const [contextOpen, setContextOpen] = useState(false);
-  const contextTriggerRef = useRef<HTMLButtonElement>(null);
-  const contextPopoverRef = useRef<HTMLElement>(null);
-  useDismissOnOutsidePress(contextOpen, () => setContextOpen(false), [
-    contextTriggerRef,
-    contextPopoverRef,
-  ]);
-  const allowContextOpenChange = useTriggerToggle(contextOpen, contextTriggerRef);
+  // 非模态弹层需手动处理外部点击；焦点回到按钮时不能先于按钮按压关闭。
+  const {
+    isOpen: contextOpen,
+    triggerRef: contextTriggerRef,
+    popoverRef: contextPopoverRef,
+    setOpen: setContextOpen,
+    shouldCloseOnInteractOutside,
+  } = usePopoverState();
   // Plugin chips (SDK 0.3.9, permission ui:composer-status) render in the
   // left group after the branch switcher, each behind its own boundary.
   const pluginItems = useRegistry(composerStatusRegistry);
@@ -610,7 +608,7 @@ export function StatusBar({
         {/* Context meter is always on: 0% until the first usage report. */}
         <AriaDialogTrigger
           isOpen={contextOpen}
-          onOpenChange={(o) => allowContextOpenChange(o) && setContextOpen(o)}
+          onOpenChange={setContextOpen}
         >
           <AriaButton
             ref={contextTriggerRef}
@@ -625,6 +623,8 @@ export function StatusBar({
           <AriaPopover
             ref={contextPopoverRef}
             isNonModal
+            // 焦点回到触发按钮时由按钮切换，避免失焦先关闭、随后按压又打开。
+            shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
             placement="top end"
             offset={8}
             className={CONTEXT_POPOVER_CLASSES}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 import Check from "lucide-react/dist/esm/icons/check";
@@ -11,7 +11,7 @@ import {
   Popover as AriaPopover,
 } from "react-aria-components";
 import { cx } from "@/utils/cx";
-import { useDismissOnOutsidePress, useTriggerToggle } from "@/utils/use-dismiss-on-outside-press";
+import { usePopoverState } from "@/utils/use-dismiss-on-outside-press";
 import {
   LEGACY_PLAN_OPTION,
   PERMISSION_BOUNDARY_OPTIONS,
@@ -176,12 +176,14 @@ export function PermissionMenu({
   className,
 }: PermissionMenuProps) {
   const { t } = useTranslation();
-  const [isOpen, setIsOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLElement>(null);
-  useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef]);
-  // Pressing the trigger while open closes the menu instead of reopening it.
-  const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
+  const {
+    isOpen,
+    triggerRef,
+    popoverRef,
+    close,
+    setOpen,
+    shouldCloseOnInteractOutside,
+  } = usePopoverState();
   const [internal, setInternal] = useState<ComposerPermission>(defaultValue);
   const selected = value ?? internal;
   const [draft, setDraft] = useState<PermissionDraft>(() => draftFor(selected));
@@ -228,13 +230,12 @@ export function PermissionMenu({
     rememberPermissionSwitchMemory(draft.switchMemory);
     setInternal(draft.mode);
     if (draft.mode !== selected) onChange?.(draft.mode);
-    setIsOpen(false);
+    close();
   };
 
   const handleOpenChange = (next: boolean) => {
-    if (!allowOpenChange(next)) return;
     if (next) setDraft(draftFor(selected));
-    setIsOpen(next);
+    setOpen(next);
   };
 
   const currentLabel = permissionModeLabelKeys(selected)
@@ -289,6 +290,7 @@ export function PermissionMenu({
       <AriaPopover
         ref={popoverRef}
         isNonModal
+        shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
         placement="top start"
         offset={8}
         className={PERMISSION_POPOVER}
@@ -419,7 +421,7 @@ export function PermissionMenu({
           <div className="flex items-center justify-end gap-1 border-t border-border-primary-default px-1 pt-1.5">
             <button
               type="button"
-              onClick={() => setIsOpen(false)}
+              onClick={close}
               className="cursor-pointer rounded-lg px-2.5 py-1 text-body-medium text-text-tertiary outline-none transition-colors hover:bg-background-primary-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-border-focus-ring"
             >
               {t("common.cancel")}
