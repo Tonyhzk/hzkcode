@@ -998,6 +998,25 @@ struct DefaultAutoCompactWindowArgs {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct SessionControlArgs {
+    engine: String,
+    workspace_path: String,
+    request: Value,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    provider_id: Option<String>,
+    #[serde(default)]
+    agents_json: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    effort: Option<String>,
+    #[serde(default)]
+    permission_mode: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RewindFilesArgs {
     engine: String,
     session_id: String,
@@ -1532,6 +1551,24 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
                 a.engine,
                 a.provider_id,
             )))
+        }
+        "session_control" => {
+            let a: SessionControlArgs = parse_args(&raw)?;
+            ser(
+                crate::engine::session_control::session_control(
+                    app.state(),
+                    a.engine,
+                    a.workspace_path,
+                    a.request,
+                    a.session_id,
+                    a.provider_id,
+                    a.agents_json,
+                    a.model,
+                    a.effort,
+                    a.permission_mode,
+                )
+                .await,
+            )
         }
         "list_engine_models" => {
             let a: EngineArgs = parse_args(&raw)?;

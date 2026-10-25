@@ -14,6 +14,20 @@ vi.mock("@/lib/ipc", () => ({
     listSessions: vi.fn(async () => []),
     listEngines: vi.fn(async () => []),
     sendMessage: vi.fn(async () => ({ runId: `queued-run-${++runCounter}`, sessionId: null })),
+    sessionControl: vi.fn(async () => ({
+      type: "result",
+      operation: "status",
+      schemaVersion: 1,
+      sourceSessionId: null,
+      targetSessionId: null,
+      session_id: null,
+      cloned: false,
+      is_error: false,
+      subtype: "success",
+      error_code: null,
+      revision: null,
+      state: null,
+    })),
     interruptSession: vi.fn(async () => true),
     rememberSessionModel: vi.fn(async () => {}),
     loadSessionPage: vi.fn(async () => ({ messages: [], nextBefore: null })),
@@ -40,8 +54,7 @@ const TAB = { engine: "claude", sessionId: "s-1", workspacePath: WS };
 let runCounter = 0;
 let runId: string;
 
-/** Settle the turn and let the synchronous drain run: sendPrompt reaches
- *  `ipc.sendMessage` before its first await, so one microtask turn is enough. */
+/** 发送前会异步读取会话状态，等待预检完成后再检查队列。 */
 async function settle(kind: "done" | "error", interrupted = false) {
   useChatStore.setState((s) => ({
     bySession: {
@@ -59,7 +72,7 @@ async function settle(kind: "done" | "error", interrupted = false) {
       data: kind === "done" ? { usage: null } : "400 upstream rejected the request",
     },
   ]);
-  await Promise.resolve();
+  await vi.waitFor(() => expect(useChatStore.getState().controlBusyByKey[KEY]).toBeUndefined());
 }
 
 function queueOf(key = KEY) {
@@ -81,6 +94,9 @@ describe("queued messages after a turn settles", () => {
       activeEngine: "claude",
       openTabs: [TAB],
       models: { claude: "claude-sonnet-4" },
+      streamingByKey: {},
+      controlBusyByKey: {},
+      controlBusy: false,
       bySession: {
         [KEY]: {
           ...EMPTY_SESSION,
@@ -115,6 +131,31 @@ describe("queued messages after a turn settles", () => {
     expect(queueOf()).toHaveLength(0);
   });
 
+  it.each([false, true])("状态读取结束后遵守中断状态 %s", async (interrupted) => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof ipc.sessionControl>>>();
+    vi.mocked(ipc.sessionControl).mockReturnValueOnce(pending.promise);
+    const reading = useChatStore.getState().refreshSessionControl();
+    await vi.waitFor(() => expect(ipc.sessionControl).toHaveBeenCalledTimes(1));
+    useChatStore.setState((s) => ({ bySession: { ...s.bySession, [KEY]: { ...s.bySession[KEY], interrupted } } }));
+    deliver?.([{ runId, sessionId: "s-1", engine: "claude", seq: 9, kind: "done", data: { usage: null } }]);
+    expect(ipc.sendMessage).not.toHaveBeenCalled();
+    expect(queueOf()).toHaveLength(1);
+    pending.resolve({
+      type: "result", operation: "catalog", schemaVersion: 1,
+      sourceSessionId: "s-1", targetSessionId: null, session_id: "s-1",
+      cloned: false, is_error: false, subtype: "success", error_code: null,
+      revision: "r1", state: null,
+    });
+    await reading;
+    if (interrupted) {
+      expect(ipc.sendMessage).not.toHaveBeenCalled();
+      expect(queueOf()).toHaveLength(1);
+    } else {
+      await vi.waitFor(() => expect(ipc.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ prompt: "继续" })));
+      expect(queueOf()).toHaveLength(0);
+    }
+  });
+
   it("keeps the queue parked when the user stopped the turn", async () => {
     await settle("error", true);
 
@@ -141,8 +182,10 @@ describe("queued messages after a turn settles", () => {
     await useChatStore.getState().sendQueuedNow("q-2");
 
     expect(ipc.interruptSession).toHaveBeenCalled();
-    expect(ipc.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: "再看一遍" }),
+    await vi.waitFor(() =>
+      expect(ipc.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: "再看一遍" }),
+      ),
     );
     expect(queueOf().map((item) => item.text)).toEqual(["继续"]);
   });
@@ -155,8 +198,10 @@ describe("queued messages after a turn settles", () => {
     await useChatStore.getState().sendQueuedNow("q-1");
 
     expect(ipc.interruptSession).not.toHaveBeenCalled();
-    expect(ipc.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: "继续" }),
+    await vi.waitFor(() =>
+      expect(ipc.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: "继续" }),
+      ),
     );
   });
 
@@ -179,7 +224,9 @@ describe("queued messages after a turn settles", () => {
 
     await settle("error");
 
-    expect(ipc.sendMessage).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() =>
+      expect(ipc.sendMessage).toHaveBeenCalledTimes(2),
+    );
     expect(ipc.sendMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ prompt: "再看一遍" }),
     );

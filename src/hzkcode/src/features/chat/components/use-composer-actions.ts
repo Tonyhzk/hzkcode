@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import type { ComposerInputHandle } from "@/components/application/ai-chat/ai-chat-composer";
@@ -31,6 +31,8 @@ export function useComposerActions({
 }) {
   const { t } = useTranslation();
   const pendingMention = useChatStore((s) => s.pendingMention);
+  // 会话控制写入期间不允许发送：避免身份/模式切换与新一轮请求交叉。
+  const controlBusy = useChatStore((s) => s.controlBusy);
   const {
     setDraft,
     clearPendingMention,
@@ -47,21 +49,47 @@ export function useComposerActions({
     })),
   );
 
+  // 等待发送结果期间用户可能继续输入或添加附件；用最新值判断是否还该
+  // 清理，不能直接清掉提交后才出现的内容。
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
+
   const submit = useCallback(
-    (value: string) => {
-      if (!active || (!value.trim() && images.length === 0)) return;
+    async (value: string) => {
+      if (
+        !active ||
+        controlBusy ||
+        (!value.trim() && images.length === 0)
+      ) {
+        return;
+      }
       recordPrompt(value);
-      setDraft(sessionKey, "");
-      clearImages();
       // A turn is in flight: park the message in the session's queue; the
       // store drains it FIFO when the turn ends.
       if (streaming) {
+        setDraft(sessionKey, "");
+        clearImages();
         queueMessage(value, images);
         return;
       }
-      void send(value, images);
+      const submittedImages = images;
+      // 预检查可能拒绝发送；只有 store 确认接受后才清理，失败保留输入。
+      const accepted = await send(value, submittedImages);
+      if (!accepted) return;
+      // 草稿由 store 在接受发送时清理；附件只清理本次提交的同一份数组。
+      if (imagesRef.current === submittedImages) clearImages();
     },
-    [active, images, streaming, sessionKey, setDraft, clearImages, send, queueMessage],
+    [
+      active,
+      controlBusy,
+      images,
+      streaming,
+      sessionKey,
+      setDraft,
+      clearImages,
+      send,
+      queueMessage,
+    ],
   );
 
   // File-tree "+" asks the composer to insert an @path mention at the caret.

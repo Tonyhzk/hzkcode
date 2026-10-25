@@ -12,6 +12,20 @@ import { EMPTY_SESSION } from "./store/stream";
 vi.mock("@/lib/ipc", () => ({
   ipc: {
     sendMessage: vi.fn(async () => ({ runId: "run-1", sessionId: null })),
+    sessionControl: vi.fn(async () => ({
+      type: "result",
+      operation: "status",
+      schemaVersion: 1,
+      sourceSessionId: null,
+      targetSessionId: null,
+      session_id: null,
+      cloned: false,
+      is_error: false,
+      subtype: "success",
+      error_code: null,
+      revision: null,
+      state: null,
+    })),
     rememberSessionModel: vi.fn(async () => {}),
     rememberSessionEffort: vi.fn(async () => {}),
     loadSessionPage: vi.fn(async () => ({ messages: [], nextBefore: null, subagentHistory: [] })),
@@ -127,6 +141,7 @@ describe("permission denial grant flow", () => {
       .respondToGrant(KEY, grantRows()[0].seq, true);
     useChatStore.setState({
       active: { engine: "claude", sessionId: "s-1", workspacePath: "/tmp/ws" },
+      openTabs: [{ engine: "claude", sessionId: "s-1", workspacePath: "/tmp/ws" }],
     });
     await useChatStore.getState().resendLastUser(KEY);
     expect(vi.mocked(ipc.sendMessage)).toHaveBeenCalledWith(

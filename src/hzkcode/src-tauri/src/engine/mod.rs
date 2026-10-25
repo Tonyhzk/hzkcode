@@ -4,6 +4,7 @@ mod claude_channel;
 pub(crate) mod job;
 pub mod images;
 pub mod models;
+pub(crate) mod session_control;
 pub mod wsl_transport;
 pub mod resolve;
 
@@ -1045,21 +1046,24 @@ fn prepare_launch(
         .transpose()?
         .unwrap_or_default();
     let settings = crate::settings::read_settings().unwrap_or_default();
+    let session_id = session_id.filter(|s| !s.trim().is_empty());
+    let resuming = session_id.is_some();
+    // 恢复时缺省参数必须留空，否则启动 flag 会覆盖引擎保存的会话状态。
     let model = model
         .filter(|m| !m.trim().is_empty())
-        .or_else(|| settings.default_models.get(engine).cloned())
+        .or_else(|| (!resuming).then(|| settings.default_models.get(engine).cloned()).flatten())
         .filter(|m| !m.trim().is_empty());
-    let model = if engine == "claude" {
+    let model = if engine == "claude" && (!resuming || model.is_some()) {
         claude_channel::resolve_model(model.as_deref(), provider.as_ref(), &channel_env)
     } else {
         model
     };
     let effort = effort
         .filter(|e| !e.trim().is_empty())
-        .or_else(|| settings.default_efforts.get(engine).cloned())
+        .or_else(|| (!resuming).then(|| settings.default_efforts.get(engine).cloned()).flatten())
         .filter(|e| !e.trim().is_empty());
     let req = SendRequest {
-        session_id: session_id.filter(|s| !s.trim().is_empty()),
+        session_id,
         workspace: PathBuf::from(workspace_path),
         prompt,
         images: image_paths.unwrap_or_default(),
@@ -2966,6 +2970,26 @@ mod permission_tests {
         let bypass = argv(&e, &req(Some("bypass")));
         assert!(bypass.contains(&"--dangerously-skip-permissions".to_string()));
         assert!(!bypass.contains(&"--permission-mode".to_string()));
+    }
+
+    #[test]
+    fn resumed_sessions_leave_saved_controls_to_the_engine() {
+        let engine = claude::ClaudeEngine::new();
+        let mut request = req(None);
+        request.session_id = Some("11111111-1111-4111-8111-111111111111".into());
+        request.agents_json = Some(r#"{"reviewer":{"description":"d","prompt":"p","tools":["Read"]}}"#.into());
+        let args = argv(&engine, &request);
+        for flag in ["--model", "--effort", "--permission-mode", "--agent", "--tools", "--dangerously-skip-permissions"] {
+            assert!(!args.iter().any(|arg| arg == flag), "{flag}");
+        }
+        assert!(args.iter().any(|arg| arg == "--agents"));
+        request.permission = Some("readonlyAutoContinue".into());
+        request.model = Some("high".into());
+        request.effort = Some("off".into());
+        let args = argv(&engine, &request);
+        assert!(has_pair(&args, "--permission-mode", "readonlyAutoContinue"));
+        assert!(has_pair(&args, "--model", "high"));
+        assert!(has_pair(&args, "--effort", "off"));
     }
 
     #[test]

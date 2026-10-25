@@ -103,6 +103,20 @@ fn stage(
     session_window: Option<u64>,
     directory: &Path,
 ) -> Result<(), String> {
+    let path = write_staged_settings(provider, env, model, session_window, directory)?;
+    built.cleanup_files.push(path.clone());
+    built.command.arg("--settings").arg(path);
+    Ok(())
+}
+
+/// 发送与离线控制共用同一份渠道过滤与设置叠加规则。
+pub(super) fn write_staged_settings(
+    provider: &Value,
+    env: &HashMap<String, String>,
+    model: Option<&str>,
+    session_window: Option<u64>,
+    directory: &Path,
+) -> Result<std::path::PathBuf, String> {
     let mut settings = Map::new();
     if let Some(source) = provider.get("settingsConfig").and_then(Value::as_object) {
         for &key in PASSTHROUGH_SETTINGS_KEYS {
@@ -173,11 +187,13 @@ fn stage(
     let mut file = options
         .open(&path)
         .map_err(|e| format!("create private Claude settings: {e}"))?;
-    built.cleanup_files.push(path.clone());
-    file.write_all(&content)
-        .map_err(|e| format!("write private Claude settings: {e}"))?;
-    built.command.arg("--settings").arg(path);
-    Ok(())
+    if let Err(error) = file.write_all(&content) {
+        // 写入失败时调用方拿不到路径；Windows 删除前还需关闭句柄。
+        drop(file);
+        let _ = std::fs::remove_file(&path);
+        return Err(format!("write private Claude settings: {error}"));
+    }
+    Ok(path)
 }
 
 #[cfg(test)]

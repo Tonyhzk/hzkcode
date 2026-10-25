@@ -185,7 +185,12 @@ export function CliMenu({
   const engineName = CLI_DISPLAY_NAMES[value] ?? current?.label ?? value;
 
   const selectedModelId = models[value] ?? "";
-  const selectedModel = (modelsByEngine[value] ?? []).find((m) => m.id === selectedModelId);
+  const modelList = modelsByEngine[value] ?? [];
+  // 会话控制保存的模型可能来自别的渠道，列表尚未收录时也不能退回引擎名：
+  // 触发器仍要显示实际生效的模型。
+  const selectedModel =
+    modelList.find((m) => m.id === selectedModelId) ??
+    (selectedModelId ? { id: selectedModelId, label: selectedModelId } : undefined);
   const triggerEffort: EffortLevel = efforts[value] ?? "medium";
   const [query, setQuery] = useState("");
 
@@ -219,7 +224,7 @@ export function CliMenu({
         <AriaDialog aria-label={t("chat.modelPicker")} className="outline-none">
           <EngineModelPanel
             option={current ?? { id: value, label: engineName }}
-            models={modelsByEngine[value] ?? []}
+            models={modelList}
             selectedModelId={selectedModelId}
             query={query}
             onQueryChange={setQuery}

@@ -8,6 +8,20 @@ import { branchTargets, buildRows, rowKey } from "./components/timeline-rows";
 vi.mock("@/lib/ipc", () => ({
   ipc: {
     sendMessage: vi.fn(async () => ({ runId: "run-1", sessionId: null })),
+    sessionControl: vi.fn(async () => ({
+      type: "result",
+      operation: "status",
+      schemaVersion: 1,
+      sourceSessionId: null,
+      targetSessionId: null,
+      session_id: null,
+      cloned: false,
+      is_error: false,
+      subtype: "success",
+      error_code: null,
+      revision: null,
+      state: null,
+    })),
     interruptSession: vi.fn(async () => true),
     rememberSessionModel: vi.fn(async () => {}),
     rememberSessionEffort: vi.fn(async () => {}),
@@ -174,6 +188,7 @@ describe("stop during an in-flight send", () => {
     vi.mocked(ipc.sendMessage).mockReturnValueOnce(promise);
 
     const sending = useChatStore.getState().send("hello", []);
+    await vi.waitFor(() => expect(ipc.sendMessage).toHaveBeenCalledTimes(1));
     // User presses Stop mid-flight.
     await useChatStore.getState().interrupt();
     expect(useChatStore.getState().bySession["omp/sess-42"]?.interrupted).toBe(
@@ -682,9 +697,11 @@ describe("compactContext and refreshSessionUsage", () => {
 
     const compactPromise = useChatStore.getState().compactContext(key);
 
-    // Verify /compact message was sent
-    expect(ipc.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: "/compact" }),
+    // The pre-send control read is async now; wait for the actual send.
+    await vi.waitFor(() =>
+      expect(ipc.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: "/compact" }),
+      ),
     );
 
     // Simulate completion by clearing streamingByKey
@@ -946,7 +963,9 @@ describe("setPluginSessionEffort (ctx.sessions.setEffort backend)", () => {
 
     setPluginSessionEffort("codex", "s-effort", WS, "high");
 
-    expect(useChatStore.getState().bySession[key].activeEffort).toBe("high");
+    expect(useChatStore.getState().bySession[key]).toMatchObject({
+      activeEffort: "high", controlEffortChosen: true, controlEffortRevision: 1,
+    });
     expect(ipc.rememberSessionEffort).toHaveBeenCalledWith("codex", "s-effort", "high");
     // Stamps cleared so refreshSessions cannot resurrect the old level.
     expect(useChatStore.getState().openTabs[0].effort).toBeUndefined();

@@ -82,13 +82,15 @@ impl Engine for ClaudeEngine {
         // the skip-permissions flag). Asks the CLI can resolve itself
         // (classifier modes) never reach this client; a mode the CLI would
         // have to prompt for is passed through unchanged.
-        match self.resolve_permission(req.permission.as_deref()) {
-            "bypass" => {
-                cmd.arg("--dangerously-skip-permissions");
-            }
-            mode => {
-                cmd.arg("--permission-mode");
-                cmd.arg(mode);
+        if req.permission.is_some() || req.session_id.is_none() {
+            match self.resolve_permission(req.permission.as_deref()) {
+                "bypass" => {
+                    cmd.arg("--dangerously-skip-permissions");
+                }
+                mode => {
+                    cmd.arg("--permission-mode");
+                    cmd.arg(mode);
+                }
             }
         }
         if let Some(model) = req.model.as_deref() {

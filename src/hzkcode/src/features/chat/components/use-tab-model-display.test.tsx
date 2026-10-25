@@ -2,6 +2,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { EffortLevel } from "@/components/application/ai-chat/effort-levels";
+import type {
+  SessionControlResult,
+  SessionControlState,
+} from "@/lib/ipc";
 import { useChatStore, sessionKey } from "../store";
 import { EMPTY_SESSION } from "../store/stream";
 import { useTabModelDisplay } from "./use-tab-model-display";
@@ -26,16 +30,50 @@ function Probe() {
   const key = active
     ? sessionKey(active.engine, active.sessionId, active.workspacePath)
     : "";
-  const { displayEfforts } = useTabModelDisplay({
+  const { displayModels, displayEfforts } = useTabModelDisplay({
     active,
     activeEngine,
     sessionKey: key,
-    models: {},
+    models: { omp: "model-from-engine" },
     efforts: (effortsInput ?? ENGINE_DEFAULT) as Record<string, EffortLevel>,
   });
   return (
-    <span data-testid="effort">{displayEfforts[activeEngine] ?? ""}</span>
+    <>
+      <span data-testid="model">{displayModels[activeEngine] ?? ""}</span>
+      <span data-testid="effort">{displayEfforts[activeEngine] ?? ""}</span>
+    </>
   );
+}
+
+function control(state: Partial<SessionControlState> = {}): SessionControlResult {
+  return {
+    type: "result",
+    operation: "status",
+    schemaVersion: 1,
+    sourceSessionId: SID,
+    targetSessionId: SID,
+    session_id: SID,
+    cloned: false,
+    is_error: false,
+    subtype: "success",
+    error_code: null,
+    revision: "r1",
+    state: {
+      hasConversation: true,
+      availableApplyMethods: {
+        identity: ["current", "clone", "append"],
+        promptMode: ["current"],
+      },
+      identity: { base: null, extensions: [] },
+      promptMode: { effective: "full", override: null, source: "startup" },
+      interactionMode: { effective: "default", override: null, source: "startup" },
+      apiMode: { effective: "anthropic", override: null, source: "startup" },
+      model: { effective: "high", override: null, source: "startup" },
+      effort: { effective: null, override: null, source: "startup" },
+      permission: { effective: "default", override: null, source: "startup" },
+      ...state,
+    },
+  };
 }
 
 let container: HTMLDivElement;
@@ -57,6 +95,84 @@ afterEach(() => {
 function shownEffort() {
   return container.querySelector("[data-testid='effort']")?.textContent ?? "";
 }
+
+function shownModel() {
+  return container.querySelector("[data-testid='model']")?.textContent ?? "";
+}
+
+describe("the picker follows the session-control state", () => {
+  const tab = { engine: "omp", sessionId: SID, workspacePath: WS };
+
+  it("shows the saved override first and keeps the tier alias", async () => {
+    useChatStore.setState({
+      activeEngine: "omp",
+      openTabs: [tab],
+      active: tab,
+      efforts: ENGINE_DEFAULT,
+      bySession: {
+        [KEY]: {
+          ...EMPTY_SESSION,
+          sessionControl: control({
+            model: { effective: "some-effective", override: "mid", source: "session" },
+            effort: { effective: "xhigh", override: null, source: "session" },
+          }),
+        },
+      },
+    });
+
+    await act(async () => root.render(<Probe />));
+
+    expect(shownModel()).toBe("mid");
+    expect(shownEffort()).toBe("xhigh");
+  });
+
+  it("lets a pending explicit model and effort pick win over the saved state", async () => {
+    useChatStore.setState({
+      activeEngine: "omp",
+      openTabs: [{ ...tab, model: "tab-model", effort: "low" as const }],
+      active: { ...tab, model: "tab-model", effort: "low" as const },
+      efforts: ENGINE_DEFAULT,
+      bySession: {
+        [KEY]: {
+          ...EMPTY_SESSION,
+          sessionControl: control({
+            model: { effective: "high", override: null, source: "session" },
+            effort: { effective: "xhigh", override: null, source: "session" },
+          }),
+          controlModelChosen: true,
+          controlEffortChosen: true,
+          activeEffort: "low",
+        },
+      },
+    });
+
+    await act(async () => root.render(<Probe />));
+
+    expect(shownModel()).toBe("tab-model");
+    expect(shownEffort()).toBe("low");
+  });
+
+  it("does not map a numeric effort onto a picker level", async () => {
+    useChatStore.setState({
+      activeEngine: "omp",
+      openTabs: [tab],
+      active: tab,
+      efforts: ENGINE_DEFAULT,
+      bySession: {
+        [KEY]: {
+          ...EMPTY_SESSION,
+          sessionControl: control({
+            effort: { effective: 12000, override: null, source: "session" },
+          }),
+        },
+      },
+    });
+
+    await act(async () => root.render(<Probe />));
+
+    expect(shownEffort()).toBe("medium");
+  });
+});
 
 describe("the picker follows the session, not a stale tab field", () => {
   it("shows the session's own level when the tab still carries an older one", async () => {

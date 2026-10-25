@@ -217,6 +217,119 @@ export interface DeleteMessageOutcome {
   detail: string;
 }
 
+export type SessionControlOperation =
+  | "catalog"
+  | "status"
+  | "prompt-mode"
+  | "identity"
+  | "interaction-mode"
+  | "api-mode";
+
+/** 提示词模式只支持 current/clone，身份额外支持 append。 */
+export type SessionControlApply = "current" | "clone" | "append";
+
+export interface SessionControlRequest {
+  operation: SessionControlOperation;
+  value?: string;
+  apply?: SessionControlApply;
+  /** 使用上次成功读取的 revision，避免覆盖其他进程的修改。 */
+  expectedRevision?: string;
+}
+
+export type SessionControlError =
+  | "invalid_request"
+  | "invalid_session"
+  | "unknown_identity"
+  | "unknown_mode"
+  | "invalid_apply"
+  | "session_live"
+  | "file_changed"
+  | "write_failed"
+  | "rotation_pending"
+  | "unsupported_platform"
+  | "unsupported_api_mode";
+
+export interface SessionControlValue<T> {
+  effective: T;
+  override: T | null;
+  source: "session" | "startup";
+}
+
+export interface SessionControlIdentityExtension {
+  agentType: string;
+  tools?: readonly string[];
+  disallowedTools?: readonly string[];
+}
+
+export interface SessionControlState {
+  hasConversation: boolean;
+  availableApplyMethods: {
+    identity: SessionControlApply[];
+    promptMode: Array<"current" | "clone">;
+  };
+  identity: {
+    base: string | null;
+    extensions: SessionControlIdentityExtension[];
+  };
+  promptMode: SessionControlValue<"full" | "compact">;
+  interactionMode: SessionControlValue<string>;
+  apiMode: SessionControlValue<string>;
+  model: SessionControlValue<string>;
+  effort: SessionControlValue<string | number | null>;
+  permission: SessionControlValue<string>;
+}
+
+export interface SessionControlIdentity {
+  id: string;
+  name: string;
+  description: string;
+  source: string;
+  tools: readonly string[] | null;
+  disallowedTools: readonly string[];
+  model: string | null;
+  effort: string | number | null;
+  permissionMode: string | null;
+}
+
+export interface SessionControlCatalog {
+  identities: SessionControlIdentity[];
+  interactionModes: Array<{ slug: string; name: string; description: string }>;
+}
+
+/** 分类失败保留 is_error/error_code，协议损坏则由 IPC 拒绝。 */
+export interface SessionControlResult {
+  type: "result";
+  operation: SessionControlOperation;
+  schemaVersion: 1;
+  sourceSessionId: string | null;
+  targetSessionId: string | null;
+  session_id: string | null;
+  cloned: boolean;
+  is_error: boolean;
+  subtype: "success" | "error_during_execution";
+  error_code: SessionControlError | null;
+  revision: string | null;
+  state: SessionControlState | null;
+  catalog?: SessionControlCatalog;
+  toolScope?: { addedTools: string[]; unavailableTools: string[] };
+  errors?: string[];
+}
+
+export interface SessionControlParams {
+  engine: string;
+  workspacePath: string;
+  request: SessionControlRequest;
+  /** 留空时查询不创建会话，首次修改创建纯元数据会话。 */
+  sessionId?: string | null;
+  providerId?: string | null;
+  /** 只注册定义，不选择身份。 */
+  agentsJson?: string | null;
+  /** 仅补充会话尚未保存的启动基线。 */
+  model?: string | null;
+  effort?: string | null;
+  permissionMode?: string | null;
+}
+
 export interface ProviderSection {
   providers: Record<string, unknown>;
   current: string | null;
@@ -833,6 +946,11 @@ export const ipc = {
       workspacePath,
       messageId,
     }),
+  /** 离线查询或修改会话控制（引擎隐藏参数 --session-control）：一次性进程，
+   *  不调用模型、不跑 hooks。修改成功广播会话变更；分类失败以结果里的
+   *  is_error/error_code 返回，协议违约才 reject。 */
+  sessionControl: (params: SessionControlParams) =>
+    invoke<SessionControlResult>("session_control", { ...params }),
   /** Uuids the CLI can still resume at (`--resume-session-at`): the active
    *  file's own chain. Re-read after a mid-turn compaction; null when it
    *  cannot be read (the caller then leaves its rewind entries as they are). */

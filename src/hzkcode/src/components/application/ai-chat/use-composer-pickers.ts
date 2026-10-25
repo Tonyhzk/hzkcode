@@ -36,8 +36,8 @@ import { findSlashTrigger } from "@/components/application/ai-chat/slash-command
 import { type FileMentionMenuHandle } from "@/components/application/ai-chat/file-mention-menu";
 import { type SlashCommandMenuHandle } from "@/components/application/ai-chat/slash-command-menu";
 import {
-  CREATE_NEW_AGENT_ID,
   type AgentMenuHandle,
+  type AgentMenuSelection,
 } from "@/components/application/ai-chat/agent-menu";
 import {
   CREATE_NEW_PROMPT_PATH,
@@ -48,9 +48,9 @@ import {
   findHashTrigger,
 } from "@/components/application/ai-chat/agent-prompt-triggers";
 import { type MentionEntry } from "@/components/application/ai-chat/mention-files";
-import { type AgentConfig, type CustomPromptEntry, type SlashCommandEntry } from "@/lib/ipc";
-import { useSelectedAgent } from "@/features/agents/selected-agent";
-import { useChatStore } from "@/features/chat/store";
+import { type CustomPromptEntry, type SlashCommandEntry } from "@/lib/ipc";
+import { usePendingIdentityStore } from "@/features/agents/pending-identity";
+import { sessionKey, useChatStore } from "@/features/chat/store";
 import { joinPath } from "@/features/files/store";
 
 export interface UseComposerPickersArgs {
@@ -91,10 +91,8 @@ export interface ComposerPickers {
   updateTriggers: () => void;
   handleMentionSelect: (entry: MentionEntry) => void;
   handleSlashSelect: (entry: SlashCommandEntry) => void;
-  handleAgentSelect: (entry: AgentConfig) => void;
+  handleAgentSelect: (selection: AgentMenuSelection) => void;
   handlePromptSelect: (entry: CustomPromptEntry) => void;
-  selectedAgent: AgentConfig | null;
-  clearSelectedAgent: () => void;
 }
 
 /**
@@ -129,14 +127,13 @@ export function useComposerPickers({
     usePromptPicker({ editableRef, wrapperRef, workspacePath, value, lastEmittedRef });
 
   const navigate = useNavigate();
-  // The pinned agent is keyed per thread; draft tabs share a slot until the
-  // engine stamps a native session id (see selected-agent.ts).
-  const activeSessionId = useChatStore((s) => s.active?.sessionId ?? null);
-  const {
-    agent: selectedAgent,
-    select: selectAgent,
-    clear: clearSelectedAgent,
-  } = useSelectedAgent(workspacePath ?? "", activeSessionId);
+  // 身份现在由会话控制保存（引擎 3.5.1），# 选择只发起待应用请求，
+  // 不在对话框确认前改动任何生效身份或旧选择记录。
+  const activeKey = useChatStore((s) => {
+    const a = s.active;
+    return a ? sessionKey(a.engine, a.sessionId, a.workspacePath) : null;
+  });
+  const requestIdentity = usePendingIdentityStore((s) => s.requestIdentity);
 
   // One detection pass per input, priority `/` > `@` > `#` > `!`
   // (desktop-cc-gui parity: a line-start slash owns the completion surface;
@@ -241,19 +238,17 @@ export function useComposerPickers({
     },
     [emitChange, syncTags, setSlash, editableRef],
   );
-  /** Pin the picked agent to this thread and strip the `#query` trigger
-   *  from the field (the agent rides the message as a role block on send,
-   *  not as text). The create row jumps to the settings page instead. */
+  /** 选中身份后发起待应用请求（由 Footer 的共用对话框确认方式）；
+   *  选中本身不改当前生效身份。 */
   const handleAgentSelect = useCallback(
-    (entry: AgentConfig) => {
+    (selection: AgentMenuSelection) => {
       setAgent(null);
-      if (entry.id === CREATE_NEW_AGENT_ID) {
+      if (selection.kind === "create") {
         navigate("/settings?page=agentsPrompts");
         return;
       }
       const el = editableRef.current;
       if (!el) return;
-      selectAgent(entry);
       const caret = getCaretOffset(el);
       const text = extractText(el);
       // Recompute the trigger at select time — the caret may have moved
@@ -269,8 +264,19 @@ export function useComposerPickers({
       }
       emitChange();
       syncTags();
+      if (activeKey) {
+        requestIdentity(activeKey, selection.identity);
+      }
     },
-    [emitChange, syncTags, setAgent, selectAgent, navigate, editableRef],
+    [
+      emitChange,
+      syncTags,
+      setAgent,
+      navigate,
+      editableRef,
+      activeKey,
+      requestIdentity,
+    ],
   );
   /** Replace the active `!query` trigger with the picked prompt's content,
    *  caret to the end of the inserted text. The create row jumps to the
@@ -328,8 +334,5 @@ export function useComposerPickers({
     handleSlashSelect,
     handleAgentSelect,
     handlePromptSelect,
-    // Pinned-agent chip state.
-    selectedAgent,
-    clearSelectedAgent,
   };
 }

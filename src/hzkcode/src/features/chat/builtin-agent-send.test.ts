@@ -2,27 +2,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ipc, type AgentConfig } from "@/lib/ipc";
 
 /**
- * A pinned agent becomes the session's CLI main-thread agent: sendPrompt
- * launches with `--agents` (the definition) + `--agent` (its name). Built-in
- * picks (`source: "builtIn"`) store no prompt and resolve the current catalog
- * prompt at send time; a failed resolve (disabled/removed entry) drops the
- * pin, flags the session error banner, and sends without an agent.
+ * Built-in identities are the engine catalog's business. The send path must
+ * not resolve them, fake them as custom `--agents` definitions, or select one
+ * with `--agent`.
  */
 
 vi.mock("@/lib/ipc", () => ({
   ipc: {
     sendMessage: vi.fn(async () => ({ runId: "run-1", sessionId: null })),
-    interruptSession: vi.fn(async () => true),
-    rememberSessionModel: vi.fn(async () => {}),
-    rememberSessionEffort: vi.fn(async () => {}),
-    listSessions: vi.fn(async () => []),
-    loadSessionPage: vi.fn(async () => ({ messages: [], nextBefore: null, subagentHistory: [] })),
-    loadRemoteSessionPage: vi.fn(async () => ({ messages: [], nextBefore: null, subagentHistory: [] })),
-    deleteSession: vi.fn(async () => {}),
-    deleteRemoteSession: vi.fn(async () => {}),
-    getAppSettings: vi.fn(async () => ({})),
-    updateAppSettings: vi.fn(async () => {}),
-    rescanSessions: vi.fn(async () => {}),
+    sessionControl: vi.fn(async () => ({
+      type: "result",
+      operation: "status",
+      schemaVersion: 1,
+      sourceSessionId: null,
+      targetSessionId: null,
+      session_id: null,
+      cloned: false,
+      is_error: false,
+      subtype: "success",
+      error_code: null,
+      revision: null,
+      state: null,
+    })),
     resolveEnabledBuiltInAgent: vi.fn(async () => ({
       id: "agency-agents:design/design-ui-designer",
       name: "UI 设计师",
@@ -30,6 +31,15 @@ vi.mock("@/lib/ipc", () => ({
       prompt: "你是 UI 设计师。",
       promptHash: "hash",
     })),
+    interruptSession: vi.fn(async () => true),
+    rememberSessionModel: vi.fn(async () => {}),
+    rememberSessionEffort: vi.fn(async () => {}),
+    listSessions: vi.fn(async () => []),
+    loadSessionPage: vi.fn(async () => ({ messages: [], nextBefore: null, subagentHistory: [] })),
+    loadRemoteSessionPage: vi.fn(async () => ({ messages: [], nextBefore: null, subagentHistory: [] })),
+    getAppSettings: vi.fn(async () => ({})),
+    updateAppSettings: vi.fn(async () => {}),
+    rescanSessions: vi.fn(async () => {}),
   },
 }));
 vi.mock("@/lib/events", () => ({
@@ -38,24 +48,17 @@ vi.mock("@/lib/events", () => ({
 }));
 
 const WS = "/tmp/ws";
-const STORAGE_KEY = "hzkcode.selectedAgentByThread:v1";
 const BUILT_IN_PICK: AgentConfig = {
   id: "agency-agents:design/design-ui-designer",
   name: "UI 设计师",
   icon: "🎨",
   source: "builtIn",
 };
-// Seeded before the store module loads (a test exercising the module-load
-// boundary): selected-agent reads localStorage once at import time.
-localStorage.setItem(
-  STORAGE_KEY,
-  JSON.stringify({ [`${WS}::draft`]: BUILT_IN_PICK }),
-);
 
 const { useChatStore } = await import("./store");
-const { getSelectedAgent, selectSelectedAgent } = await import(
-  "@/features/agents/selected-agent"
-);
+const { selectSelectedAgent } = await import("@/features/agents/selected-agent");
+const { useAgentStore } = await import("@/features/agents/agent-store");
+const { EMPTY_SESSION } = await import("./store/stream");
 const { sessionKey } = await import("./store/persistence");
 
 interface SentArgs {
@@ -67,91 +70,38 @@ interface SentArgs {
 const sentArgs = (): SentArgs =>
   vi.mocked(ipc.sendMessage).mock.calls[0]?.[0] as unknown as SentArgs;
 
-describe("sendPrompt with an agent pinned", () => {
+describe("sendPrompt ignores the legacy built-in pin", () => {
   beforeEach(() => {
     vi.mocked(ipc.sendMessage).mockClear();
     vi.mocked(ipc.resolveEnabledBuiltInAgent).mockClear();
+    useAgentStore.setState({ agents: [], builtInAgents: [], loaded: true });
+    const tab = { engine: "claude", sessionId: "s-1", workspacePath: WS };
     useChatStore.setState({
-      openTabs: [],
-      active: null,
+      openTabs: [tab],
+      active: tab,
       activeEngine: "claude",
       models: {},
       efforts: {},
-      bySession: {},
+      bySession: {
+        [sessionKey("claude", "s-1", WS)]: { ...EMPTY_SESSION, messages: [] },
+      },
       streamingByKey: {},
+      controlBusyByKey: {},
+      controlBusy: false,
       unseen: {},
       drafts: {},
+      sessions: [],
     });
-    // Re-seed the in-memory selection too: a previous test's clear()
-    // removes the entry from both the store and localStorage.
-    selectSelectedAgent(WS, null, BUILT_IN_PICK);
+    selectSelectedAgent(WS, "s-1", BUILT_IN_PICK);
   });
 
-  it("resolves the catalog prompt and launches with --agents/--agent", async () => {
-    useChatStore.getState().startNewChat(WS);
-    await useChatStore.getState().send("hi", []);
-
-    expect(vi.mocked(ipc.resolveEnabledBuiltInAgent)).toHaveBeenCalledWith(
-      BUILT_IN_PICK.id,
-    );
-    const sent = sentArgs();
-    expect(sent.prompt).toBe("hi");
-    expect(sent.agentName).toBe("UI 设计师");
-    const defs = JSON.parse(sent.agentsJson ?? "{}") as Record<
-      string,
-      { description: string; prompt: string }
-    >;
-    expect(defs["UI 设计师"]?.prompt).toBe("你是 UI 设计师。");
-    expect(defs["UI 设计师"]?.description).toBeTruthy();
-  });
-
-  it("a custom agent rides the launch flags without a catalog resolve", async () => {
-    selectSelectedAgent(WS, null, {
-      id: "a1",
-      name: "审查员",
-      prompt: "严格审查。",
-      icon: "🧐",
-    });
-    useChatStore.getState().startNewChat(WS);
+  it("does not resolve or send a built-in selection", async () => {
     await useChatStore.getState().send("hi", []);
 
     expect(vi.mocked(ipc.resolveEnabledBuiltInAgent)).not.toHaveBeenCalled();
     const sent = sentArgs();
-    expect(sent.agentName).toBe("审查员");
-    const defs = JSON.parse(sent.agentsJson ?? "{}") as Record<
-      string,
-      { prompt: string }
-    >;
-    expect(defs["审查员"]?.prompt).toBe("严格审查。");
-  });
-
-  it("a failed resolve clears the pin, flags the session error, and sends without an agent", async () => {
-    vi.mocked(ipc.resolveEnabledBuiltInAgent).mockRejectedValueOnce(
-      new Error("agent disabled"),
-    );
-    // Hold sendMessage open: the turn's done-event clears the session error
-    // banner, so assert while the invoke is still pending.
-    const { promise, resolve: resolveSend } = Promise.withResolvers<{
-      runId: string;
-      sessionId: string | null;
-    }>();
-    vi.mocked(ipc.sendMessage).mockReturnValueOnce(promise);
-
-    useChatStore.getState().startNewChat(WS);
-    const sending = useChatStore.getState().send("hi", []);
-    await vi.waitFor(() => {
-      expect(vi.mocked(ipc.sendMessage)).toHaveBeenCalled();
-    });
-
-    const sent = sentArgs();
     expect(sent.prompt).toBe("hi");
     expect(sent.agentName).toBeNull();
     expect(sent.agentsJson).toBeNull();
-    expect(getSelectedAgent(WS, null)).toBeNull();
-    const key = sessionKey("claude", null, WS);
-    expect(useChatStore.getState().bySession[key]?.error).toBeTruthy();
-
-    resolveSend({ runId: "run-1", sessionId: null });
-    await sending;
   });
 });

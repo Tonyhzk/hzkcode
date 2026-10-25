@@ -1,4 +1,4 @@
-import type { Message, TodosPayload } from "@/lib/ipc";
+import type { Message, SessionControlResult, TodosPayload } from "@/lib/ipc";
 import { normalizeTierAlias } from "@/features/settings/providers";
 
 /**
@@ -43,6 +43,15 @@ export interface SessionState {
    *  `--resume-session-at`). Cleared once a send dispatched with it — after
    *  that the transcript's own chain is the record. */
   rewindAnchor?: string | null;
+  /** 已保存状态与待发送的新选择分开记录，旧回调只消费自己携带的选择版本。 */
+  sessionControl: SessionControlResult | null;
+  controlModelChosen?: boolean;
+  controlEffortChosen?: boolean;
+  controlPermissionChosen?: boolean;
+  controlModelRevision?: number;
+  controlEffortRevision?: number;
+  controlPermissionRevision?: number;
+  controlPermissionValue?: string;
   /** Slash commands the CLI announced for this session (the headless init
    *  message's `slash_commands`); the composer's built-in group reads them. */
   availableCommands?: string[];
@@ -80,6 +89,10 @@ export const EMPTY_SESSION: SessionState = {
   secondBrainEnabled: null,
   autoCompactWindow: null,
   rewindAnchor: null,
+  sessionControl: null,
+  controlModelChosen: false,
+  controlEffortChosen: false,
+  controlPermissionChosen: false,
   availableCommands: [],
   usage: null,
   turnUsage: null,

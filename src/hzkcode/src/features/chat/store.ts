@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import {
   ipc,
+  type AgentConfig,
+  type SessionControlParams,
+  type SessionControlResult,
   type SessionMeta,
   type SessionPage,
   type Workspace,
@@ -51,6 +54,7 @@ import {
   setStreamingFlag,
   settleLiveRows,
   untrackRun,
+  type QueuedMessage,
 } from "./store/stream";
 import {
   computeChannelDefaults,
@@ -74,15 +78,18 @@ import {
 import { effectivePermission, readPermissionPref } from "./store/permissions";
 import i18n from "@/lib/i18n";
 import {
-  clearSelectedAgent,
-  getRecordedAgent,
   getSelectedAgent,
   migrateRecordedAgent,
   migrateSelectedAgent,
-  selectSelectedAgent,
-  setRecordedAgent,
 } from "@/features/agents/selected-agent";
 import { useAgentStore } from "@/features/agents/agent-store";
+import {
+  buildAgentsJson,
+  controlRequestWithRevision,
+  hasSavedControlValue,
+  sessionControlErrorText,
+  type SessionControlCommand,
+} from "./store/session-control";
 import { persistSettings } from "./store/settings-persist";
 import {
   listExternalSessionMetas,
@@ -106,6 +113,14 @@ function omitKey(rec: Record<string, boolean>, key: string) {
   const next = { ...rec };
   delete next[key];
   return next;
+}
+
+function activeSessionKeyOf(tab: ActiveSession | null): string | null {
+  return tab ? sessionKey(tab.engine, tab.sessionId, tab.workspacePath) : null;
+}
+
+function isActiveTabKey(tab: ActiveSession | null, key: string): boolean {
+  return activeSessionKeyOf(tab) === key;
 }
 
 /** Load a page of session history, routing remote (plugin-fed, e.g. WSL
@@ -174,7 +189,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
   /** Activate a tab: existing sessions lazy-load via selectSession, pending chats just set. */
   function activateTab(tab: ActiveSession | null) {
     if (!tab) {
-      set({ active: null });
+      set({ active: null, controlBusy: false });
       persistTabs(get().openTabs, null);
       emitSessionActivated(null, null);
       return;
@@ -186,10 +201,18 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // — otherwise the chip shows one CLI while sends go to another.
       const syncEngine = tab.engine !== get().activeEngine;
       if (syncEngine) writeStored(ENGINE_PREF_KEY, tab.engine);
+      const pendingKey = sessionKey(tab.engine, null, tab.workspacePath);
       set(
         syncEngine
-          ? { active: tab, activeEngine: tab.engine }
-          : { active: tab },
+          ? {
+              active: tab,
+              activeEngine: tab.engine,
+              controlBusy: get().controlBusyByKey[pendingKey] === true,
+            }
+          : {
+              active: tab,
+              controlBusy: get().controlBusyByKey[pendingKey] === true,
+            },
       );
       persistTabs(get().openTabs, tab);
       emitSessionActivated(tab.engine, null);
@@ -276,192 +299,465 @@ export const useChatStore = create<ChatStore>((set, get) => {
     }
   }
 
-  /** The CLI requires a non-empty agent description in `--agents` JSON; the
-   *  GUI stores no separate field, so derive one from the prompt's first
-   *  non-empty line. */
-  function agentDescription(name: string, prompt: string): string {
-    const line = prompt
-      .split("\n")
-      .map((l) => l.trim())
-      .find((l) => l.length > 0);
-    const base = line ?? name;
-    return base.length > 120 ? `${base.slice(0, 117)}…` : base;
+  /** Offline session control is a claude-engine bridge (one process, no model
+   *  request); other engines and plugin-fed remote sessions fall back to the
+   *  legacy send-only path. */
+  function supportsSessionControl(engine: string): boolean {
+    return engine === "claude";
+  }
+
+  function supportsSessionControlFor(tab: ActiveSession): boolean {
+    if (!supportsSessionControl(tab.engine)) return false;
+    if (!tab.sessionId) return true;
+    const meta = get().sessions.find(
+      (session) =>
+        session.engine === tab.engine &&
+        session.sessionId === tab.sessionId &&
+        session.workspacePath === tab.workspacePath,
+    );
+    return !meta?.remote;
+  }
+
+  function isActiveTab(
+    engine: string,
+    sessionId: string | null,
+    workspacePath: string,
+  ): boolean {
+    const active = get().active;
+    return !!active && sameTab(active, engine, sessionId, workspacePath);
+  }
+
+  const deferredQueueAfterControl = new Set<string>();
+
+  function markControlBusy(key: string) {
+    set((s) => ({
+      controlBusyByKey: { ...s.controlBusyByKey, [key]: true },
+      controlBusy: isActiveTabKey(s.active, key) ? true : s.controlBusy,
+    }));
+  }
+
+  function clearControlBusy(key: string) {
+    set((s) => {
+      if (!(key in s.controlBusyByKey)) return {};
+      const controlBusyByKey = { ...s.controlBusyByKey };
+      delete controlBusyByKey[key];
+      const activeKey = activeSessionKeyOf(s.active);
+      return {
+        controlBusyByKey,
+        controlBusy: activeKey ? controlBusyByKey[activeKey] === true : false,
+      };
+    });
+  }
+
+  async function prepareAgentsJson(
+    tab: ActiveSession,
+    target?: AgentConfig,
+    targetValue?: string,
+    loadCatalog = false,
+  ): Promise<string | null> {
+    const key = sessionKey(tab.engine, tab.sessionId, tab.workspacePath);
+    const identity = get().bySession[key]?.sessionControl?.state?.identity;
+    const values = new Set([
+      identity?.base,
+      ...(identity?.extensions.map((entry) => entry.agentType) ?? []),
+      targetValue ?? (target ? (target.source === "builtIn" ? target.id : target.name) : null),
+    ].filter((value): value is string => !!value));
+    if (!useAgentStore.getState().loaded && (loadCatalog || values.size > 0)) {
+      await useAgentStore.getState().refresh();
+    }
+    const catalog = useAgentStore.getState();
+    const legacy = getSelectedAgent(tab.workspacePath, tab.sessionId);
+    const agents = [...catalog.agents];
+    if (target && target.source !== "builtIn" && !agents.some((entry) => entry.id === target.id)) {
+      agents.push(target);
+    }
+    const builtIns: { name: string; prompt: string }[] = [];
+    const resolvedPrompts = new Map<string, string>();
+    for (const value of values) {
+      const explicit = target && (target.id === value || target.name === value) ? target : null;
+      const old = legacy && (legacy.id === value || legacy.name === value) ? legacy : null;
+      const role = catalog.builtInAgents.find((entry) => entry.id === value || entry.name === value);
+      const id = explicit?.source === "builtIn" ? explicit.id
+        : old?.source === "builtIn" ? old.id
+        : role?.id ?? (value.startsWith("agency-agents:") ? value : null);
+      if (!id) {
+        if (old && old.source !== "builtIn" && !agents.some((entry) => entry.id === old.id)) {
+          throw new Error(i18n.t("chat.agentUnavailable"));
+        }
+        continue;
+      }
+      let prompt = resolvedPrompts.get(id);
+      if (prompt === undefined) {
+        try {
+          prompt = (await ipc.resolveEnabledBuiltInAgent(id)).prompt;
+        } catch {
+          throw new Error(i18n.t("chat.agentUnavailable"));
+        }
+        if (!prompt?.trim()) throw new Error(i18n.t("chat.agentUnavailable"));
+        resolvedPrompts.set(id, prompt);
+      }
+      // 旧会话保留已存名称；新选择使用稳定 ID，不受界面语言影响。
+      builtIns.push({ name: value, prompt });
+    }
+    return buildAgentsJson(agents, builtIns);
+  }
+
+  async function controlRequest(
+    tab: ActiveSession,
+    target?: AgentConfig,
+    targetValue?: string,
+    loadCatalog = false,
+  ): Promise<Omit<SessionControlParams, "request">> {
+    const agentsJson = await prepareAgentsJson(tab, target, targetValue, loadCatalog);
+    const state = get();
+    const key = sessionKey(tab.engine, tab.sessionId, tab.workspacePath);
+    const session = state.bySession[key];
+    const provider = resolveSessionProvider(tab, session, state.providers[tab.engine]) ?? null;
+    return {
+      engine: tab.engine,
+      workspacePath: tab.workspacePath,
+      sessionId: tab.sessionId,
+      providerId: provider,
+      agentsJson,
+      model: resolveSessionModel(tab, findChannelDefault(state.channelDefaults, tab.engine, provider), state.models[tab.engine]) ?? null,
+      effort: resolveSessionEffort(tab, session, state.efforts[tab.engine]) ?? null,
+      permissionMode: effectivePermission(state.engines, tab.engine,
+        (session?.controlPermissionValue ?? state.permission) as ChatStore["permission"]),
+    };
+  }
+
+  /** Read-only state/catalog read for one tab. No send, no model request. */
+  async function loadSessionControlForTab(
+    tab: ActiveSession,
+    operation: "catalog" | "status" = "catalog",
+    lockHeld = false,
+  ): Promise<SessionControlResult | null> {
+    if (!supportsSessionControlFor(tab)) return null;
+    const key = sessionKey(tab.engine, tab.sessionId, tab.workspacePath);
+    if (!lockHeld && get().controlBusyByKey[key]) {
+      return get().bySession[key]?.sessionControl ?? null;
+    }
+    if (!lockHeld) markControlBusy(key);
+    try {
+      const result = await ipc.sessionControl({
+        ...(await controlRequest(tab)),
+        request: { operation },
+      });
+      // The tab may have closed or been replaced while the offline process
+      // ran; a stale result must not create or update another session.
+      const stillOpen = get().openTabs.some((t) =>
+        sameTab(t, tab.engine, tab.sessionId, tab.workspacePath),
+      );
+      if (!stillOpen) return result;
+      if (result.is_error) {
+        set({ actionError: sessionControlErrorText(result) });
+        return result;
+      }
+      // A status read (the pre-send refresh) carries no catalog; keep the
+      // catalog already loaded for the menu instead of blanking it.
+      const previous = get().bySession[key]?.sessionControl;
+      const next =
+        !result.catalog && previous?.catalog
+          ? { ...result, catalog: previous.catalog }
+          : result;
+      patchSession(set, key, { sessionControl: next });
+      return result;
+    } catch (error) {
+      set({ actionError: errorText(error) });
+      return null;
+    } finally {
+      if (!lockHeld) {
+        clearControlBusy(key);
+        if (deferredQueueAfterControl.delete(key)) drainQueue(key);
+      }
+    }
+  }
+
+  /** Mutation results may omit the catalog; keep the one the menu already
+   *  loaded so a change does not blank the identity/mode lists. */
+  function controlResultWithCatalog(
+    result: SessionControlResult,
+    catalogFromKey: string,
+  ): SessionControlResult {
+    if (result.catalog) return result;
+    const catalog = get().bySession[catalogFromKey]?.sessionControl?.catalog;
+    return catalog ? { ...result, catalog } : result;
+  }
+
+  function rememberControlTarget(
+    engine: string,
+    targetSessionId: string,
+    provider: string | null,
+    result: SessionControlResult,
+  ) {
+    if (provider) {
+      void ipc
+        .rememberSessionProvider?.(engine, targetSessionId, provider)
+        ?.catch(() => {});
+    }
+    const model = result.state?.model.effective;
+    if (model) {
+      void ipc
+        .rememberSessionModel?.(engine, targetSessionId, model)
+        ?.catch(() => {});
+    }
+    const effort = result.state?.effort.effective;
+    if (effort !== null && effort !== undefined) {
+      void ipc
+        .rememberSessionEffort?.(engine, targetSessionId, String(effort))
+        ?.catch(() => {});
+    }
+  }
+
+  /** Adopt the target session a successful control mutation returned: an
+   *  in-place change keeps the tab, a metadata-only first change turns the
+   *  draft into that session, and a clone leaves the source alone and opens
+   *  the new session. A response that arrives after the user switched or
+   *  closed the source tab never grabs focus. */
+  async function adoptControlResult(
+    source: ActiveSession,
+    result: SessionControlResult,
+    before: ChatStore["bySession"][string] | undefined,
+  ): Promise<void> {
+    const targetSessionId = result.targetSessionId;
+    if (!targetSessionId) return;
+    const engine = source.engine;
+    const workspacePath = source.workspacePath;
+    const sourceKey = sessionKey(engine, source.sessionId, workspacePath);
+    const targetKey = sessionKey(engine, targetSessionId, workspacePath);
+    const controlResult = controlResultWithCatalog(result, sourceKey);
+    const sourceTab = get().openTabs.find((t) =>
+      sameTab(t, engine, source.sessionId, workspacePath),
+    );
+    if (!sourceTab) return;
+    const sourceStillActive = isActiveTab(
+      engine,
+      source.sessionId,
+      workspacePath,
+    );
+    const sourceState = get().bySession[sourceKey];
+    const fullIdentity = result.operation === "identity" && !result.toolScope;
+    const choices = {
+      controlModelChosen: fullIdentity && sourceState?.controlModelRevision === before?.controlModelRevision
+        ? false : sourceState?.controlModelChosen,
+      controlEffortChosen: fullIdentity && sourceState?.controlEffortRevision === before?.controlEffortRevision
+        ? false : sourceState?.controlEffortChosen,
+      controlPermissionChosen: fullIdentity && sourceState?.controlPermissionRevision === before?.controlPermissionRevision
+        ? false : sourceState?.controlPermissionChosen,
+      controlModelRevision: sourceState?.controlModelRevision,
+      controlEffortRevision: sourceState?.controlEffortRevision,
+      controlPermissionRevision: sourceState?.controlPermissionRevision,
+      controlPermissionValue: fullIdentity && sourceState?.controlPermissionRevision === before?.controlPermissionRevision
+        ? undefined : sourceState?.controlPermissionValue,
+    };
+    const model = fullIdentity && !choices.controlModelChosen
+      ? result.state?.model.effective || undefined : sourceTab.model;
+    const activeModel = choices.controlModelChosen
+      ? sourceState?.activeModel : result.state?.model.effective || null;
+    const activeEffort = choices.controlEffortChosen
+      ? sourceTab.effort ?? sourceState?.activeEffort
+      : result.state?.effort.effective == null ? null : String(result.state.effort.effective);
+    const provider =
+      sourceState?.activeProvider ??
+      sourceTab.provider ??
+      get().providers[engine] ??
+      null;
+
+    if (result.cloned) {
+      set((s) => {
+        const existing = s.bySession[targetKey];
+        const bySession = {
+          ...s.bySession,
+          [targetKey]: {
+            ...EMPTY_SESSION,
+            ...existing,
+            ...(sourceState
+              ? {
+                  proxyEnabled: sourceState.proxyEnabled,
+                  secondBrainEnabled: sourceState.secondBrainEnabled,
+                  autoCompactWindow: sourceState.autoCompactWindow,
+                  activeProvider: sourceState.activeProvider,
+                }
+              : {}),
+            ...choices,
+            activeModel,
+            activeEffort,
+            sessionControl: controlResult,
+          },
+        };
+        const drafts = { ...s.drafts };
+        if (
+          drafts[sourceKey] !== undefined &&
+          drafts[targetKey] === undefined
+        ) {
+          drafts[targetKey] = drafts[sourceKey];
+        }
+        const clonedTab: ActiveSession = {
+          engine,
+          sessionId: targetSessionId,
+          workspacePath,
+          ...(model !== undefined ? { model } : {}),
+        };
+        return {
+          bySession,
+          drafts,
+          openTabs: dedupeTabs([...s.openTabs, clonedTab]),
+        };
+      });
+      rememberControlTarget(engine, targetSessionId, provider, result);
+      persistTabs(get().openTabs, get().active);
+      if (sourceStillActive) {
+        await get().selectSession(engine, targetSessionId, workspacePath);
+      }
+      void get().refreshSessions();
+      return;
+    }
+
+    if (targetSessionId !== source.sessionId) {
+      // First mutation without a resume: the engine created a metadata-only
+      // session. Move the draft (state, draft text, switches) onto that id so
+      // the first real send resumes it.
+      set((s) => {
+        const bySession = { ...s.bySession };
+        const current = bySession[sourceKey];
+        bySession[targetKey] = {
+          ...EMPTY_SESSION,
+          ...current,
+          sessionControl: controlResult,
+          ...choices,
+          activeModel,
+          activeEffort,
+          activeProvider: provider,
+        };
+        delete bySession[sourceKey];
+        const drafts = { ...s.drafts };
+        if (sourceKey in drafts) {
+          drafts[targetKey] = drafts[sourceKey];
+          delete drafts[sourceKey];
+        }
+        const stamped = (t: ActiveSession): ActiveSession =>
+          sameTab(t, engine, source.sessionId, workspacePath)
+            ? { ...t, sessionId: targetSessionId, model, effort: undefined }
+            : t;
+        const openTabs = dedupeTabs(s.openTabs.map(stamped));
+        const active = s.active ? stamped(s.active) : s.active;
+        const controlBusyByKey = { ...s.controlBusyByKey };
+        if (controlBusyByKey[sourceKey]) {
+          delete controlBusyByKey[sourceKey];
+          controlBusyByKey[targetKey] = true;
+        }
+        return {
+          bySession,
+          drafts,
+          openTabs,
+          active,
+          controlBusyByKey,
+          controlBusy: isActiveTabKey(active, targetKey),
+          streamingByKey: moveStreamingFlag(
+            s.streamingByKey,
+            sourceKey,
+            targetKey,
+          ),
+        };
+      });
+      migrateSelectedAgent(workspacePath, targetSessionId);
+      migrateRecordedAgent(workspacePath, targetSessionId);
+      rememberControlTarget(engine, targetSessionId, provider, result);
+      persistTabs(get().openTabs, get().active);
+      if (sourceStillActive) {
+        await get().selectSession(engine, targetSessionId, workspacePath);
+      }
+      void get().refreshSessions();
+      return;
+    }
+
+    patchSession(set, targetKey, {
+      sessionControl: controlResult,
+      ...choices,
+      activeModel,
+      activeEffort,
+    });
+    if (fullIdentity && !choices.controlModelChosen) {
+      const stamp = (tab: ActiveSession): ActiveSession => sameTab(tab, engine, targetSessionId, workspacePath)
+        ? { ...tab, model } : tab;
+      set((s) => ({ openTabs: s.openTabs.map(stamp), active: s.active ? stamp(s.active) : null }));
+      persistTabs(get().openTabs, get().active);
+    }
+    // Current/append changes appended control records to the same transcript:
+    // re-read the visible page (isMeta guidance is dropped by the parser, so
+    // an appended identity never shows up as a user prompt).
+    await get().reloadSession(targetKey);
+  }
+
+  /** Put a user's text back when a pre-send control read blocked the turn.
+   *  Never clobber text the user typed after submitting. */
+  function restoreDraft(key: string, prompt: string) {
+    if (!prompt.trim()) return;
+    const current = get().drafts[key];
+    if (current !== undefined && current !== "") return;
+    set((s) => ({ drafts: { ...s.drafts, [key]: prompt } }));
+  }
+
+  /** A blocking pre-send check must not swallow a queued message: put its head
+   *  back so a later drain can retry it. */
+  function requeueMessage(key: string, item: QueuedMessage) {
+    set((s) => {
+      const current = s.bySession[key];
+      if (!current || current.queue.some((entry) => entry.id === item.id)) {
+        return {};
+      }
+      return {
+        bySession: {
+          ...s.bySession,
+          [key]: { ...current, queue: [item, ...current.queue] },
+        },
+      };
+    });
   }
 
   /**
    * Send a prompt to a specific tab. Unlike the public `send` action this is
    * not bound to the active session, so the queue can drain on a background
-   * tab after its turn finishes there.
+   * tab after its turn finishes there. Returns false when a pre-send check
+   * blocked the turn before anything was appended (the caller may restore a
+   * draft or requeue the message).
    */
   async function sendPrompt(
     tab: ActiveSession,
     prompt: string,
     images: string[],
-  ) {
-    if (!prompt.trim() && images.length === 0) return;
-    // A pinned agent becomes this session's CLI main-thread agent: the
-    // launch carries its definition as `--agents` JSON and selects it with
-    // `--agent`, so headless sessions run under the agent's system prompt
-    // and the CLI re-derives it on resume.
-    let selectedAgent = getSelectedAgent(tab.workspacePath, tab.sessionId);
-    // The persisted pin snapshots the record picked at selection time; edits
-    // made later in settings must still apply to pinned sessions, so refresh
-    // it from the catalog (built-in picks resolve their own prompt below).
-    if (selectedAgent && selectedAgent.source !== "builtIn") {
-      const pinned = selectedAgent;
-      const fresh = useAgentStore
-        .getState()
-        .agents.find((agent) => agent.id === pinned.id);
-      if (fresh) selectedAgent = { ...pinned, ...fresh };
-    }
-    // Built-in resolve failures are re-flagged after the optimistic-turn
-    // patch below (which resets `error` for the new turn).
-    let agentResolveError: string | null = null;
-    let agentName: string | null = null;
-    let agentsJson: string | null = null;
-    // Identity overrides for this send: tool whitelist, model and effort.
-    let agentTools: string[] | null = null;
-    let identityModel: string | null = null;
-    let identityEffort: string | null = null;
-    if (selectedAgent) {
-      let resolvedName = selectedAgent.name;
-      let resolvedPrompt: string | null = null;
-      if (selectedAgent.source === "builtIn") {
-        // Built-in picks store no prompt: resolve the current catalog prompt
-        // at send time. A since-disabled catalog entry fails the resolve —
-        // drop the stale pin, surface the session error banner, and still
-        // send without an agent.
-        try {
-          const resolved = await ipc.resolveEnabledBuiltInAgent(selectedAgent.id);
-          resolvedName = resolved.name;
-          resolvedPrompt = resolved.prompt ?? null;
-        } catch {
-          clearSelectedAgent(tab.workspacePath, tab.sessionId);
-          agentResolveError = i18n.t("chat.agentUnavailable");
-        }
-      } else {
-        resolvedPrompt = selectedAgent.prompt ?? null;
-      }
-      if (agentResolveError === null) {
-        // The CLI rejects an empty prompt in an agent definition, and the
-        // definition is what carries the identity on resume — so an identity
-        // that only configures tools/model gets a minimal prompt line
-        // instead of silently losing everything at send time.
-        resolvedPrompt =
-          resolvedPrompt?.trim() ||
-          i18n.t("chat.agentDefaultPrompt", { name: resolvedName });
-        agentName = resolvedName;
-        // 3.1.0：自定义身份缺省不注入内置规范、CLAUDE.md/Rules 与个人
-        // 记忆。身份限定后按限定集合下发；未限定时显式声明全量——GUI 的
-        // 智能体是叠加在完整上下文上的角色预设，保持既有行为。
-        const context = selectedAgent.context ?? [
-          "prompts",
-          "claudemd",
-          "memory",
-        ];
-        // The whitelist rides the launch flag below: the headless path does
-        // not read a definition's tool list. An empty list (disable every
-        // tool) is preserved as-is.
-        agentTools = selectedAgent.tools ?? null;
-        identityModel = selectedAgent.model
-          ? normalizeTierAlias(selectedAgent.model)
-          : null;
-        identityEffort = selectedAgent.effort ?? null;
-        agentsJson = JSON.stringify({
-          [resolvedName]: {
-            description: agentDescription(resolvedName, resolvedPrompt),
-            prompt: resolvedPrompt,
-            context,
-            // The definition carries the other knobs too, so a session later
-            // resumed from the terminal keeps them (the launch flags are the
-            // headless source of truth).
-            ...(agentTools ? { tools: agentTools } : {}),
-            ...(identityModel ? { model: identityModel } : {}),
-            ...(identityEffort ? { effort: identityEffort } : {}),
-          },
-        });
-      }
-    }
+    options: { restoreDraftOnBlock?: boolean } = {},
+  ): Promise<boolean> {
+    if (!prompt.trim() && images.length === 0) return false;
     const engine = tab.engine;
     const key = sessionKey(engine, tab.sessionId, tab.workspacePath);
-    // Identity switch on a conversation that already has messages clones it
-    // (the CLI's /agents semantics): the original session keeps its identity,
-    // the new one continues under the picked identity. Drafts and empty
-    // conversations switch in place — the host reports nothing to clone.
-    // The baseline is the identity this app last sent with; when it has no
-    // record yet (a CLI-created session, or a cleared store), the identity
-    // recorded in the session file itself stands in.
-    let recordedAgent = getRecordedAgent(tab.workspacePath, tab.sessionId);
-    if (recordedAgent === undefined && tab.sessionId) {
-      try {
-        recordedAgent = (await ipc.getSessionAgentSetting(engine, tab.sessionId)) || null;
-      } catch {
-        recordedAgent = undefined;
-      }
+    if (get().controlBusyByKey[key] || get().streamingByKey[key]) {
+      patchSession(set, key, { error: i18n.t("chat.sessionControlBusy") });
+      if (options.restoreDraftOnBlock) restoreDraft(key, prompt);
+      return false;
     }
-    if (
-      tab.sessionId &&
-      agentResolveError === null &&
-      (recordedAgent ?? null) !== (agentName ?? null)
-    ) {
-      let cloned: { sessionId: string; cloned: boolean } | null = null;
-      try {
-        cloned = await ipc.cloneSession(engine, tab.sessionId, tab.workspacePath, agentName === null);
-      } catch (error) {
-        patchSession(set, key, { error: errorText(error) });
-        return;
+    let agentsJson: string | null;
+    markControlBusy(key);
+    try {
+      if (tab.sessionId && supportsSessionControlFor(tab)) {
+        const control = await loadSessionControlForTab(tab, "status", true);
+        if (!control || control.is_error) {
+          if (options.restoreDraftOnBlock) restoreDraft(key, prompt);
+          return false;
+        }
       }
-      if (cloned.cloned && cloned.sessionId !== tab.sessionId) {
-        // The clone carries the new pick; the source session goes back to
-        // the identity it was running under (the recorded baseline), so
-        // returning there resumes that identity instead of cloning again.
-        const previous = recordedAgent ?? null;
-        const previousDefinition =
-          previous === null
-            ? null
-            : (useAgentStore
-                .getState()
-                .agents.find((agent) => agent.name === previous) ?? null);
-        const previousBuiltIn =
-          previousDefinition || previous === null
-            ? undefined
-            : useAgentStore
-                .getState()
-                .builtInAgents.find((agent) => agent.name === previous);
-        if (previousDefinition) {
-          selectSelectedAgent(
-            tab.workspacePath,
-            tab.sessionId,
-            previousDefinition,
-          );
-        } else if (previousBuiltIn) {
-          selectSelectedAgent(tab.workspacePath, tab.sessionId, {
-            id: previousBuiltIn.id,
-            name: previousBuiltIn.name,
-            source: "builtIn",
-          });
-        } else {
-          // No previous identity, or its definition is gone (deleted or
-          // disabled): the source is identity-less, matching what the CLI
-          // can restore for it.
-          clearSelectedAgent(tab.workspacePath, tab.sessionId);
-          setRecordedAgent(tab.workspacePath, tab.sessionId, null);
-        }
-        setRecordedAgent(tab.workspacePath, cloned.sessionId, agentName);
-        if (selectedAgent) {
-          selectSelectedAgent(tab.workspacePath, cloned.sessionId, selectedAgent);
-        } else {
-          clearSelectedAgent(tab.workspacePath, cloned.sessionId);
-        }
-        await get().refreshSessions();
-        await get().selectSession(engine, cloned.sessionId, tab.workspacePath);
-        const nextTab = get().active;
-        if (nextTab?.sessionId === cloned.sessionId) {
-          return sendPrompt(nextTab, prompt, images);
-        }
-        patchSession(set, key, { error: i18n.t("chat.agentCloneFailed") });
-        return;
-      }
+      agentsJson = await prepareAgentsJson(tab);
+      // 等待期间允许用户改选，但只对原会话读取最新选择。
+      const latestTab = get().openTabs.find((candidate) =>
+        sameTab(candidate, tab.engine, tab.sessionId, tab.workspacePath));
+      if (!latestTab) return false;
+      tab = latestTab;
+    } catch (error) {
+      patchSession(set, key, { error: errorText(error) });
+      if (options.restoreDraftOnBlock) restoreDraft(key, prompt);
+      return false;
+    } finally {
+      clearControlBusy(key);
     }
     // The channel this send spawns on: the session's own channel, else the
     // engine's current one. Hoisted so the model resolve below reads the
@@ -477,19 +773,25 @@ export const useChatStore = create<ChatStore>((set, get) => {
     // set, moved, or cancelled the point since this one loaded. No entry =
     // no rewind. Consumed only when the run settles (see pendingRewindByRun).
     const rewindForSend = readRewindAnchors()[key] ?? null;
-    // The model the next turn runs: the session's explicit pick, else the
-    // default of the channel it spawns on — what that channel is configured
-    // to serve (transcript history is deliberately not a source; see
-    // resolveSessionModel). A pinned identity's model wins over both — the
-    // identity pins its own model (see the identity editor).
-    const model =
-      identityModel ||
+    // The model the next turn runs: an explicit composer pick always wins;
+    // otherwise a model saved in the session-control state is authoritative
+    // and the old GUI default must not override it (send null = let the
+    // engine use its saved value). Without control state, fall back to the
+    // tab/channel default.
+    const sessionNow = get().bySession[key];
+    const controlState = sessionNow?.sessionControl?.state ?? null;
+    const defaultModel =
       resolveSessionModel(
         tab,
         findChannelDefault(get().channelDefaults, engine, provider),
         get().models[engine],
-      ) ||
-      null;
+      ) || null;
+    const model =
+      sessionNow?.controlModelChosen || !controlState
+        ? defaultModel
+        : hasSavedControlValue(controlState.model)
+          ? null
+          : defaultModel;
     // Remember what this session runs, spelled as the picker spells it: the
     // engine's own transcript keeps only the bare model name, so this record
     // is what a restart or another client reads back (see
@@ -504,12 +806,17 @@ export const useChatStore = create<ChatStore>((set, get) => {
         rememberModelForRun(key, model);
       }
     }
-    // Same override rule as the model: a pinned identity's level wins when
-    // set.
+    // Same precedence for the reasoning level: an explicit pick wins, a
+    // session-saved level suppresses the GUI default, otherwise the normal
+    // tab/session fallback applies.
+    const defaultEffort =
+      resolveSessionEffort(tab, sessionNow, get().efforts[engine]) ?? null;
     const effort =
-      identityEffort ??
-      resolveSessionEffort(tab, get().bySession[key], get().efforts[engine]) ??
-      null;
+      sessionNow?.controlEffortChosen || !controlState
+        ? defaultEffort
+        : hasSavedControlValue(controlState.effort)
+          ? null
+          : defaultEffort;
     // Remember the level the way the model is remembered: the picker follows
     // the session, so a reopened session — here, in another window, or on the
     // phone — keeps running the level it ran instead of the engine default.
@@ -522,6 +829,19 @@ export const useChatStore = create<ChatStore>((set, get) => {
         rememberEffortForRun(key, effort);
       }
     }
+    // Permission follows the same rule; identity-derived tool restrictions no
+    // longer exist (global deny and explicit user limits stay in settings).
+    const defaultPermission = effectivePermission(
+      get().engines,
+      engine,
+      (sessionNow?.controlPermissionValue ?? get().permission) as ChatStore["permission"],
+    );
+    const permission =
+      sessionNow?.controlPermissionChosen || !controlState
+        ? defaultPermission
+        : hasSavedControlValue(controlState.permission)
+          ? null
+          : defaultPermission;
     if (provider) {
       if (tab.sessionId) {
         void ipc
@@ -582,13 +902,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
         turnUsage: null,
       },
     );
+    if (options.restoreDraftOnBlock && get().drafts[key] === prompt) {
+      get().setDraft(key, "");
+    }
     // Refresh independently: a slow history read must not delay sending or Stop.
     void get().refreshSessionUsage(key);
     const requestedRunId = `run-${newId()}`;
     settleOrphanedRuns(set, routeRun(requestedRunId, key));
-    if (agentResolveError) {
-      patchSession(set, key, { error: agentResolveError });
-    }
     // Register the rewind anchor under the provisional run id BEFORE the
     // invocation: a whole turn can settle before the invoke resolves, and
     // its consume must find the entry. A backend that renames the run
@@ -604,15 +924,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
         imagePaths: images.length ? images : null,
         model,
         effort,
-        permission: effectivePermission(
-          get().engines,
-          engine,
-          get().permission,
-        ),
+        permission,
         providerId: provider,
-        agentName,
+        agentName: null,
         agentsJson,
-        agentTools,
+        agentTools: null,
         // Session proxy switch (the composer's 会话开关, the CLI's /proxy):
         // null keeps the app/shell default for this send.
         proxyEnabled: get().bySession[key]?.proxyEnabled ?? null,
@@ -625,14 +941,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
         // the resumed transcript to this message, inclusive, before the run.
         rewindTo: rewindForSend,
       });
-      // Record the identity only after the send landed: a failed spawn or a
-      // permission denial keeps the previous value, so the retry still
-      // clones on an identity change.
-      setRecordedAgent(
-        tab.workspacePath,
-        result.sessionId ?? tab.sessionId,
-        agentName,
-      );
       // Older backends choose their own id. Retire the provisional route —
       // and carry the pending rewind anchor over to the real id.
       if (result.runId !== requestedRunId) {
@@ -751,6 +1059,33 @@ export const useChatStore = create<ChatStore>((set, get) => {
         result.sessionId && !tab.sessionId
           ? sessionKey(engine, result.sessionId, tab.workspacePath)
           : key);
+      const live = get().bySession[liveKey];
+      if (live) {
+        const saved = live.sessionControl?.state;
+        patchSession(set, liveKey, {
+          ...(live.controlModelRevision === sessionNow?.controlModelRevision
+            ? { controlModelChosen: false } : {}),
+          ...(live.controlEffortRevision === sessionNow?.controlEffortRevision
+            ? { controlEffortChosen: false } : {}),
+          ...(live.controlPermissionRevision === sessionNow?.controlPermissionRevision
+            ? { controlPermissionChosen: false, controlPermissionValue: undefined } : {}),
+          ...(saved && live.sessionControl ? {
+            sessionControl: {
+              ...live.sessionControl,
+              state: {
+                ...saved,
+                ...(model ? { model: { effective: model, override: model, source: "session" as const } } : {}),
+                ...(effort ? { effort: { effective: effort, override: effort, source: "session" as const } } : {}),
+                ...(permission ? { permission: {
+                  effective: permission === "bypass" ? "bypassPermissions" : permission,
+                  override: permission === "bypass" ? "bypassPermissions" : permission,
+                  source: "session" as const,
+                } } : {}),
+              },
+            },
+          } : {}),
+        });
+      }
       if (get().bySession[liveKey]?.interrupted) {
         patchSession(set, liveKey, { settledRunIds: rememberSettledRun(get().bySession[liveKey], result.runId) });
         runRouting.delete(result.runId);
@@ -783,6 +1118,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       void get().refreshSessionUsage(failedKey);
       if (!get().bySession[failedKey]?.interrupted) drainQueue(failedKey);
     }
+    return true;
   }
 
   /** Flag a finished background session as unseen so the sidebar shows the
@@ -805,6 +1141,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
       (t) => sessionKey(t.engine, t.sessionId, t.workspacePath) === key,
     );
     if (!tab) return;
+    // A control mutation and a turn must not overlap.
+    if (s.controlBusyByKey[key]) {
+      deferredQueueAfterControl.add(key);
+      return;
+    }
     const [head, ...rest] = session.queue;
     set((prev) => ({
       bySession: {
@@ -812,7 +1153,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
         [key]: { ...(prev.bySession[key] ?? EMPTY_SESSION), queue: rest },
       },
     }));
-    void sendPrompt(tab, head.text, head.images);
+    void sendPrompt(tab, head.text, head.images).then((accepted) => {
+      if (!accepted) requeueMessage(key, head);
+    });
   }
 
   /** Migrate the engine pref off an entry that is gone (e.g. a removed
@@ -846,6 +1189,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
     detailedDisplay: false,
     bySession: {},
     streamingByKey: {},
+    controlBusyByKey: {},
+    controlBusy: false,
     unseen: {},
     drafts: {},
     pendingMention: null,
@@ -871,7 +1216,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
           ),
         ),
         subscribeTauriEvent(() =>
-          listenSessionsChanged(() => void get().refreshSessions()),
+          listenSessionsChanged(() => {
+            void get().refreshSessions();
+            // Another window (or a terminal) may have changed the active
+            // session's control state; the local copy is never authoritative
+            // across windows.
+            void get().refreshSessionControl();
+          }),
         ),
       );
       // Settings' channel edits: re-filter picker options without a restart.
@@ -1180,7 +1531,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
           : [...s.openTabs, tab];
         persistTabs(openTabs, tab);
         const unseen = key in s.unseen ? omitKey(s.unseen, key) : s.unseen;
-        return { openTabs, active: tab, unseen, activeEngine: engine };
+        return {
+          openTabs,
+          active: tab,
+          unseen,
+          activeEngine: engine,
+          controlBusy: s.controlBusyByKey[key] === true,
+        };
       });
       emitSessionActivated(engine, sessionId);
       const existing = get().bySession[key];
@@ -1251,7 +1608,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
         };
         const openTabs = existing ? s.openTabs : [...s.openTabs, tab];
         persistTabs(openTabs, tab);
-        return { openTabs, active: tab };
+        const pendingKey = sessionKey(tab.engine, tab.sessionId, workspacePath);
+        return {
+          openTabs,
+          active: tab,
+          controlBusy: s.controlBusyByKey[pendingKey] === true,
+        };
       });
     },
 
@@ -1348,6 +1710,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           );
         }
         persistTabs(openTabs, nextActive);
+        const nextBusyKey = activeSessionKeyOf(nextActive);
         return {
           activeEngine: engine,
           openTabs,
@@ -1355,6 +1718,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
           bySession,
           drafts,
           streamingByKey: moveStreamingFlag(s.streamingByKey, oldKey, newKey),
+          controlBusy: nextBusyKey
+            ? s.controlBusyByKey[nextBusyKey] === true
+            : false,
         };
       });
     },
@@ -1362,14 +1728,29 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setPermission: (permission) => {
       writeStored(PERMISSION_PREF_KEY, permission);
       set({ permission });
+      const active = get().active;
+      if (active) {
+        const key = sessionKey(active.engine, active.sessionId, active.workspacePath);
+        patchSession(set, key, {
+          controlPermissionChosen: true,
+          controlPermissionValue: permission,
+          controlPermissionRevision: (get().bySession[key]?.controlPermissionRevision ?? 0) + 1,
+        });
+      }
     },
     setEffort: async (engine, effort) => {
       const active = get().active;
-      if (active?.engine === engine && active.sessionId) {
+      if (active?.engine === engine) {
         const key = sessionKey(engine, active.sessionId, active.workspacePath);
-        patchSession(set, key, { activeEffort: effort });
-        void ipc.rememberSessionEffort(engine, active.sessionId, effort).catch(() => {});
-        return;
+        patchSession(set, key, {
+          activeEffort: effort,
+          controlEffortChosen: true,
+          controlEffortRevision: (get().bySession[key]?.controlEffortRevision ?? 0) + 1,
+        });
+        if (active.sessionId) {
+          void ipc.rememberSessionEffort(engine, active.sessionId, effort).catch(() => {});
+          return;
+        }
       }
       set({ efforts: { ...get().efforts, [engine]: effort } });
       if (active?.engine === engine) stampActiveTab({ effort });
@@ -1400,6 +1781,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
         // Empty = "CLI default": clear the tab override so the session falls
         // back to its own history/model default again.
         stampActiveTab({ model: model || undefined });
+        const key = sessionKey(engine, active.sessionId, active.workspacePath);
+        patchSession(set, key, {
+          controlModelChosen: true,
+          controlModelRevision: (get().bySession[key]?.controlModelRevision ?? 0) + 1,
+        });
       }
     },
     /** Drop a dead per-tab model override (the tab names a model its channel
@@ -1670,7 +2056,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
     send: async (prompt, images) => {
       const { active } = get();
-      if (active) await sendPrompt(active, prompt, images);
+      return active
+        ? sendPrompt(active, prompt, images, { restoreDraftOnBlock: true })
+        : false;
     },
 
     respondToGrant: async (key, seq, accept) => {
@@ -2030,6 +2418,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         active.sessionId,
         active.workspacePath,
       );
+      deferredQueueAfterControl.delete(key);
       // Settle locally FIRST: the killed run's done event can arrive while
       // the kill IPCs below are still in flight, and onDone drains the queue
       // whenever interrupted is still false — that would fire the next
@@ -2211,7 +2600,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
       });
 
       try {
-        await sendPrompt(targetTab, "/compact", []);
+        const accepted = await sendPrompt(targetTab, "/compact", []);
+        if (!accepted) {
+          cleanup?.();
+          return;
+        }
       } catch (error) {
         cleanup?.();
         throw error;
@@ -2413,6 +2806,83 @@ export const useChatStore = create<ChatStore>((set, get) => {
       }
     },
 
+    /** Read-only catalog/state for the ACTIVE session. Binds to the tab/key
+     *  captured at call time, so a fast session switch cannot move the result
+     *  into the new session. Never sends a message. */
+    refreshSessionControl: async () => {
+      const tab = get().active;
+      if (!tab) return null;
+      return loadSessionControlForTab(tab);
+    },
+
+    /** Apply one mutating session-control command to the ACTIVE session.
+     *  Only a successful result adopts `targetSessionId`; failures leave the
+     *  session, draft and switches untouched. */
+    applySessionControl: async (command: SessionControlCommand) => {
+      const tab = get().active;
+      if (!tab) return false;
+      if (!supportsSessionControlFor(tab)) {
+        set({ actionError: "session control is unavailable for this session" });
+        return false;
+      }
+      const key = sessionKey(tab.engine, tab.sessionId, tab.workspacePath);
+      if (get().controlBusyByKey[key]) {
+        set({
+          actionError: i18n.t("chat.sessionControlBusy", {
+            defaultValue: "Session control is busy; try again shortly.",
+          }),
+        });
+        return false;
+      }
+      if (get().streamingByKey[key]) {
+        set({
+          actionError: i18n.t("chat.sessionControlBusy", {
+            defaultValue: "Session control is busy; try again shortly.",
+          }),
+        });
+        return false;
+      }
+      markControlBusy(key);
+      let adoptedKey = key;
+      try {
+        // A revision only guards an existing transcript; the first creation
+        // from a draft has no file to compare against.
+        const current = tab.sessionId
+          ? (get().bySession[key]?.sessionControl ?? null)
+          : null;
+        const params = await controlRequest(tab, command.agent,
+          command.operation === "identity" ? command.value : undefined, true);
+        const before = get().bySession[key];
+        const result = await ipc.sessionControl({
+          ...params,
+          request: controlRequestWithRevision(command, current),
+        });
+        if (result.is_error) {
+          set({ actionError: sessionControlErrorText(result) });
+          return false;
+        }
+        if (!result.targetSessionId) {
+          set({ actionError: "session control returned no target session" });
+          return false;
+        }
+        adoptedKey = sessionKey(
+          tab.engine,
+          result.targetSessionId,
+          tab.workspacePath,
+        );
+        await adoptControlResult(tab, result, before);
+        set({ actionError: null });
+        return true;
+      } catch (error) {
+        set({ actionError: errorText(error) });
+        return false;
+      } finally {
+        clearControlBusy(key);
+        if (adoptedKey !== key) clearControlBusy(adoptedKey);
+        if (deferredQueueAfterControl.delete(key)) drainQueue(key);
+      }
+    },
+
     refreshSessionUuids: async (key?: string) => {
       const { active, openTabs } = get();
       const targetKey =
@@ -2592,7 +3062,11 @@ export function setPluginSessionEffort(
   if (!state.bySession[key]) {
     throw new Error(`sessions.setEffort: unknown session ${key}`);
   }
-  patchSession(useChatStore.setState, key, { activeEffort: trimmed });
+  patchSession(useChatStore.setState, key, {
+    activeEffort: trimmed,
+    controlEffortChosen: true,
+    controlEffortRevision: (state.bySession[key].controlEffortRevision ?? 0) + 1,
+  });
   void ipc.rememberSessionEffort?.(engine, sessionId, trimmed)?.catch(() => {});
   const clearStamp = <T extends { engine: string; sessionId: string | null; workspacePath: string; effort?: string }>(
     t: T,

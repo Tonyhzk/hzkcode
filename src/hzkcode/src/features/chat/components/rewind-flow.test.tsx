@@ -17,6 +17,20 @@ import { RewindDialog } from "./RewindDialog";
 vi.mock("@/lib/ipc", () => ({
   ipc: {
     sendMessage: vi.fn(async () => ({ runId: "run-1", sessionId: null })),
+    sessionControl: vi.fn(async () => ({
+      type: "result",
+      operation: "status",
+      schemaVersion: 1,
+      sourceSessionId: null,
+      targetSessionId: null,
+      session_id: null,
+      cloned: false,
+      is_error: false,
+      subtype: "success",
+      error_code: null,
+      revision: null,
+      state: null,
+    })),
     loadSessionPage: vi.fn(async () => ({ messages: [], nextBefore: null, subagentHistory: [] })),
     rememberSessionModel: vi.fn(async () => {}),
     rememberSessionEffort: vi.fn(async () => {}),

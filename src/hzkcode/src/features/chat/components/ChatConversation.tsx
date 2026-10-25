@@ -33,6 +33,7 @@ import { useEngineModels } from "./use-engine-models";
 import { useTabDisplayProviders, useTabModelDisplay } from "./use-tab-model-display";
 import { useSessionModelRepair } from "./use-session-model-repair";
 import { findChannelDefault } from "../store/channel-defaults";
+import { permissionModeForDisplay } from "../session-control-view";
 import { useDefaultAutoCompactWindow } from "./use-default-auto-compact-window";
 import type { EngineInfo, Workspace } from "@/lib/ipc";
 import { EmptyState } from "@/components/base/empty-state";
@@ -419,9 +420,26 @@ export const ChatConversation = memo(function ChatConversation({
   } = useBranchSwitcher(active);
   // Permission mode lives in the store (persisted) and flows into every
   // send; engines that cannot honor the selected mode fall back to their
-  // first supported one, which is what the chip displays.
+  // first supported one, which is what the chip displays. 会话文件里保存
+  // 的权限模式优先于全局默认，但不能反过来写回全局，也不能取别的会话。
   const permission = useChatStore((s) => s.permission);
   const setPermission = useChatStore((s) => s.setPermission);
+  const sessionControlState = useChatStore((s) =>
+    key ? (s.bySession[key]?.sessionControl?.state ?? null) : null,
+  );
+  const controlPermissionChosen = useChatStore((s) =>
+    key ? (s.bySession[key]?.controlPermissionChosen ?? false) : false,
+  );
+  const controlPermissionValue = useChatStore((s) =>
+    key ? (s.bySession[key]?.controlPermissionValue ?? null) : null,
+  );
+  const savedPermission = sessionControlState
+    ? (sessionControlState.permission.override ??
+      sessionControlState.permission.effective)
+    : null;
+  const permissionForDisplay = controlPermissionChosen
+    ? (permissionModeForDisplay(controlPermissionValue) ?? permission)
+    : (permissionModeForDisplay(savedPermission) ?? permission);
 
   const {
     images,
@@ -553,7 +571,7 @@ export const ChatConversation = memo(function ChatConversation({
       displayEfforts,
       channelsByEngine,
       displayProviders,
-      permission,
+      permission: permissionForDisplay,
       setPermission,
       setModel,
       setEffort,

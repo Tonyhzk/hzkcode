@@ -12,8 +12,6 @@ import {
 import { useTranslation } from "react-i18next";
 import GitMerge from "lucide-react/dist/esm/icons/git-merge";
 import Globe from "lucide-react/dist/esm/icons/globe";
-import SlidersHorizontal from "lucide-react/dist/esm/icons/sliders-horizontal";
-import { useNavigate } from "react-router-dom";
 import {
   Button as AriaButton,
   Dialog as AriaDialog,
@@ -25,7 +23,6 @@ import {
   type ContextSegment,
   type UsageLimit,
 } from "@/components/application/agent-limits/agent-limits-card";
-import { Input } from "@/components/base/input/input";
 import { Tooltip, TooltipContent } from "@/components/base/tooltip/tooltip";
 import { ProjectFolderMenu } from "@/components/application/ai-chat/project-folder-menu";
 import {
@@ -36,7 +33,7 @@ import { ComposerResizeHandle } from "@/components/application/ai-chat/composer-
 import { ComposerEditable } from "@/components/application/ai-chat/composer-editable";
 import { ComposerToolbar } from "@/components/application/ai-chat/composer-toolbar";
 import { ComposerPickerMenus } from "@/components/application/ai-chat/composer-picker-menus";
-import { SelectedAgentChip } from "@/components/application/ai-chat/composer-agent-chip";
+import { SessionIdentityChip } from "@/components/application/ai-chat/composer-agent-chip";
 import { useComposerPickers } from "@/components/application/ai-chat/use-composer-pickers";
 import { useComposerInputHandle } from "@/components/application/ai-chat/use-composer-input-handle";
 import { useResizableComposer } from "@/components/application/ai-chat/use-resizable-composer";
@@ -50,14 +47,20 @@ import {
 } from "@/components/application/ai-chat/file-tags";
 import {
   isUsableProxyUrl,
-  isUsableSessionProxyUrl,
 } from "@/components/application/ai-chat/proxy-url";
+import { SessionToggles } from "@/components/application/ai-chat/session-toggles";
 import { ipc } from "@/lib/ipc";
 import { listenSettingsChanged } from "@/lib/events";
-import { sessionKey, useChatStore } from "@/features/chat/store";
 import { useTauriEvent } from "@/hooks/use-tauri-event";
-import { parseContextWindowDraft } from "@/features/chat/context-window-draft";
 import { ASSUMED_CONTEXT_WINDOW } from "@/features/chat/usage";
+import { sessionKey, useChatStore } from "@/features/chat/store";
+import {
+  defaultIdentityOption,
+  identityDisplayName,
+  sessionIdentityOptions,
+} from "@/features/chat/session-control-view";
+import { useAgentStore } from "@/features/agents/agent-store";
+import { usePendingIdentityStore } from "@/features/agents/pending-identity";
 import {
   usePromptCompletion,
   usePromptHistoryNav,
@@ -136,6 +139,7 @@ export function Composer({
   onPasteImages,
   workspacePath,
 }: ComposerProps = {}) {
+  const { t } = useTranslation();
   const editableRef = useRef<HTMLDivElement>(null);
   // IME composition tracking (desktop-cc-gui parity): WKWebView fires
   // `compositionend` BEFORE the Enter keydown that commits the candidate, so
@@ -197,9 +201,51 @@ export function Composer({
     promptMenuRef,
     updateSlashTrigger,
     updateTriggers,
-    selectedAgent,
-    clearSelectedAgent,
   } = pickers;
+
+  // 会话身份状态（引擎 3.5.1）：chip 只展示已保存的身份，× 发起待应用
+  // 的「默认身份」请求，由 Footer 的共用对话框确认应用方式。
+  const activeKey = useChatStore((s) => {
+    const a = s.active;
+    return a ? sessionKey(a.engine, a.sessionId, a.workspacePath) : null;
+  });
+  const sessionControl = useChatStore((s) => {
+    const key = activeKey;
+    return key ? (s.bySession[key]?.sessionControl ?? null) : null;
+  });
+  const agents = useAgentStore((s) => s.agents);
+  const builtInAgents = useAgentStore((s) => s.builtInAgents);
+  const requestIdentity = usePendingIdentityStore((s) => s.requestIdentity);
+  const controlState = sessionControl?.state ?? null;
+  const controlCatalog = sessionControl?.catalog;
+  const identityOptions = useMemo(
+    () =>
+      sessionIdentityOptions({
+        catalog: controlCatalog,
+        agents,
+        builtInAgents,
+        defaultName: t("chat.sessionIdentityDefault"),
+      }),
+    [controlCatalog, agents, builtInAgents, t],
+  );
+  const identityName = controlState
+    ? identityDisplayName(controlState.identity.base, identityOptions)
+    : null;
+  const appendedIdentities = controlState
+    ? controlState.identity.extensions.map(
+        (extension) =>
+          identityDisplayName(extension.agentType, identityOptions) ??
+          extension.agentType,
+      )
+    : [];
+  const clearIdentity = useCallback(() => {
+    if (!activeKey) return;
+    // 只发起待应用请求；当前生效身份由会话控制对话框确认后才改变。
+    requestIdentity(
+      activeKey,
+      defaultIdentityOption(t("chat.sessionIdentityDefault")),
+    );
+  }, [activeKey, requestIdentity, t]);
 
   // Ghost-text completion from prompt history (desktop-cc-gui parity):
   // suffix is painted via data-completion-suffix and accepted with Tab.
@@ -285,11 +331,16 @@ export function Composer({
         pickers={pickers}
       />
 
-      {/* Pinned-agent chip above the input, styled after the attachment
-          chips (ConversationFooter); × clears the selection. */}
-      {!isCollapsed && selectedAgent && (
-        <SelectedAgentChip agent={selectedAgent} onClear={clearSelectedAgent} />
-      )}
+      {/* 当前会话身份 chip（引擎保存的基础身份 + 追加身份）；× 走会话
+          控制对话框切回默认身份。 */}
+      {!isCollapsed &&
+        (identityName !== null || appendedIdentities.length > 0) && (
+          <SessionIdentityChip
+            name={identityName}
+            appended={appendedIdentities}
+            onClear={clearIdentity}
+          />
+        )}
 
       {!isCollapsed && (
         <ComposerEditable
@@ -417,293 +468,6 @@ function ProxyQuickToggle() {
       </AriaButton>
       <TooltipContent>{tip}</TooltipContent>
     </Tooltip>
-  );
-}
-
-/**
- * Per-session switches for the composer footer — the conversation-side
- * adaptation of the CLI's session commands: 会话代理 (`/proxy`, pins
- * HZKCODE_PROXY_ENABLED on the configured address) and 第二大脑
- * (`/second-brain`, pins HZKCODE_ENABLE_SECOND_BRAIN). 跟随默认 keeps the
- * app/shell default; every GUI send is its own process, so the choices ride
- * each send of this session.
- */
-function SessionToggles() {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const [isOpen, setIsOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLElement>(null);
-  useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef]);
-  const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
-
-  const active = useChatStore((s) => s.active);
-  const sessionKeyValue = useChatStore((s) => {
-    const a = s.active;
-    return a ? sessionKey(a.engine, a.sessionId, a.workspacePath) : null;
-  });
-  const proxyEnabled = useChatStore((s) => {
-    const a = s.active;
-    if (!a) return null;
-    const key = sessionKey(a.engine, a.sessionId, a.workspacePath);
-    return s.bySession[key]?.proxyEnabled ?? null;
-  });
-  const secondBrainEnabled = useChatStore((s) => {
-    const a = s.active;
-    if (!a) return null;
-    const key = sessionKey(a.engine, a.sessionId, a.workspacePath);
-    return s.bySession[key]?.secondBrainEnabled ?? null;
-  });
-  const autoCompactWindow = useChatStore((s) => {
-    const a = s.active;
-    if (!a) return null;
-    const key = sessionKey(a.engine, a.sessionId, a.workspacePath);
-    return s.bySession[key]?.autoCompactWindow ?? null;
-  });
-  const setSessionProxy = useChatStore((s) => s.setSessionProxy);
-  const setSessionSecondBrain = useChatStore((s) => s.setSessionSecondBrain);
-  const setSessionAutoCompactWindow = useChatStore(
-    (s) => s.setSessionAutoCompactWindow,
-  );
-
-  // The address the CLI reads for `HZKCODE_PROXY_ENABLED=1` (模型配置 → 功能
-  // 开关 → 会话代理地址 already writes this key).
-  const [address, setAddress] = useState<string | null>(null);
-  const read = useCallback(() => {
-    void ipc
-      .getAppSettings()
-      .then((s) => setAddress(s.cliEnv?.HZKCODE_PROXY_URL?.trim() || null))
-      .catch(() => {});
-  }, []);
-  useEffect(() => read(), [read]);
-  useTauriEvent(() => listenSettingsChanged(read));
-
-  // Draft for the context-window input: re-synced when the popover opens and
-  // whenever the stored override changes.
-  const [windowDraft, setWindowDraft] = useState("");
-  const [windowError, setWindowError] = useState(false);
-  useEffect(() => {
-    if (!isOpen) return;
-    setWindowDraft(autoCompactWindow == null ? "" : String(autoCompactWindow));
-    setWindowError(false);
-  }, [isOpen, autoCompactWindow]);
-
-  // A typed value must not be silently dropped: closing the popover (a click
-  // outside lands the popover's dismiss) commits a valid, changed draft the
-  // same way Enter and 应用 do. Invalid drafts are still discarded.
-  const windowDraftRef = useRef(windowDraft);
-  windowDraftRef.current = windowDraft;
-  const autoCompactWindowRef = useRef(autoCompactWindow);
-  autoCompactWindowRef.current = autoCompactWindow;
-  const sessionKeyRef = useRef(sessionKeyValue);
-  sessionKeyRef.current = sessionKeyValue;
-  const wasOpenRef = useRef(false);
-  useEffect(() => {
-    const wasOpen = wasOpenRef.current;
-    wasOpenRef.current = isOpen;
-    if (!wasOpen || isOpen) return;
-    const key = sessionKeyRef.current;
-    if (!key) return;
-    const value = parseContextWindowDraft(windowDraftRef.current);
-    if (value == null || value === autoCompactWindowRef.current) return;
-    setSessionAutoCompactWindow(key, value);
-  }, [isOpen, setSessionAutoCompactWindow]);
-
-  if (!active || !sessionKeyValue) return null;
-
-  const selectProxy = (value: boolean | null) => {
-    setSessionProxy(sessionKeyValue, value);
-    setIsOpen(false);
-  };
-  const selectBrain = (value: boolean | null) => {
-    setSessionSecondBrain(sessionKeyValue, value);
-    setIsOpen(false);
-  };
-  // The CLI's /maxtokens as a control: a positive token count pinned on the
-  // next sends; 恢复默认 clears the override (an empty draft fails validation
-  // rather than standing for the default). Enter, 应用, and closing the
-  // popover after an edit all commit the same way.
-  const applyWindow = () => {
-    const value = parseContextWindowDraft(windowDraft);
-    if (value == null) {
-      setWindowError(true);
-      return;
-    }
-    setWindowError(false);
-    setSessionAutoCompactWindow(sessionKeyValue, value);
-  };
-  const resetWindow = () => {
-    setWindowError(false);
-    setSessionAutoCompactWindow(sessionKeyValue, null);
-    setWindowDraft("");
-  };
-  const proxyUsable = isUsableSessionProxyUrl(address);
-  const proxyOptions: { value: boolean | null; label: string; disabled?: boolean }[] = [
-    { value: null, label: t("chat.sessionProxyFollow") },
-    { value: true, label: t("chat.sessionProxyOn"), disabled: !proxyUsable },
-    { value: false, label: t("chat.sessionProxyOff") },
-  ];
-  const brainOptions: { value: boolean | null; label: string; disabled?: boolean }[] = [
-    { value: null, label: t("chat.sessionProxyFollow") },
-    { value: true, label: t("chat.sessionProxyOn") },
-    { value: false, label: t("chat.sessionProxyOff") },
-  ];
-  const renderOptions = (
-    options: { value: boolean | null; label: string; disabled?: boolean }[],
-    current: boolean | null,
-    onSelect: (value: boolean | null) => void,
-  ) => (
-    <div role="radiogroup" className="flex flex-col gap-1">
-      {options.map((option) => {
-        const checked = current === option.value;
-        return (
-          <button
-            key={String(option.value)}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            aria-disabled={option.disabled || undefined}
-            onClick={() => !option.disabled && onSelect(option.value)}
-            className={cx(
-              "flex w-full items-center rounded-[14px] px-2 py-1.5 text-left outline-none transition-colors",
-              option.disabled
-                ? "cursor-not-allowed opacity-50"
-                : "cursor-pointer hover:bg-background-primary-hover focus-visible:bg-background-primary-hover",
-              checked && !option.disabled && "bg-background-primary-hover",
-            )}
-          >
-            <span className="truncate text-body-medium text-text-secondary">
-              {option.label}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-
-  return (
-    <AriaDialogTrigger
-      isOpen={isOpen}
-      onOpenChange={(next) => allowOpenChange(next) && setIsOpen(next)}
-    >
-      <Tooltip>
-        <AriaButton
-          ref={triggerRef}
-          aria-label={t("chat.sessionToggles")}
-          className={cx(
-            "flex cursor-pointer items-center rounded-full p-1.5 outline-none transition-colors duration-150 ease focus-visible:ring-2 focus-visible:ring-border-focus-ring",
-            proxyEnabled === true ||
-            secondBrainEnabled === true ||
-            autoCompactWindow != null
-              ? "text-notification-success-foreground"
-              : proxyEnabled === false || secondBrainEnabled === false
-                ? "text-foreground-icon-secondary"
-                : "text-foreground-icon-tertiary",
-          )}
-        >
-          <SlidersHorizontal className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
-        </AriaButton>
-        <TooltipContent>{t("chat.sessionToggles")}</TooltipContent>
-      </Tooltip>
-      <AriaPopover
-        ref={popoverRef}
-        isNonModal
-        placement="top end"
-        offset={8}
-        className={cx(
-          "w-[280px] max-w-[calc(100vw-32px)]",
-          "rounded-[20px] border border-border-button-default bg-background-primary-default p-1.5 shadow-dropdown",
-          "transition duration-150 ease-out",
-          "data-[entering]:opacity-0 data-[entering]:scale-95 data-[entering]:blur-[2px]",
-          "data-[exiting]:opacity-0 data-[exiting]:scale-95 data-[exiting]:blur-[2px]",
-        )}
-      >
-        <AriaDialog aria-label={t("chat.sessionToggles")} className="flex flex-col gap-1 outline-none">
-          <div className="flex items-center gap-2.5 px-2 pt-1 text-body-medium text-text-tertiary">
-            <span className="min-w-0 flex-1 truncate">{t("chat.sessionProxy")}</span>
-          </div>
-          {renderOptions(proxyOptions, proxyEnabled, selectProxy)}
-          <div className="flex items-center gap-2 border-t border-border-primary-default px-2 pt-1.5 pb-1">
-            {address ? (
-              <span className="min-w-0 flex-1 truncate text-caption-1-regular text-text-tertiary" title={address}>
-                {address}
-              </span>
-            ) : (
-              <span className="min-w-0 flex-1 truncate text-caption-1-regular text-text-tertiary">
-                {t("chat.sessionProxyNoAddress")}
-              </span>
-            )}
-            {!proxyUsable && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsOpen(false);
-                  // The session proxy address lives on the 网络代理 page.
-                  navigate("/settings?page=proxy");
-                }}
-                className="shrink-0 cursor-pointer text-caption-1-medium text-text-link-default outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring"
-              >
-                {t("chat.sessionProxyGoSettings")}
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-2.5 border-t border-border-primary-default px-2 pt-1.5 text-body-medium text-text-tertiary">
-            <span className="min-w-0 flex-1 truncate">{t("chat.secondBrain")}</span>
-          </div>
-          {renderOptions(brainOptions, secondBrainEnabled, selectBrain)}
-          <div className="flex items-center gap-2.5 border-t border-border-primary-default px-2 pt-1.5 text-body-medium text-text-tertiary">
-            <span className="min-w-0 flex-1 truncate">{t("chat.sessionContextWindow")}</span>
-          </div>
-          <div className="flex items-center gap-1 px-2">
-            <Input
-              size="small"
-              className="min-w-0"
-              aria-label={t("chat.sessionContextWindow")}
-              placeholder={t("chat.sessionContextWindowPlaceholder")}
-              value={windowDraft}
-              onChange={(next) => {
-                setWindowDraft(next);
-                setWindowError(false);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  applyWindow();
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={applyWindow}
-              className="shrink-0 cursor-pointer rounded-md px-1.5 py-1 text-caption-1-medium text-text-link-default outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring"
-            >
-              {t("chat.sessionContextWindowApply")}
-            </button>
-          </div>
-          <div className="flex items-center gap-2 px-2 pb-0.5">
-            <span
-              className={cx(
-                "min-w-0 flex-1 truncate text-caption-1-regular",
-                windowError ? "text-foreground-icon-error" : "text-text-tertiary",
-              )}
-            >
-              {windowError
-                ? t("chat.sessionContextWindowInvalid")
-                : t("chat.sessionContextWindowHint")}
-            </span>
-            <button
-              type="button"
-              onClick={resetWindow}
-              disabled={autoCompactWindow == null}
-              className="shrink-0 cursor-pointer text-caption-1-medium text-text-link-default outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring disabled:cursor-default disabled:text-text-tertiary disabled:no-underline"
-            >
-              {t("chat.sessionContextWindowReset")}
-            </button>
-          </div>
-        </AriaDialog>
-      </AriaPopover>
-    </AriaDialogTrigger>
   );
 }
 

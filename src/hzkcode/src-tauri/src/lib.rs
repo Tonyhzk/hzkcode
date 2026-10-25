@@ -280,6 +280,7 @@ pub fn run() {
             engine::session_file_history_available,
             engine::session_rewindable_uuids,
             engine::default_auto_compact_window,
+            engine::session_control::session_control,
             engine::interrupt_session,
             engine::answer_question,
             engine::answer_permission,

@@ -14,6 +14,7 @@ import { ImageLightbox } from "./MessageImages";
 import { RunStatusStrip } from "./RunStatusStrip";
 import { QuestionDock, usePendingPermission, usePendingQuestion } from "./QuestionDock";
 import { ErrorBanner } from "./ErrorBanner";
+import { SessionControlDialogHost } from "./SessionControlDialogHost";
 import { sessionKey } from "../store";
 import { ComposerSlotExtras } from "@/features/plugins/boundary/composer-slot-extras";
 import { COMPOSER_DRAFT_TOPIC, pluginBus } from "@/features/plugins/runtime/events";
@@ -156,6 +157,8 @@ function FooterComposer({
   supportsImages: boolean;
   onPasteImages: (files: File[]) => void;
 }) {
+  // 会话控制写入期间禁用发送，与应用层的禁发判定保持一致。
+  const controlBusy = useChatStore((s) => s.controlBusy);
   return (
     <Composer
       className="mx-auto max-w-3xl"
@@ -165,7 +168,7 @@ function FooterComposer({
       sendShortcut={sendShortcut === "cmdEnter" ? "cmdEnter" : "enter"}
       onStop={onStop}
       streaming={streaming}
-      disabled={!active || noEngineOptions || (!draft.trim() && images.length === 0)}
+      disabled={!active || noEngineOptions || controlBusy || (!draft.trim() && images.length === 0)}
       inputRef={composerInputRef}
       addMenu={<>{addMenu}<ComposerSlotExtras slot="addMenu" /></>}
       cliMenu={<>{cliMenu}<ComposerSlotExtras slot="cliMenu" /></>}
@@ -431,6 +434,7 @@ export function ConversationFooter({
 
       </div>
       <AttachmentLightbox zoom={zoomImage} onClose={() => setZoomImage(null)} />
+      <SessionControlDialogHost />
     </>
   );
 }

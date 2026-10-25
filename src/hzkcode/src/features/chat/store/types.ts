@@ -1,5 +1,6 @@
 import type {
   EngineInfo,
+  SessionControlResult,
   SessionMeta,
   Workspace,
   WorkspaceGroup,
@@ -8,6 +9,7 @@ import type { EffortLevel } from "@/components/application/ai-chat/cli-menu";
 import type { ComposerPermission } from "@/components/application/ai-chat/permission-menu";
 import type { ActiveSession } from "./persistence";
 import type { SessionState } from "./stream";
+import type { SessionControlCommand } from "./session-control";
 
 export interface ChatStore {
   workspaces: Workspace[];
@@ -61,6 +63,12 @@ export interface ChatStore {
    *  Persisted in app settings. */
   detailedDisplay: boolean;
   bySession: Record<string, SessionState>;
+  /** Session keys with an offline session-control request in flight. */
+  controlBusyByKey: Record<string, true>;
+  /** Whether the ACTIVE session has a session-control request in flight.
+   *  Switching to another session derives it from `controlBusyByKey`, so a
+   *  stale response can never leave the new session looking busy. */
+  controlBusy: boolean;
   /** Flat sessionKey -> streaming map, written only when a flag flips. The
    * tab strip and sidebar select this instead of scanning bySession on every
    * store write (streaming deltas would otherwise re-render them per frame). */
@@ -168,7 +176,7 @@ export interface ChatStore {
   /** Clear a session's turn/load error banner. */
   dismissSessionError: (key: string) => void;
   loadEarlier: () => Promise<void>;
-  send: (prompt: string, images: string[]) => Promise<void>;
+  send: (prompt: string, images: string[]) => Promise<boolean>;
   /** Answer a permission-denial grant card: persist the directory grant
    * (accept) or mark the card declined. */
   respondToGrant: (key: string, seq: number, accept: boolean) => Promise<void>;
@@ -250,4 +258,10 @@ export interface ChatStore {
   /** 重新读取会话的最近一页（删除消息后刷新消息列表与 usage 快照）；
    *  正在流式时不动作。先刷新回退锚点再调用，避免读到失效锚点。 */
   reloadSession: (key?: string) => Promise<void>;
+  /** 只读读取当前会话的离线控制目录与权威状态（catalog/status），不发送
+   *  消息；结果写入该会话的 `SessionState.sessionControl`。 */
+  refreshSessionControl: () => Promise<SessionControlResult | null>;
+  /** 应用一次会话控制修改（提示词模式/身份/交互模式/API 模式）。成功才采纳
+   *  返回的 targetSessionId；失败不改会话与草稿，返回 false。 */
+  applySessionControl: (command: SessionControlCommand) => Promise<boolean>;
 }

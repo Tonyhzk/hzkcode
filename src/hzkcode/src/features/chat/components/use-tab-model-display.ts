@@ -59,6 +59,10 @@ export function useTabDisplayProviders({
  * engine-name fallback) in the composer. The send resolver reads the same
  * value (see repairSessionModel), so display and send never diverge.
  *
+ * 引擎 3.5.1 之后，会话文件里保存的 model/effort 才是权威：用户没有在
+ * 本会话重新选择时（control*Chosen 为假），菜单显示 state 的 override，
+ * 其次 effective。override 里的 high/mid/low 档位别名必须原样保留。
+ *
  * Subscribed as two narrow slices (strings, Object.is-compared) instead of
  * the bySession record: stream flushes swap that record every frame, and
  * the composer must not re-render with it (SessionTimeline owns that). */
@@ -79,14 +83,40 @@ export function useTabModelDisplay({
    *  in use-engine-models); undefined until the config/catalog has loaded. */
   channelDefault?: string;
 }) {
+  const sessionControl = useChatStore((s) =>
+    sessionKey ? (s.bySession[sessionKey]?.sessionControl ?? null) : null,
+  );
+  const controlModelChosen = useChatStore((s) =>
+    sessionKey ? (s.bySession[sessionKey]?.controlModelChosen ?? false) : false,
+  );
+  const controlEffortChosen = useChatStore((s) =>
+    sessionKey ? (s.bySession[sessionKey]?.controlEffortChosen ?? false) : false,
+  );
+  const savedModel = sessionControl?.state
+    ? (sessionControl.state.model.override ??
+      sessionControl.state.model.effective)
+    : null;
+  const savedEffort = sessionControl?.state
+    ? (sessionControl.state.effort.override ??
+      sessionControl.state.effort.effective)
+    : null;
   const tabModel = useMemo(() => {
     if (!active || active.engine !== activeEngine) return undefined;
-    // tab pick → the channel's default model → the stored pick (pre-config
-    // only, while the channel context is still loading). A stored legacy
-    // alias normalizes for display: "sonnet" shows as the mid tier.
-    const pick = active.model || channelDefault || models[activeEngine];
+    // 用户在本会话显式选过模型时以 tab/channel 为准；否则会话保存值优先，
+    // 档位别名只做旧拼写归一，high/mid/low 保持不变。
+    const pick =
+      !controlModelChosen && savedModel
+        ? savedModel
+        : active.model || channelDefault || models[activeEngine];
     return pick ? normalizeTierAlias(pick) : undefined;
-  }, [active, activeEngine, channelDefault, models]);
+  }, [
+    active,
+    activeEngine,
+    channelDefault,
+    models,
+    controlModelChosen,
+    savedModel,
+  ]);
   const sessionActiveEffort = useChatStore((s) =>
     sessionKey ? (s.bySession[sessionKey]?.activeEffort ?? null) : null,
   );
@@ -102,6 +132,14 @@ export function useTabModelDisplay({
   });
   const tabEffort = useMemo(() => {
     if (!active || active.engine !== activeEngine) return undefined;
+    if (!controlEffortChosen) {
+      // number/null 不在滑杆的能力范围内，不做猜测映射：只有合法档位
+      // 字符串才覆盖显示。
+      const controlled = asEffortLevel(
+        typeof savedEffort === "string" ? savedEffort : null,
+      );
+      if (controlled) return controlled;
+    }
     return (
       asEffortLevel(active.sessionId === null ? active.effort : undefined) ||
       asEffortLevel(sessionActiveEffort) ||
@@ -114,6 +152,8 @@ export function useTabModelDisplay({
     sessionActiveEffort,
     sessionHistoryEffort,
     efforts,
+    controlEffortChosen,
+    savedEffort,
   ]);
   const displayModels = useMemo(
     () =>
