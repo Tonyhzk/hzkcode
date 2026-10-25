@@ -18,6 +18,42 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: "3.5.0-1",
+    date: "2026-10-26",
+    content: {
+      zh: `引擎更新
+- 内置引擎升级到 3.5.0，随应用更新，无需单独安装
+
+新功能
+- 工作模式按「边界 + 开关」选择，支持只读、仅规划、自动审查、自动继续和自动接受修改，确认后生效
+- 思考强度扩展为七档，新增 off（不发送思考等级，不代表关闭思考）和 none（无思考偏好，是否支持取决于模型与接口）
+- 高阶、中阶、低阶模型分别支持设置接口格式与思考默认值，已有明确的思考等级选择仍优先
+- 设置新增工具按需发现、压缩参数、提示词模式、项目目录选项及自动继续的拒绝次数限制
+- 可独立关闭思考过程显示，工具调用仍正常显示；身份编辑器补充团队成员、内置资料与子代理请求工具
+
+修复
+- 按需加载的工具正确显示名称、文件、任务进度和编辑统计
+- 分支与身份切换保留会话设置，切回默认身份不再恢复旧身份
+- 修复多个档位使用同一模型时，分档接口设置可能失效的问题
+- 修复部分渠道因缺少默认接口路径而请求失败的问题`,
+      en: `Engine update
+- Bundled engine upgraded to 3.5.0; no separate installation is needed
+
+Features
+- Choose work modes using boundaries and switches for read-only, plan-only, automatic review, automatic continuation and accepting edits; changes apply on confirmation
+- Seven reasoning levels, including off (omit the effort parameter, not a guarantee of no reasoning) and none (a no-reasoning preference subject to model and API support)
+- Configure API format and default effort separately for High, Mid and Low model tiers; explicit saved effort choices retain priority
+- New settings for on-demand tools, compaction, prompt mode, project directories and automatic-continuation denial limits
+- Hide thinking independently without hiding tool calls; the identity editor includes team-member, built-in documentation and subagent-request tools
+
+Fixes
+- On-demand tools display their names, files, task progress and edit statistics correctly
+- Branches and identity switches preserve session settings; switching to the default identity no longer restores the previous one
+- Tier-specific API settings remain effective when multiple tiers share the same model
+- Fixed requests failing on some channels because the default API path was missing`,
+    },
+  },
+  {
     version: "3.1.3-1",
     date: "2026-10-08",
     content: {
