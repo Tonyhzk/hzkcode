@@ -46,6 +46,7 @@ const TimelineRowView = memo(function TimelineRowView({
   autoExpand,
   thinkingAutoCollapse,
   detailedDisplay,
+  showThinking,
   seenTools,
   onRetry,
   branchTarget,
@@ -66,6 +67,9 @@ const TimelineRowView = memo(function TimelineRowView({
   /** True (设置 → 通用 → 行为 → 详细显示): every process row rides open and
    *  tool calls print their arguments and results inline. */
   detailedDisplay: boolean;
+  /** False（设置 → 通用 → 行为 → 显示思考过程）：隐藏思考行与计数；
+   *  工具调用保持显示。 */
+  showThinking: boolean;
   seenTools: Set<string>;
   /** Wired on the bottom-most chat message only (see MessageTimeline). */
   onRetry?: () => void;
@@ -103,6 +107,7 @@ const TimelineRowView = memo(function TimelineRowView({
         turnLive={turnLive}
         thinkingAutoCollapse={thinkingAutoCollapse}
         detailedDisplay={detailedDisplay}
+        showThinking={showThinking}
         processId={row.firstSeq}
         seenTools={seenTools}
       />
@@ -656,6 +661,7 @@ export const MessageTimeline = memo(function MessageTimeline({
   const { t } = useTranslation();
   const thinkingAutoCollapse = useChatStore((s) => s.thinkingAutoCollapse);
   const detailedDisplay = useChatStore((s) => s.detailedDisplay);
+  const showThinking = useChatStore((s) => s.showThinking);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const items = session.messages;
   const rows = useMemo(() => buildRows(items), [items]);
@@ -860,6 +866,7 @@ export const MessageTimeline = memo(function MessageTimeline({
                     }
                     thinkingAutoCollapse={thinkingAutoCollapse}
                     detailedDisplay={detailedDisplay}
+                    showThinking={showThinking}
                     seenTools={seenTools}
                     onRetry={
                       onRetry &&

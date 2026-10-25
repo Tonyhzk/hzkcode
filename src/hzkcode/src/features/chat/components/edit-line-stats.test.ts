@@ -78,4 +78,20 @@ describe("deriveEditLineStats", () => {
     ]);
     expect(stats.size).toBe(0);
   });
+
+  it("counts edits carried by a deferred ExecuteExtraTool wrapper", () => {
+    const stats = deriveEditLineStats([
+      {
+        seq: 1,
+        role: "tool",
+        text: "ExecuteExtraTool",
+        ts: null,
+        args: {
+          tool_name: "Edit",
+          params: { file_path: "src/wrapped.ts", content: "a\nb" },
+        },
+      } as Message,
+    ]);
+    expect(stats.get("src/wrapped.ts")).toEqual({ additions: 2, deletions: 0 });
+  });
 });

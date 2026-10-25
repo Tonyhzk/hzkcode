@@ -82,7 +82,7 @@ export interface Message {
   archived?: boolean;
   usage?: unknown;
   model?: string | null;
-  /** Reasoning effort level ("low" | "medium" | "high" | "xhigh" | "max") */
+  /** 思考强度等级（"off" | "none" | "low" | "medium" | "high" | "xhigh" | "max"） */
   effort?: string | null;
   /** Turn duration in milliseconds (measured from prompt send to turn completion) */
   durationMs?: number | null;
@@ -274,6 +274,9 @@ export interface AppSettings {
   increaseUiScaleShortcut?: string | null;
   decreaseUiScaleShortcut?: string | null;
   resetUiScaleShortcut?: string | null;
+  /** 在聊天过程行中显示模型思考内容与次数：true/缺省 = 显示（默认），
+   *  false = 隐藏（工具调用保持显示）。 */
+  showThinking?: boolean | null;
   /** Thinking-process row behavior once its thinking settles: true/absent =
    *  auto-fold (default), false = stay expanded until the user folds it. */
   thinkingAutoCollapse?: boolean | null;
@@ -379,8 +382,8 @@ export interface AgentConfig {
   /** Context components to inject (prompts / claudemd / memory); absent keeps
    *  the full set, an empty list injects nothing. */
   context?: string[] | null;
-  /** Reasoning effort for this identity (low/medium/high/xhigh/max); absent
-   *  follows the session's level. */
+  /** 该身份的思考强度（off/none/low/medium/high/xhigh/max）；
+   *  缺省跟随会话等级。 */
   effort?: string | null;
 }
 
@@ -904,10 +907,10 @@ export const ipc = {
    *  the CLI's /agents): the source stays untouched, callers switch to the
    *  returned id and continue there. Empty conversations return
    *  `cloned: false` with the source id — nothing to clone. */
-  cloneSession: (engine: string, sessionId: string, workspacePath: string) =>
+  cloneSession: (engine: string, sessionId: string, workspacePath: string, clearAgent = false) =>
     invoke<{ sessionId: string; title: string | null; cloned: boolean }>(
       "clone_session",
-      { engine, sessionId, workspacePath },
+      { engine, sessionId, workspacePath, clearAgent },
     ),
   /** The identity a session currently runs under, read straight from its
    *  transcript (`agent-setting`); null when it never ran under one. The

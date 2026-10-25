@@ -106,6 +106,10 @@ pub struct AppSettings {
     pub decrease_ui_scale_shortcut: Option<String>,
     #[serde(default = "default_reset_ui_scale_shortcut")]
     pub reset_ui_scale_shortcut: Option<String>,
+    /// 在聊天过程行中显示模型思考内容与次数（设置 → 通用 → 行为 → 显示思考过程）：
+    /// None/Some(true) = 显示（默认），Some(false) = 隐藏；工具调用等其他内容保持显示。
+    #[serde(default)]
+    pub show_thinking: Option<bool>,
     /// Thinking-process row behavior once its thinking stream settles:
     /// None/Some(true) = auto-fold (default), Some(false) = stay expanded
     /// until the user folds it (设置 → 通用 → 行为 → 思考过程).
@@ -233,6 +237,7 @@ impl Default for AppSettings {
             increase_ui_scale_shortcut: default_increase_ui_scale_shortcut(),
             decrease_ui_scale_shortcut: default_decrease_ui_scale_shortcut(),
             reset_ui_scale_shortcut: default_reset_ui_scale_shortcut(),
+            show_thinking: None,
             thinking_auto_collapse: None,
             detailed_display: None,
             terminal_shell_path: None,

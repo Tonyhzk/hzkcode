@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "@/lib/ipc";
-import { deriveAgentTaskSteps, subagentRefsFromArgs } from "./agent-task-steps";
+import {
+  deriveAgentTaskSteps,
+  deriveEditedFiles,
+  deriveTodoList,
+  subagentRefsFromArgs,
+} from "./agent-task-steps";
 
 function tool(seq: number, text: string, args?: unknown, result?: unknown): Message {
   return { seq, role: "tool", text, ts: null, args, result } as Message;
@@ -302,6 +307,59 @@ describe("subagent counting", () => {
     const steps = deriveAgentTaskSteps([wait], true, "omp");
     expect(steps.map(({ label, subagentType }) => ({ label, subagentType }))).toEqual([
       { label: "StrayWorker", subagentType: undefined },
+    ]);
+  });
+
+  it("counts agents behind a deferred ExecuteExtraTool wrapper", () => {
+    const wrapped = tool(2, "ExecuteExtraTool", {
+      tool_name: "task",
+      params: {
+        tasks: [{ agent: "reviewer", name: "WrappedReview", task: "# Target\nReview the wrapper." }],
+      },
+    });
+    expect(
+      deriveAgentTaskSteps([wrapped], true, "omp").map(({ label, subagentType }) => ({
+        label,
+        subagentType,
+      })),
+    ).toEqual([{ label: "WrappedReview", subagentType: "reviewer" }]);
+  });
+
+  it("lists files edited through a deferred wrapper", () => {
+    const wrapped = tool(1, "ExecuteExtraTool", {
+      tool_name: "Edit",
+      params: { file_path: "src/wrapped.ts", old_string: "a", new_string: "b" },
+    });
+    expect(deriveEditedFiles([wrapped])).toEqual(["src/wrapped.ts"]);
+  });
+});
+
+describe("deferred todo payloads", () => {
+  function wrapped(seq: number, toolName: string, params: unknown, result?: unknown): Message {
+    return tool(seq, "ExecuteExtraTool", { tool_name: toolName, params }, result);
+  }
+
+  it("folds a TodoWrite snapshot carried by a deferred wrapper", () => {
+    expect(
+      deriveTodoList([
+        wrapped(1, "TodoWrite", {
+          todos: [
+            { content: "Write tests", status: "in_progress" },
+            { content: "Ship fix", status: "completed" },
+          ],
+        }),
+      ]),
+    ).toEqual([
+      { id: null, content: "Write tests", status: "active" },
+      { id: null, content: "Ship fix", status: "complete" },
+    ]);
+  });
+
+  it("applies wrapped TaskCreate and TaskUpdate patches", () => {
+    const created = wrapped(1, "TaskCreate", { subject: "Fix bug" }, "Task #3 created successfully");
+    const updated = wrapped(2, "TaskUpdate", { taskId: "3", status: "completed" });
+    expect(deriveTodoList([created, updated])).toEqual([
+      { id: "3", content: "Fix bug", status: "complete" },
     ]);
   });
 });

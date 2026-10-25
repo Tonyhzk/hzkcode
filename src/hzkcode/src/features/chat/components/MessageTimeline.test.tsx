@@ -46,6 +46,30 @@ describe("formatDuration", () => {
   });
 });
 
+describe("deferred tool display projection", () => {
+  it("builds process rows from the wrapped tool's display copy", () => {
+    const message: Message = {
+      seq: 1,
+      role: "tool",
+      text: "ExecuteExtraTool",
+      ts: null,
+      args: { tool_name: "Read", params: { file_path: "src/a.ts" } },
+      result: "file body",
+    };
+    const [row] = buildRows([message]);
+    expect(row?.kind).toBe("process");
+    if (row?.kind === "process") {
+      expect(row.items[0].text).toBe("Read");
+      expect(row.items[0].path).toBe("src/a.ts");
+      expect(row.items[0].args).toEqual({ file_path: "src/a.ts" });
+      expect(row.items[0].result).toBe("file body");
+    }
+    // 原消息仍保留包装器调用。
+    expect(message.text).toBe("ExecuteExtraTool");
+    expect(message.args).toEqual({ tool_name: "Read", params: { file_path: "src/a.ts" } });
+  });
+});
+
 describe("user bubble copy affordance", () => {
   let container: HTMLDivElement;
   let root: Root;

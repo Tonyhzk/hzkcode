@@ -1,23 +1,11 @@
 import type { EngineInfo } from "@/lib/ipc";
 import { writeStored } from "@/lib/storage";
-import type { ComposerPermission } from "@/components/application/ai-chat/permission-menu";
+import {
+  DEFAULT_PERMISSION,
+  isComposerPermission,
+  type ComposerPermission,
+} from "@/components/application/ai-chat/permission-modes";
 import { LEGACY_PERMISSION_PREF_KEY, PERMISSION_PREF_KEY } from "./persistence";
-
-/** The CLI's machine values; "bypass" is this client's shorthand for the
- *  skip-permissions launch flag. */
-const PERMISSION_MODES: readonly ComposerPermission[] = [
-  "autoContinue",
-  "default",
-  "acceptEdits",
-  "plan",
-  "readonly",
-  "readonlyAsk",
-  "auto",
-  "bypass",
-];
-
-/** Auto Ask — the built-in CLI's default mode. */
-const DEFAULT_PERMISSION: ComposerPermission = "auto";
 
 /** The pre-alignment four-mode ids: only "manual" needs renaming — "auto"
  *  keeps its id (and is now the real Auto Ask), "plan" / "bypass" carry
@@ -26,18 +14,15 @@ const LEGACY_MODE_MAP: Record<string, ComposerPermission> = {
   manual: "default",
 };
 
-/** Persisted composer permission, migrating the four-mode key on first read. */
+/** 持久化的权限偏好，首次读取时迁移四模式旧键。合法旧值原样保留；
+ *  只有未知值才回退到 CLI 当前默认值（Auto Continue）。 */
 export function readPermissionPref(): ComposerPermission {
   const current = localStorage.getItem(PERMISSION_PREF_KEY);
-  if (current && PERMISSION_MODES.includes(current as ComposerPermission)) {
-    return current as ComposerPermission;
-  }
+  if (isComposerPermission(current)) return current;
   const legacy = localStorage.getItem(LEGACY_PERMISSION_PREF_KEY);
   const migrated = legacy
     ? (LEGACY_MODE_MAP[legacy] ??
-      (PERMISSION_MODES.includes(legacy as ComposerPermission)
-        ? (legacy as ComposerPermission)
-        : undefined))
+      (isComposerPermission(legacy) ? legacy : undefined))
     : undefined;
   const value = migrated ?? DEFAULT_PERMISSION;
   writeStored(PERMISSION_PREF_KEY, value);

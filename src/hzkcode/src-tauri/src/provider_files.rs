@@ -518,9 +518,8 @@ fn channel_field(engine: &str, provider: &Value, field: &str) -> Option<String> 
         .find_map(|map| names.iter().find_map(|name| non_empty_str(map.get(*name))))
 }
 
-/// Channel env for spawn injection (and leftover file-materialize helpers):
-/// raw env maps first (blocked keys and empties refused), convention fields
-/// only where raw env has no value — raw env wins.
+/// 优先注入渠道原始 env，再补常规字段；拒绝受限键和空值，唯独接入点的
+/// 空串表示“不追加版本段”，必须保留。
 pub(crate) fn channel_env(
     engine: &str,
     provider: &Value,
@@ -541,7 +540,7 @@ pub(crate) fn channel_env(
                 Value::Bool(b) => b.to_string(),
                 _ => continue,
             };
-            if scalar.trim().is_empty() {
+            if scalar.trim().is_empty() && key != "HZKCODE_BASE_URL_ENDPOINT" {
                 continue;
             }
             seen.insert(key.clone());
@@ -922,6 +921,17 @@ mod tests {
             assert!(!env.contains_key(key), "{key} must never be injected");
         }
         assert_eq!(env.get("SAFE").map(String::as_str), Some("1"));
+    }
+
+    #[test]
+    fn channel_env_keeps_explicit_empty_endpoint_at_the_winning_layer() {
+        let provider = serde_json::json!({
+            "settingsConfig": {"env": {"HZKCODE_BASE_URL_ENDPOINT": "", "EMPTY_VALUE": ""}},
+            "env": {"HZKCODE_BASE_URL_ENDPOINT": "v2"},
+        });
+        let env = channel_env("claude", &provider).unwrap();
+        assert_eq!(env.get("HZKCODE_BASE_URL_ENDPOINT").map(String::as_str), Some(""));
+        assert!(!env.contains_key("EMPTY_VALUE"));
     }
 
     #[test]

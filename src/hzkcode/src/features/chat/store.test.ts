@@ -103,6 +103,19 @@ describe("per-session composer selection", () => {
     );
   });
 
+  it("sends an explicit off level instead of falling back to the default", async () => {
+    useChatStore.setState({ activeEngine: "omp", models: { omp: "kimi-k3" } });
+    useChatStore.getState().startNewChat(WS);
+    await useChatStore.getState().setEffort("omp", "off");
+    const persisted = JSON.parse(localStorage.getItem(OPEN_TABS_KEY) ?? "[]");
+    expect(persisted[0]).toMatchObject({ effort: "off" });
+
+    await useChatStore.getState().send("hi", []);
+    expect(vi.mocked(ipc.sendMessage)).toHaveBeenCalledWith(
+      expect.objectContaining({ effort: "off" }),
+    );
+  });
+
   it("a tab without overrides sends with the engine default", async () => {
     useChatStore.setState({ activeEngine: "omp", models: { omp: "kimi-k3" } });
     useChatStore.getState().startNewChat(WS);

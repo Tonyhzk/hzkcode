@@ -31,8 +31,14 @@ describe("claude channel template", () => {
       "HZKCODE_AUTO_COMPACT_WINDOW",
       "HZKCODE_MODEL",
       "HZKCODE_DEFAULT_HIGH_MODEL",
+      "HZKCODE_DEFAULT_HIGH_MODEL_API_MODE",
+      "HZKCODE_DEFAULT_HIGH_MODEL_EFFORT_LEVEL",
       "HZKCODE_DEFAULT_MID_MODEL",
+      "HZKCODE_DEFAULT_MID_MODEL_API_MODE",
+      "HZKCODE_DEFAULT_MID_MODEL_EFFORT_LEVEL",
       "HZKCODE_DEFAULT_LOW_MODEL",
+      "HZKCODE_DEFAULT_LOW_MODEL_API_MODE",
+      "HZKCODE_DEFAULT_LOW_MODEL_EFFORT_LEVEL",
       "HZKCODE_READ_MODEL",
     ]);
     const apiMode = CLAUDE_ENV_GROUPS[0].fields[0];
@@ -43,5 +49,30 @@ describe("claude channel template", () => {
       "responses",
       "chat_completions",
     ]);
+  });
+
+  it("tier overrides leave protocol and effort unset by default", () => {
+    const fields = CLAUDE_ENV_GROUPS[1].fields;
+    for (const tier of ["HIGH", "MID", "LOW"]) {
+      const mode = fields.find(
+        (field) => field.envKey === `HZKCODE_DEFAULT_${tier}_MODEL_API_MODE`,
+      );
+      const effort = fields.find(
+        (field) => field.envKey === `HZKCODE_DEFAULT_${tier}_MODEL_EFFORT_LEVEL`,
+      );
+      expect(mode?.kind).toBe("select");
+      expect(mode?.options?.[0]).toBe("");
+      expect(effort?.kind).toBe("select");
+      expect(effort?.options).toEqual([
+        "",
+        "off",
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+      ]);
+    }
   });
 });

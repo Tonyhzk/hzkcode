@@ -3,10 +3,18 @@ import i18n from "@/lib/i18n";
 import { EFFORT_LEVELS, EFFORT_LABEL_KEYS } from "./effort-levels";
 
 describe("effort ladder", () => {
-  it("offers exactly the five CLI-aligned stops, max last", () => {
+  it("offers exactly the seven CLI-aligned stops, max last", () => {
     // The last stop drives the slider's max-effort celebration — keeping
     // "max" last is what puts the flame on the highest real level.
-    expect([...EFFORT_LEVELS]).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect([...EFFORT_LEVELS]).toEqual([
+      "off",
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
   });
 
   it("has a label key per stop, translated in both languages", () => {

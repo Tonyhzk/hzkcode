@@ -307,13 +307,7 @@ fn read_cli_config() -> CliModelConfig {
     read_cli_config_from(&claude_config_dir())
 }
 
-/// The model id a picker selector actually runs, for launch: a family alias
-/// resolves through its capability tier's override
-/// (`HZKCODE_DEFAULT_HIGH/MID/LOW_MODEL`), "default"
-/// through the CLI's configured default; anything unmapped passes through
-/// for the CLI to resolve itself. Relay setups depend on the env remap,
-/// which some CLI builds/shims skip — launching with the id the picker
-/// names makes the request match the display regardless.
+/// 启动时保留档位身份，由引擎同时解析模型、协议和思考默认值。
 pub(crate) fn resolve_launch_model(selector: &str) -> String {
     resolve_launch_model_from(&read_cli_config(), selector)
 }
@@ -324,12 +318,15 @@ fn resolve_launch_model_from(config: &CliModelConfig, selector: &str) -> String 
         // 3.1.2 的默认档是 mid（getDefaultMainLoopModelSetting），"default"
         // 本身不再是 CLI 别名（会作为字面模型名发出去），因此无配置时收口
         // 到 mid；有配置时照旧走 CLI 的默认模型链。
-        return config.resolved_default().unwrap_or_else(|| "mid".to_string());
+        return config
+            .env_model
+            .as_deref()
+            .or(config.model_key.as_deref())
+            .map(|model| super::normalize_tier_alias(&super::strip_context_suffix(model)))
+            .filter(|model| model != "default")
+            .unwrap_or_else(|| "mid".to_string());
     }
-    config
-        .override_for(&bare)
-        .map(str::to_string)
-        .unwrap_or(bare)
+    bare
 }
 
 fn read_cli_config_from(dir: &std::path::Path) -> CliModelConfig {
@@ -486,13 +483,11 @@ mod tests {
         .unwrap();
         let config = read_cli_config_from(&dir);
         std::fs::remove_dir_all(&dir).ok();
-        // Tier alias → custom id (what the picker names it).
-        assert_eq!(resolve_launch_model_from(&config, "high"), "gemini-3.8-flash");
-        // A legacy family alias and a retired context suffix normalize first.
-        assert_eq!(resolve_launch_model_from(&config, "opus"), "gemini-3.8-flash");
-        assert_eq!(resolve_launch_model_from(&config, "opus[1m]"), "gemini-3.8-flash");
-        // "default" → the CLI's configured default, override applied.
-        assert_eq!(resolve_launch_model_from(&config, "default"), "gemini-3.8-flash");
+        // 保留档位身份；同一模型绑定多档时不能提前丢弃分档设置。
+        assert_eq!(resolve_launch_model_from(&config, "high"), "high");
+        assert_eq!(resolve_launch_model_from(&config, "opus"), "high");
+        assert_eq!(resolve_launch_model_from(&config, "opus[1m]"), "high");
+        assert_eq!(resolve_launch_model_from(&config, "default"), "high");
         // Unmapped aliases normalize to the 3.1.2 spell; raw ids pass through.
         assert_eq!(resolve_launch_model_from(&config, "sonnet"), "mid");
         assert_eq!(resolve_launch_model_from(&config, "claude-opus-5"), "claude-opus-5");

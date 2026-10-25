@@ -25,9 +25,18 @@ The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on mac
 ### One client, Claude Code inside
 
 - Registers the **Claude Code** runtime adapter — pick it from the composer's engine picker.
-- **Provider channels** are written to the CLI's own native config files (no parallel credential store), with curated presets for GLM, Kimi, DeepSeek, MiniMax, MiMo, LongCat, OpenCode Go, OpenRouter, and more. Claude channels can be imported from [CC Switch](https://github.com/farion1231/cc-switch).
-- Per-tab **model and effort overrides**: different tabs in the same window can run different models or thinking levels.
+- **Provider channels are stored by the app and injected at session start**: channel settings live in the app's own settings and reach the engine as environment variables, without rewriting the CLI's native config files. Curated presets cover GLM, Kimi, DeepSeek, MiniMax, MiMo, LongCat, OpenCode Go, OpenRouter, and more. Each model tier (high, mid, low) can set its own protocol and effort default; empty follows the global setting.
+- Per-tab **model and effort overrides**: different tabs in the same window can run different models or thinking levels. Effort has seven levels — off, none, low, medium, high, xhigh, max; `off` means the effort field is not sent, not that thinking is disabled.
 - Session history survives restarts; the history scanner reads the CLI's native session files and keeps titles in sync.
+
+### What's new in 3.5.0
+
+- Runs the **3.5.0 engine**; the macOS arm64 binary slot carries this build.
+- **Work modes separate boundaries from switches**: default, read-only, and plan are boundaries; auto review, auto continue, and auto accept edits are switches. Switches stay bounded by the active boundary, and menu edits apply on confirmation.
+- **Tools are discovered on demand by default**: turning this off provides every tool description up front.
+- **Compaction has its own settings**: the summary model, channel, thinking level, and streaming can differ from the main conversation.
+- **Prompt mode and file locations are selectable**: built-in guidance can be full or compact; temporary files and plans can live under the project or the system temp directory, while deletes go to the system trash or the project `.delete/` directory.
+- **Thinking visibility is a GUI switch**: it only changes what the app displays, not what the engine sends.
 
 ### A chat box designed for coding
 

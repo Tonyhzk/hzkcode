@@ -72,10 +72,63 @@ export interface EnvField {
   tabKey?: string;
 }
 
-/** The channel fields the dialog exposes, grouped in display order. These are
- *  the per-channel variables the CLI reads — endpoint format, the model tiers
- *  and the compaction threshold. Global capability switches (search, OSS,
- *  Feishu, memory, …) are not per-channel and live elsewhere. */
+/** 分档协议与思考等级覆盖：空串表示跟随全局。 */
+const TIER_API_MODE_OPTIONS = ["", "anthropic", "responses", "chat_completions"] as const;
+const TIER_API_MODE_LABELS = {
+  "": "settings.cliOptFollowGlobal",
+  anthropic: "settings.cliOptChannelAnthropic",
+  responses: "settings.cliOptChannelResponses",
+  chat_completions: "settings.cliOptChannelChat",
+};
+const TIER_EFFORT_OPTIONS = [
+  "",
+  "off",
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+const TIER_EFFORT_LABELS = {
+  "": "settings.cliOptFollowGlobal",
+  off: "settings.cliOptEffortOff",
+  none: "settings.cliOptThinkingNone",
+  low: "settings.cliOptThinkingLow",
+  medium: "settings.cliOptThinkingMedium",
+  high: "settings.cliOptThinkingHigh",
+  xhigh: "settings.cliOptThinkingXhigh",
+  max: "settings.cliOptThinkingMax",
+};
+
+/** 某一档的协议与思考等级覆盖字段，紧跟在对应档位模型之后。 */
+function tierOverrideFields(
+  tier: "HIGH" | "MID" | "LOW",
+  labelPrefix: "High" | "Mid" | "Low",
+): EnvField[] {
+  return [
+    {
+      envKey: `HZKCODE_DEFAULT_${tier}_MODEL_API_MODE`,
+      kind: "select",
+      options: TIER_API_MODE_OPTIONS,
+      optionLabelKeys: TIER_API_MODE_LABELS,
+      labelKey: `settings.cliField${labelPrefix}ApiMode`,
+      hintKey: "settings.cliFieldTierApiModeHint",
+    },
+    {
+      envKey: `HZKCODE_DEFAULT_${tier}_MODEL_EFFORT_LEVEL`,
+      kind: "select",
+      options: TIER_EFFORT_OPTIONS,
+      optionLabelKeys: TIER_EFFORT_LABELS,
+      labelKey: `settings.cliField${labelPrefix}Effort`,
+      hintKey: "settings.cliFieldTierEffortHint",
+    },
+  ];
+}
+
+/** 渠道对话框展示的字段，按顺序分组。都是 CLI 读取的渠道级变量：接口格式、
+ *  模型三档（含分档协议与思考等级覆盖）和压缩阈值。全局能力开关（搜索、
+ *  OSS、飞书、记忆等）不属于渠道，放在其他页面。 */
 export const CLAUDE_ENV_GROUPS: readonly {
   titleKey: string;
   fields: readonly EnvField[];
@@ -132,6 +185,7 @@ export const CLAUDE_ENV_GROUPS: readonly {
         labelKey: "settings.cliFieldHighModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
       },
+      ...tierOverrideFields("HIGH", "High"),
       {
         envKey: "HZKCODE_DEFAULT_MID_MODEL",
         kind: "text",
@@ -139,6 +193,7 @@ export const CLAUDE_ENV_GROUPS: readonly {
         labelKey: "settings.cliFieldMidModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
       },
+      ...tierOverrideFields("MID", "Mid"),
       {
         envKey: "HZKCODE_DEFAULT_LOW_MODEL",
         kind: "text",
@@ -146,6 +201,7 @@ export const CLAUDE_ENV_GROUPS: readonly {
         labelKey: "settings.cliFieldLowModel",
         placeholderKey: "settings.cliFieldModelPlaceholder",
       },
+      ...tierOverrideFields("LOW", "Low"),
       {
         envKey: "HZKCODE_READ_MODEL",
         kind: "text",

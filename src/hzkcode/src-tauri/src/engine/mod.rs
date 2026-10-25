@@ -39,10 +39,11 @@ pub struct SendRequest {
     /// effort knob ignore it, engines with a narrower knob clamp.
     pub effort: Option<String>,
     /// Permission mode (client ids map to the CLI's machine values:
-    /// "autoContinue" | "default" | "acceptEdits" | "plan" | "readonly" |
-    /// "readonlyAsk" | "auto" | "bypass"); each engine resolves it against
-    /// the modes it can actually honor at spawn (see
-    /// `Engine::resolve_permission`).
+    /// "autoContinue" | "default" | "acceptEdits" | "dontAsk" | "auto" |
+    /// "readonlyAsk" | "readonly" | "readonlyAuto" | "readonlyAutoContinue" |
+    /// "planOnlyAsk" | "planOnly" | "planOnlyAuto" | "planOnlyAutoContinue" |
+    /// "plan" | "bypass"); each engine resolves it against the modes it can
+    /// actually honor at spawn (see `Engine::resolve_permission`).
     pub permission: Option<String>,
     /// User-granted extra directories (db `granted_roots`); claude launches
     /// pass them as `--add-dir` so reads outside the workspace stop hitting
@@ -2932,14 +2933,22 @@ mod permission_tests {
     #[test]
     fn claude_passes_permission_modes_through() {
         let e = claude::ClaudeEngine::new();
+        assert_eq!(e.supported_permissions()[0], "autoContinue");
         for mode in [
             "autoContinue",
             "default",
             "acceptEdits",
-            "plan",
-            "readonly",
-            "readonlyAsk",
+            "dontAsk",
             "auto",
+            "readonlyAsk",
+            "readonly",
+            "readonlyAuto",
+            "readonlyAutoContinue",
+            "planOnlyAsk",
+            "planOnly",
+            "planOnlyAuto",
+            "planOnlyAutoContinue",
+            "plan",
         ] {
             let args = argv(&e, &req(Some(mode)));
             assert!(has_pair(&args, "--permission-mode", mode), "{mode}: {args:?}");
@@ -2985,7 +2994,7 @@ mod permission_tests {
     #[test]
     fn claude_passes_effort_levels_through() {
         let e = claude::ClaudeEngine::new();
-        for level in ["low", "medium", "high", "xhigh", "max"] {
+        for level in ["off", "none", "low", "medium", "high", "xhigh", "max"] {
             let mut r = req(Some("autoContinue"));
             r.effort = Some(level.to_string());
             let built = e.build_command(&r, "fake-bin").unwrap();

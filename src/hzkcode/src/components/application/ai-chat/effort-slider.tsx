@@ -8,7 +8,7 @@ import {
   SliderTrack as AriaSliderTrack,
 } from "react-aria-components";
 import { m } from "motion/react";
-import { FlameOverlay } from "./effort-flame";
+import { FlameOverlay, isFlameLevel } from "./effort-flame";
 import { EFFORT_LEVELS, type EffortLevel } from "./effort-levels";
 
 /** Fresh random impulse per tick each time the engine ignites: blown left by
@@ -66,15 +66,14 @@ export function EffortTicks({
 }
 
 /**
- * Effort slider (Board UI Figma node 4037:4885, six stops here): 27px
- * neutral track with a tick per stop, a light fill up to the 21×27 bordered
- * thumb. Built on react-aria's Slider for drag + keyboard support.
+ * 思考强度滑杆（Board UI Figma 节点 4037:4885，七档）：27px 中性轨道，
+ * 每档一个刻度，亮色填充延伸到 21×27 带边框滑块。基于 react-aria 的
+ * Slider 实现拖拽与键盘操作。
  *
- * The thumb travels edge to edge: its center moves from 10.5px to
- * (width − 10.5)px, and the tick row is inset to match, so ticks sit on the
- * stops at any rendered width. The flame shader burns at every stop — pale
- * yellow at the gentlest level, blue exhaust at max — and at max the ticks
- * additionally blast off like exhaust debris.
+ * 滑块端到端移动：中心从 10.5px 到（宽度 − 10.5）px，刻度行按同样距离内缩，
+ * 因此任意渲染宽度下刻度都落在档位上。火焰着色器从 low 起燃烧——最低燃烧档
+ * 为淡黄色，max 为蓝色尾焰——off 与 none 保持冷却。max 时刻度还会像尾焰碎片
+ * 一样爆散。
  */
 export function EffortSlider({
   value,
@@ -109,10 +108,11 @@ export function EffortSlider({
           style={{ width: `calc(${fraction} * (100% - 21px) + 21px)` }}
         />
         <EffortTicks index={index} isMax={isMax} blast={blast} />
-        {/* Above the ticks so the flame washes over the step dividers. The
-            flame burns at every stop — its origin rides the thumb and its
-            color, reach and height follow the level. */}
-        <FlameOverlay level={value} fraction={fraction} />
+        {/* 位于刻度之上，让火焰覆盖分档分隔线。火焰起点跟随滑块，颜色、
+            长度和高度随档位变化；off 与 none 完全不绘制火焰。 */}
+        {isFlameLevel(value) && (
+          <FlameOverlay level={value} fraction={fraction} />
+        )}
         {/* Rail inset by half the thumb width so the 21px thumb lands flush
             on both track edges. The wrapper does the absolute positioning
             because SliderTrack forces `position: relative` inline. */}

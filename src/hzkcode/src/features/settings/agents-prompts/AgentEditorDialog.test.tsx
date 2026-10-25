@@ -76,6 +76,49 @@ describe("AgentEditorDialog tool whitelist", () => {
     expect(onSubmit.mock.calls[0]?.[0]?.tools).toEqual([]);
   });
 
+  it("keeps an explicit off effort instead of falling back to follow", () => {
+    const onSubmit = vi.fn<(value: AgentEditorValue) => void>();
+    act(() =>
+      root.render(
+        <AgentEditorDialog
+          initial={{
+            id: "a3",
+            name: "省流",
+            prompt: "只给结论。",
+            effort: "off",
+          }}
+          onSubmit={onSubmit}
+          onCancel={() => {}}
+        />,
+      ),
+    );
+    submit();
+    expect(onSubmit.mock.calls[0]?.[0]?.effort).toBe("off");
+  });
+
+  it("keeps stored tool names the catalog does not know", () => {
+    const onSubmit = vi.fn<(value: AgentEditorValue) => void>();
+    act(() =>
+      root.render(
+        <AgentEditorDialog
+          initial={{
+            id: "a4",
+            name: "外部工具",
+            prompt: "只读。",
+            tools: ["Read", "mcp__demo__lookup"],
+          }}
+          onSubmit={onSubmit}
+          onCancel={() => {}}
+        />,
+      ),
+    );
+    submit();
+    expect(onSubmit.mock.calls[0]?.[0]?.tools).toEqual([
+      "Read",
+      "mcp__demo__lookup",
+    ]);
+  });
+
   it("keeps a stored subset intact on an untouched submit", () => {
     const onSubmit = vi.fn<(value: AgentEditorValue) => void>();
     act(() =>

@@ -145,6 +145,12 @@ export function GeneralSection() {
     useChatStore.getState().setSendShortcut(composerSendShortcut);
     void save({ composerSendShortcut });
   };
+  const onShowThinkingChange = (show: boolean) => {
+    if (!settings) return;
+    setSettings({ ...settings, showThinking: show });
+    useChatStore.getState().setShowThinking(show);
+    void save({ showThinking: show });
+  };
   const onThinkingAutoCollapseChange = (autoCollapse: boolean) => {
     if (!settings) return;
     setSettings({ ...settings, thinkingAutoCollapse: autoCollapse });
@@ -263,6 +269,17 @@ export function GeneralSection() {
               </Select>
             </SettingsRow>
 
+            <SettingsRow
+              label={t("settings.showThinking")}
+              description={t("settings.showThinkingDesc")}
+            >
+              <Switch
+                size="sm"
+                aria-label={t("settings.showThinking")}
+                isSelected={settings.showThinking ?? true}
+                onChange={onShowThinkingChange}
+              />
+            </SettingsRow>
             <SettingsRow
               label={t("settings.thinkingAutoCollapse")}
               description={t("settings.thinkingAutoCollapseDesc")}

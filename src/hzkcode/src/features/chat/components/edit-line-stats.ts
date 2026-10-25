@@ -1,5 +1,6 @@
 import type { Message } from "@/lib/ipc";
 import { isEditToolLabel } from "./agent-task-steps";
+import { displayToolMessage } from "./timeline-rows";
 
 /** Parsed arguments of an edit-class tool call ({ old_string, new_string,
  * file_path }, plus the write/patch variants). */
@@ -206,19 +207,22 @@ export function countEditLines(args: unknown): EditLineStat | null {
 export function deriveEditLineStats(messages: Message[]): Map<string, EditLineStat> {
   const stats = new Map<string, EditLineStat>();
   for (const message of messages) {
-    if (message.role !== "tool" || !message.path) continue;
-    if (!isEditToolLabel(message.text)) continue;
+    if (message.role !== "tool") continue;
+    const shown = displayToolMessage(message);
+    const path = shown.path;
+    if (!path) continue;
+    if (!isEditToolLabel(shown.text)) continue;
     // Tool rows also record non-file targets (xd:// device endpoints, URLs)
     // — real file paths never carry a URI scheme.
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(message.path)) continue;
-    const stat = countEditLines(message.args);
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) continue;
+    const stat = countEditLines(shown.args);
     if (!stat) continue;
-    const prev = stats.get(message.path);
+    const prev = stats.get(path);
     if (prev) {
       prev.additions += stat.additions;
       prev.deletions += stat.deletions;
     } else {
-      stats.set(message.path, stat);
+      stats.set(path, stat);
     }
   }
   return stats;

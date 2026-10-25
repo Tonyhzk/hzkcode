@@ -34,8 +34,8 @@ pub struct AgentConfig {
     /// (possibly empty — an identity-only conversation).
     #[serde(default)]
     pub context: Option<Vec<String>>,
-    /// Reasoning effort level for this identity (low/medium/high/xhigh/max).
-    /// None follows the session's level.
+    /// 该身份的思考强度等级
+    ///（off/none/low/medium/high/xhigh/max）。None 表示跟随会话等级。
     #[serde(default)]
     pub effort: Option<String>,
 }
@@ -53,7 +53,7 @@ const MAX_TOOLS: usize = 64;
 const MAX_TOOL_NAME_CHARS: usize = 64;
 const MAX_MODEL_CHARS: usize = 128;
 const CONTEXT_COMPONENTS: [&str; 3] = ["prompts", "claudemd", "memory"];
-const EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+const EFFORT_LEVELS: [&str; 7] = ["off", "none", "low", "medium", "high", "xhigh", "max"];
 
 fn agents_file() -> PathBuf {
     crate::paths::app_home().join("agents.json")
@@ -658,6 +658,30 @@ mod tests {
             "unknown components drop, values lowercase"
         );
         assert_eq!(agent.effort.as_deref(), Some("high"));
+
+        // off 与 none 是真实档位，不是“跟随”。
+        let off = agent_add_blocking(
+            "o".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("OFF".to_string()),
+        )
+        .unwrap();
+        assert_eq!(off.effort.as_deref(), Some("off"));
+        let none = agent_add_blocking(
+            "n".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("none".to_string()),
+        )
+        .unwrap();
+        assert_eq!(none.effort.as_deref(), Some("none"));
 
         // Unknown effort levels are rejected.
         assert!(agent_add_blocking(

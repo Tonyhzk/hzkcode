@@ -1,4 +1,5 @@
-import type { Message, TodoItem } from "@/lib/ipc";
+import type { Message, TodoItem, TodosPayload } from "@/lib/ipc";
+import { displayToolMessage } from "./timeline-rows";
 
 export type AgentTaskStepState = "active" | "complete";
 
@@ -37,12 +38,12 @@ export function isSubagentToolLabel(text: string): boolean {
 }
 
 /** Extract descriptive label, role type, and detail from tool call payload. */
-export function extractSubagentTaskInfo(message: Message): {
+export function extractSubagentTaskInfo(tool: { text: string; args?: unknown }): {
   label: string;
   subagentType?: string;
   detail?: string;
 } {
-  const args = (message.args && typeof message.args === "object" ? message.args : {}) as Record<string, unknown>;
+  const args = (tool.args && typeof tool.args === "object" ? tool.args : {}) as Record<string, unknown>;
 
   const subagentType =
     typeof args.subagent_type === "string" && args.subagent_type.trim()
@@ -69,9 +70,9 @@ export function extractSubagentTaskInfo(message: Message): {
 
   const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : undefined;
 
-  let label = message.text;
-  if (message.text.includes("·")) {
-    label = message.text;
+  let label = tool.text;
+  if (tool.text.includes("·")) {
+    label = tool.text;
   } else if (description) {
     if (subagentType) {
       label = `[${subagentType}] ${description}`;
@@ -81,9 +82,9 @@ export function extractSubagentTaskInfo(message: Message): {
       label = description;
     }
   } else if (subagentType) {
-    label = name ? `[${subagentType}] ${name}` : `[${subagentType}] ${message.text}`;
+    label = name ? `[${subagentType}] ${name}` : `[${subagentType}] ${tool.text}`;
   } else if (name) {
-    label = `[${name}] ${message.text}`;
+    label = `[${name}] ${tool.text}`;
   }
 
   let detail: string | undefined;
@@ -231,12 +232,12 @@ function jobStatesFromResult(result: unknown): Map<string, AgentTaskStepState> {
 }
 
 /** An unfiltered `hub jobs` result is the complete process-local roster. */
-function isCompleteJobsRoster(message: Message): boolean {
-  if (!message.result || typeof message.result !== "object") return false;
-  const details = (message.result as Record<string, unknown>).details;
+function isCompleteJobsRoster(tool: { args?: unknown; result?: unknown }): boolean {
+  if (!tool.result || typeof tool.result !== "object") return false;
+  const details = (tool.result as Record<string, unknown>).details;
   if (!details || typeof details !== "object") return false;
-  const args = message.args && typeof message.args === "object"
-    ? message.args as Record<string, unknown>
+  const args = tool.args && typeof tool.args === "object"
+    ? tool.args as Record<string, unknown>
     : {};
   const roster = details as Record<string, unknown>;
   return roster.op === "jobs" &&
@@ -328,7 +329,8 @@ export function deriveAgentTaskSteps(
   const waitNamed = new Set<string>();
   for (const message of messages) {
     if (message.role !== "tool") continue;
-    for (const id of waitIdsFromArgs(message.args)) waitNamed.add(id);
+    const shown = displayToolMessage(message);
+    for (const id of waitIdsFromArgs(shown.args)) waitNamed.add(id);
   }
   // Dispatch name -> the id the runtime reported for it, when the harness
   // disambiguated a re-spawn ("PluginReview" -> "PluginReview-2"). One agent,
@@ -337,19 +339,20 @@ export function deriveAgentTaskSteps(
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i];
     if (message.role !== "tool") continue;
-    const refs = subagentRefsFromArgs(message.args);
+    const shown = displayToolMessage(message);
+    const refs = subagentRefsFromArgs(shown.args);
     if (refs.length > 0) {
       const spawned = i >= turnStart && streaming ? "active" : "complete";
       for (const ref of refs) {
         if (!states.has(ref.id)) states.set(ref.id, spawned);
       }
     }
-    for (const ref of dispatchRefsFromArgs(message.args)) {
+    for (const ref of dispatchRefsFromArgs(shown.args)) {
       if (!dispatched.has(ref.id)) dispatched.set(ref.id, ref);
     }
     // A dispatch always precedes the waits that name its agents, so the index
     // is already populated by the time a suffixed id shows up.
-    for (const id of waitIdsFromArgs(message.args)) {
+    for (const id of waitIdsFromArgs(shown.args)) {
       if (dispatched.has(id)) continue;
       const base = id.replace(/-\d+$/, "");
       if (base === id || !dispatched.has(base)) continue;
@@ -358,8 +361,8 @@ export function deriveAgentTaskSteps(
       if (waitNamed.has(base)) continue;
       if (!runtimeIds.has(base)) runtimeIds.set(base, id);
     }
-    const snapshot = jobStatesFromResult(message.result);
-    if (isCompleteJobsRoster(message)) {
+    const snapshot = jobStatesFromResult(shown.result);
+    if (isCompleteJobsRoster(shown)) {
       for (const [id, state] of states) {
         if (state === "active" && !snapshot.has(id)) states.set(id, "complete");
       }
@@ -376,18 +379,19 @@ export function deriveAgentTaskSteps(
     if (message.role !== "tool") continue;
     // Naming ids is itself proof of delegation (`hub` waits carry a generic
     // "hub ·…" label the name heuristic cannot classify).
-    const refs = subagentRefsFromArgs(message.args);
+    const shown = displayToolMessage(message);
+    const refs = subagentRefsFromArgs(shown.args);
     const declaresTaskList =
-      !!message.args &&
-      typeof message.args === "object" &&
-      Object.prototype.hasOwnProperty.call(message.args, "tasks");
-    if (refs.length === 0 && (declaresTaskList || !isSubagentToolLabel(message.text))) continue;
+      !!shown.args &&
+      typeof shown.args === "object" &&
+      Object.prototype.hasOwnProperty.call(shown.args, "tasks");
+    if (refs.length === 0 && (declaresTaskList || !isSubagentToolLabel(shown.text))) continue;
 
     const isCurrentTurn = i >= turnStart;
     let settled = !isCurrentTurn || !streaming;
 
     if (!settled) {
-      if (message.result !== undefined && message.result !== null) {
+      if (shown.result !== undefined && shown.result !== null) {
         settled = true;
       } else {
         for (let j = i + 1; j < messages.length; j++) {
@@ -404,7 +408,7 @@ export function deriveAgentTaskSteps(
       }
     }
 
-    const info = extractSubagentTaskInfo(message);
+    const info = extractSubagentTaskInfo(shown);
     const state = settled ? "complete" : "active";
     if (refs.length === 0) {
       steps.push({
@@ -431,7 +435,7 @@ export function deriveAgentTaskSteps(
         key: `${message.seq}:${runtimeId}`,
         label: ref.label && ref.label !== ref.id ? ref.label : runtimeId,
         state: states.get(runtimeId) ?? states.get(ref.id) ?? state,
-        subagentType: ref.agent ?? source?.agent ?? info.subagentType ?? toolHead(message.text),
+        subagentType: ref.agent ?? source?.agent ?? info.subagentType ?? toolHead(shown.text),
         detail: ref.detail ?? source?.detail ?? info.detail,
       });
     }
@@ -451,16 +455,101 @@ export function deriveEditedFiles(messages: Message[]): string[] {
   const files: string[] = [];
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i];
-    if (message.role !== "tool" || !message.path) continue;
-    if (!isEditToolLabel(message.text)) continue;
+    if (message.role !== "tool") continue;
+    const shown = displayToolMessage(message);
+    const path = shown.path;
+    if (!path) continue;
+    if (!isEditToolLabel(shown.text)) continue;
     // Tool rows also record non-file targets (xd:// device endpoints, URLs)
     // — real file paths never carry a URI scheme.
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(message.path)) continue;
-    if (seen.has(message.path)) continue;
-    seen.add(message.path);
-    files.push(message.path);
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) continue;
+    if (seen.has(path)) continue;
+    seen.add(path);
+    files.push(path);
   }
   return files;
+}
+
+/** 与引擎一致的状态归一，供显示侧从延迟包装参数解析 todo 时使用。 */
+function todoStatus(raw: unknown): TodoItem["status"] {
+  switch (typeof raw === "string" ? raw : "") {
+    case "in_progress":
+    case "running":
+    case "active":
+      return "active";
+    case "completed":
+    case "complete":
+    case "done":
+      return "complete";
+    case "blocked":
+      return "blocked";
+    case "dropped":
+    case "cancelled":
+    case "abandoned":
+    case "deleted":
+      return "dropped";
+    default:
+      return "pending";
+  }
+}
+
+/** 从工具调用的显示参数还原 todo payload，规则与引擎解析一致，
+ *  保证延迟包装的 TodoWrite/TaskCreate/TaskUpdate 仍能更新任务列表；
+ *  参数不含 todo 数据时返回 null。 */
+function todoPayloadFromArgs(args: unknown): TodosPayload | null {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return null;
+  const obj = args as Record<string, unknown>;
+  // 普通工具（Bash/Edit/Read/Write）带这些字段，其 description 不能误判为 todo 项。
+  if ("command" in obj || "file_path" in obj || "filePath" in obj || "pattern" in obj) {
+    return null;
+  }
+
+  if (Array.isArray(obj.todos)) {
+    const items: TodoItem[] = [];
+    for (const entry of obj.todos) {
+      if (!entry || typeof entry !== "object") continue;
+      const row = entry as Record<string, unknown>;
+      let content = "";
+      for (const key of ["content", "text", "title", "task", "subject"]) {
+        const value = row[key];
+        if (typeof value === "string" && value.trim()) {
+          content = value.trim();
+          break;
+        }
+      }
+      if (!content) continue;
+      const idValue = row.id ?? row.taskId;
+      items.push({
+        id: typeof idValue === "string" ? idValue : null,
+        content,
+        status: todoStatus(row.status),
+      });
+    }
+    return { items, replace: true };
+  }
+
+  const subject = typeof obj.subject === "string" ? obj.subject.trim() : "";
+  if (subject && obj.taskId == null && obj.op == null) {
+    return {
+      items: [{ id: null, content: subject, status: todoStatus(obj.status) }],
+      replace: false,
+    };
+  }
+
+  const taskId = typeof obj.taskId === "string" ? obj.taskId.trim() : "";
+  if (taskId) {
+    return {
+      items: [
+        {
+          id: taskId,
+          content: subject,
+          status: todoStatus(obj.status),
+        },
+      ],
+      replace: false,
+    };
+  }
+  return null;
 }
 
 /**
@@ -477,9 +566,10 @@ export function deriveTodoList(messages: Message[]): TodoItem[] {
   const taskIdToContent = new Map<string, string>();
   for (const message of messages) {
     if (message.role === "tool") {
-      const toolName = message.text.toLowerCase();
+      const shown = displayToolMessage(message);
+      const toolName = shown.text.toLowerCase();
       if (toolName.includes("taskcreate") || toolName.includes("task_create")) {
-        const args = (message.args && typeof message.args === "object" ? message.args : {}) as Record<string, unknown>;
+        const args = (shown.args && typeof shown.args === "object" ? shown.args : {}) as Record<string, unknown>;
         const subject = typeof args.subject === "string" ? args.subject.trim() : "";
         if (subject && typeof message.result === "string") {
           const match = message.result.match(/Task\s*#?(\w+)/i);
@@ -492,7 +582,9 @@ export function deriveTodoList(messages: Message[]): TodoItem[] {
   }
 
   for (const message of messages) {
-    const payload = message.todos;
+    if (message.role !== "tool") continue;
+    const shown = displayToolMessage(message);
+    const payload = message.todos ?? todoPayloadFromArgs(shown.args);
     if (!payload) continue;
     if (payload.replace) {
       items = payload.items.filter((item) => item.status !== "dropped");

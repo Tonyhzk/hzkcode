@@ -149,8 +149,8 @@ function ModelRow({
   );
 }
 
-/** The flyout's effort section: label with a keyed blur-in value, the
- *  faster/smarter captions, and the five-stop slider. */
+/** 弹出面板的思考强度区：带模糊淡入的值标签、更快/更聪明的说明，
+ *  以及七档滑杆。 */
 function FlyoutEffortSection({
   effort,
   onChange,

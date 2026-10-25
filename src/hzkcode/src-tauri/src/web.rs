@@ -1110,6 +1110,8 @@ struct EngineSessionWorkspaceArgs {
     engine: String,
     session_id: String,
     workspace_path: String,
+    #[serde(default)]
+    clear_agent: Option<bool>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1625,6 +1627,7 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
                     a.engine,
                     a.session_id,
                     a.workspace_path,
+                    a.clear_agent,
                 )
                 .await,
             )

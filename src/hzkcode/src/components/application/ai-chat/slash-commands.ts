@@ -91,10 +91,7 @@ export function matchSlashCommands(
   return out;
 }
 
-/** Built-in commands of the bundled CLI (3.0.0 snapshot), mirroring its
- *  own /help table: both languages plus the argument hint the terminal
- *  prints in grey after the name. The headless init announces names only,
- *  so descriptions and hints must come from here. */
+/** 内置程序 3.5.0 的指令说明与参数提示；可用名称仍以无头初始化结果为准。 */
 interface BuiltinCommandInfo {
   en: string;
   zh: string;
@@ -103,7 +100,23 @@ interface BuiltinCommandInfo {
 
 const BUILTIN_COMMANDS: Record<string, BuiltinCommandInfo> = {
   "add-dir": { en: "Add a new working directory", zh: "添加工作目录" },
-  agents: { en: "Manage agent configurations", zh: "管理 Agent 配置" },
+  agent: { en: "Select a conversation identity", zh: "选择会话身份", hint: "[name]" },
+  agents: { en: "Select a conversation identity", zh: "选择会话身份", hint: "[name]" },
+  "api-mode": { en: "Switch the main conversation API protocol", zh: "切换主对话的接口协议", hint: "[anthropic|responses|chat_completions|status|reset]" },
+  default: { en: "End the current behavior mode", zh: "结束当前持续行为模式", hint: "[内容]" },
+  sayonly: { en: "Discuss without taking action", zh: "只回答与讨论，不执行操作", hint: "[内容]" },
+  explain: { en: "Explain previous actions", zh: "解释之前的行为，不执行操作", hint: "[内容]" },
+  lead: { en: "Coordinate a team and review its work", zh: "组织团队协作并审查结果", hint: "[内容]" },
+  "web-search": { en: "Research and verify information on the web", zh: "搜索并核实信息", hint: "[内容]" },
+  "deep-research": { en: "Conduct in-depth research", zh: "进行深入研究与交叉核实", hint: "[内容]" },
+  "super-ai": { en: "Analyze alternatives and trade-offs", zh: "深入分析方案与取舍", hint: "[内容]" },
+  sharp: { en: "Review evidence and diagnose issues", zh: "严格核查依据与问题", hint: "[内容]" },
+  workhorse: { en: "Execute a clearly defined task", zh: "高效完成明确任务", hint: "[内容]" },
+  gentle: { en: "Explain patiently with examples", zh: "耐心讲解并提供例子", hint: "[内容]" },
+  "token-saver": { en: "Answer concisely", zh: "简明回答，节省 Token", hint: "[内容]" },
+  simple: { en: "Switch to the compact identity", zh: "切换到精简身份", hint: "[内容]" },
+  "prompt-mode": { en: "View or change the built-in prompt mode", zh: "查看或切换内置提示词模式", hint: "[compact|full|status|reset]" },
+  "work-mode": { en: "View or change the permission boundary and switches", zh: "查看或切换工作权限与开关", hint: "[default|readonly|plan|bypass|review on|off|continue on|off|edits on|off]" },
   assistant: { en: "Open the Kairos assistant panel", zh: "打开 Kairos 助手面板" },
   attach: {
     en: "Attach to a sub HZK Code instance via named pipe",
@@ -171,7 +184,7 @@ const BUILTIN_COMMANDS: Record<string, BuiltinCommandInfo> = {
   mcp: { en: "Manage MCP servers", zh: "管理 MCP 服务器", hint: "[enable|disable [server-name]]" },
   memory: { en: "Edit HZK Code memory files", zh: "编辑 HZK Code 记忆文件" },
   mobile: { en: "Show QR code to download the Claude mobile app", zh: "显示用于下载 Claude 移动应用的二维码" },
-  mode: { en: "Switch AI interaction mode", zh: "切换 AI 交互模式" },
+  mode: { en: "Select a persistent behavior mode", zh: "选择持续行为模式", hint: "<mode> [内容]" },
   model: { en: "", zh: "" },
   "output-style": { en: "Deprecated: use /config to change output style", zh: "已弃用：请使用 /config 更改输出样式" },
   passes: { en: "Share a free week of HZK Code with friends and earn extra usage", zh: "邀请朋友共享一周免费 HZK Code 并获得额外用量" },
@@ -179,7 +192,7 @@ const BUILTIN_COMMANDS: Record<string, BuiltinCommandInfo> = {
   permissions: { en: "Manage allow & deny tool permission rules", zh: "管理工具权限的允许和拒绝规则" },
   "pipe-status": { en: "Show current pipe connection status", zh: "显示当前管道连接状态" },
   pipes: { en: "Inspect pipe registry state and toggle the pipe selector", zh: "查看管道注册状态并切换管道选择器" },
-  plan: { en: "Enable plan mode or view the current session plan", zh: "开启规划模式或查看当前会话规划" },
+  plan: { en: "Append planning guidance, or use the enabled legacy plan mode", zh: "追加规划指导，或使用已启用的旧规划模式", hint: "[内容]" },
   poor: { en: "Toggle poor mode — disable extract_memories and prompt_suggestion to save tokens", zh: "切换省钱模式 — 禁用 extract_memories 和 prompt_suggestion 以节省 token" },
   "pr-comments": { en: "Get comments from a GitHub pull request", zh: "获取 GitHub 拉取请求的评论" },
   "privacy-settings": { en: "View and update your privacy settings", zh: "查看和更新隐私设置" },
@@ -254,7 +267,7 @@ const BUILTIN_FILE_COMMANDS: Record<string, BuiltinCommandInfo> = {
  * Built-in entries for one session, built from the CLI's announced command
  * names (deduped, sorted for a stable menu; unknown names render without a
  * description). Descriptions and argument hints come from the mirrored
- * 3.0.0 table in the menu's language. Selecting one rewrites the trigger to
+ * 3.5.0 table in the menu's language. Selecting one rewrites the trigger to
  * `/name ` verbatim — the CLI expands `/name args` itself when sent.
  */
 export function builtinSlashCommands(

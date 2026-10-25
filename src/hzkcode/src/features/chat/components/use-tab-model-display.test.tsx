@@ -91,6 +91,24 @@ describe("the picker follows the session, not a stale tab field", () => {
     expect(shownEffort()).toBe("high");
   });
 
+  it.each(["off", "none"])(
+    "keeps the explicit %s level recorded by the session",
+    async (level) => {
+      const tab = { engine: "omp", sessionId: SID, workspacePath: WS };
+      useChatStore.setState({
+        activeEngine: "omp",
+        openTabs: [tab],
+        active: tab,
+        efforts: ENGINE_DEFAULT,
+        bySession: { [KEY]: { ...EMPTY_SESSION, activeEffort: level } },
+      });
+
+      await act(async () => root.render(<Probe />));
+
+      expect(shownEffort()).toBe(level);
+    },
+  );
+
   it("falls back to the engine default for a session that never recorded one", async () => {
     const tab = { engine: "omp", sessionId: SID, workspacePath: WS };
     useChatStore.setState({

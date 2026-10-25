@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import i18n from "@/lib/i18n";
 import { ProcessDisclosure } from "./ProcessDisclosure";
-import type { ProcessItem } from "./timeline-rows";
+import { displayToolItem, type ProcessItem } from "./timeline-rows";
 
 const actEnvironment = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
 actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
@@ -42,6 +42,7 @@ async function render(
     turnLive?: boolean;
     thinkingAutoCollapse?: boolean;
     detailedDisplay?: boolean;
+    showThinking?: boolean;
   } = {},
 ) {
   await act(async () => {
@@ -52,6 +53,7 @@ async function render(
         turnLive={props.turnLive}
         thinkingAutoCollapse={props.thinkingAutoCollapse}
         detailedDisplay={props.detailedDisplay}
+        showThinking={props.showThinking}
         processId={1}
         seenTools={new Set()}
       />,
@@ -171,6 +173,107 @@ describe("ProcessDisclosure tool args", () => {
 
     expect(container.textContent).toContain("On branch main");
   });
+
+  it("shows a deferred tool's own name, command and result instead of the wrapper", async () => {
+    const wrapped: ProcessItem = {
+      type: "tool",
+      text: "ExecuteExtraTool",
+      args: {
+        tool_name: "Bash",
+        params: { command: "git status", description: "Check working tree" },
+      },
+      result: { stdout: "On branch main", stderr: "" },
+    };
+    await render([wrapped]);
+    expect(container.textContent).toContain("Bash");
+    expect(container.textContent).not.toContain("ExecuteExtraTool");
+
+    const toggle = [...container.querySelectorAll("button")].find((el) =>
+      el.getAttribute("aria-label")?.includes("展开工具参数"),
+    );
+    expect(toggle).toBeTruthy();
+    await act(async () => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(container.textContent).toContain("git status");
+    expect(container.textContent).toContain("Check working tree");
+    expect(container.textContent).toContain("On branch main");
+    expect(container.textContent).not.toContain("tool_name");
+  });
+
+  it("restores the wrapped tool's path chip", async () => {
+    const wrapped: ProcessItem = {
+      type: "tool",
+      text: "ExecuteExtraTool",
+      args: { tool_name: "Read", params: { file_path: "src/nested/def.ts" } },
+    };
+    await render([wrapped]);
+    expect(container.textContent).toContain("def.ts");
+  });
+});
+
+describe("ExecuteExtraTool display projection", () => {
+  const wrapper = (args: unknown): ProcessItem => ({
+    type: "tool",
+    text: "ExecuteExtraTool",
+    args,
+  });
+
+  it("rewrites only the display copy of the wrapper call", () => {
+    const item: ProcessItem = {
+      type: "tool",
+      text: "ExecuteExtraTool",
+      path: null,
+      args: {
+        tool_name: "Edit",
+        params: {
+          file_path: "src/a.ts",
+          old_string: "const a = 1;",
+          new_string: "const a = 2;",
+        },
+      },
+      result: "edited",
+    };
+    const shown = displayToolItem(item);
+    expect(shown.text).toBe("Edit");
+    expect(shown.path).toBe("src/a.ts");
+    expect(shown.args).toEqual({
+      file_path: "src/a.ts",
+      old_string: "const a = 1;",
+      new_string: "const a = 2;",
+    });
+    expect(shown.result).toBe("edited");
+    // 原显示项（以及转录对应行）保持不变。
+    expect(item.text).toBe("ExecuteExtraTool");
+    expect(item.args).toEqual({
+      tool_name: "Edit",
+      params: {
+        file_path: "src/a.ts",
+        old_string: "const a = 1;",
+        new_string: "const a = 2;",
+      },
+    });
+  });
+
+  it("keeps the wrapper row when the target cannot be resolved", () => {
+    const cases: unknown[] = [
+      undefined,
+      "Read",
+      [],
+      {},
+      { tool_name: "" },
+      { tool_name: "Read" },
+      { tool_name: "Read", params: [] },
+      { tool_name: "Read", params: "src/a.ts" },
+      { tool_name: "ExecuteExtraTool", params: { file_path: "src/a.ts" } },
+    ];
+    for (const args of cases) {
+      const item = wrapper(args);
+      const shown = displayToolItem(item);
+      expect(shown.text).toBe("ExecuteExtraTool");
+      expect(shown.args).toBe(args);
+    }
+  });
 });
 
 describe("ProcessDisclosure thinking expansion", () => {
@@ -241,6 +344,35 @@ describe("ProcessDisclosure thinking expansion", () => {
       { turnLive: true, detailedDisplay: true },
     );
     expect(headerExpanded()).toBe(true);
+    expect(container.querySelector("pre")?.textContent).toContain("file_path");
+  });
+});
+
+describe("ProcessDisclosure thinking visibility", () => {
+  it("hides a thinking-only row when thinking display is off", async () => {
+    await render([{ type: "thinking", text: "先分析需求", live: true }], {
+      showThinking: false,
+      turnLive: true,
+    });
+    expect(container.textContent).toBe("");
+    expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("keeps tool calls and inline payloads visible when thinking is hidden", async () => {
+    await render(
+      [
+        { type: "thinking", text: "内部推理", live: true },
+        {
+          type: "tool",
+          text: "Read",
+          path: "src/a.ts",
+          args: { file_path: "src/a.ts", offset: 1, limit: 40 },
+        },
+      ],
+      { showThinking: false, detailedDisplay: true, turnLive: true },
+    );
+    expect(container.textContent).not.toContain("内部推理");
+    expect(container.textContent).toContain("Read");
     expect(container.querySelector("pre")?.textContent).toContain("file_path");
   });
 });

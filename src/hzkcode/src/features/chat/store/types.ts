@@ -22,7 +22,8 @@ export interface ChatStore {
    * unsupported modes to their first supported one at send time (and the
    * picker greys them out). */
   permission: ComposerPermission;
-  /** Per-engine reasoning effort ("low" | … | "max"), persisted in app settings. */
+  /** 按引擎记录的思考强度（"off" | "none" | "low" | … | "max"），
+   *  持久化在应用设置中。 */
   efforts: Record<string, EffortLevel>;
   /** Per-engine model override ("" = CLI/provider default), persisted in app settings. */
   models: Record<string, string>;
@@ -48,6 +49,9 @@ export interface ChatStore {
   archivedWorkspaces: string[];
   /** Composer send gesture ("enter" | "cmdEnter"), persisted in app settings. */
   sendShortcut: string;
+  /** 在过程行中显示模型思考内容与次数：true = 显示（默认），false = 隐藏。
+   *  工具调用保持显示，仅影响显示；持久化在应用设置中。 */
+  showThinking: boolean;
   /** Thinking-process row behavior once its thinking settles: true = auto-fold
    *  (default), false = stay expanded until the user folds it. Persisted in
    *  app settings. */
@@ -153,6 +157,7 @@ export interface ChatStore {
     archived: boolean,
   ) => Promise<void>;
   setSendShortcut: (shortcut: string) => void;
+  setShowThinking: (show: boolean) => void;
   setThinkingAutoCollapse: (autoCollapse: boolean) => void;
   setDetailedDisplay: (detailed: boolean) => void;
   setDraft: (key: string, text: string) => void;

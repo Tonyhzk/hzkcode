@@ -2,14 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { m } from "motion/react";
-import type { EffortLevel } from "./effort-levels";
+import { EFFORT_LEVELS, type EffortLevel } from "./effort-levels";
 
 /**
- * Effort-level flame for the effort slider (used by cli-menu): a WebGL
- * rocket-exhaust flame shader over a parallax starfield, with a canvas
- * pixel-noise fallback when WebGL is unavailable. The flame burns at every
- * effort stop — pale yellow when the gentlest level is picked, growing and
- * heating through gold and white up to the blue rocket exhaust at max.
+ * 思考强度滑杆的火焰层（cli-menu 使用）：WebGL 火箭尾焰着色器叠在视差星空上，
+ * WebGL 不可用时回退到 canvas 像素噪声。火焰从 low 起燃烧——最低燃烧档为淡黄色，
+ * 逐档升温和变亮，到 max 为蓝色火箭尾焰。off 与 none 没有可燃烧的内容：
+ * off 完全不发送等级，none 关闭推理。
  */
 
 /* ------------------------------------------------------- effort flame shader */
@@ -128,7 +127,17 @@ export interface FlameSpec {
   bright: readonly [number, number, number];
 }
 
-export const FLAME_SPECS: Record<EffortLevel, FlameSpec> = {
+/** 实际燃烧的档位。off 不向 API 发送等级，none 关闭推理，两者都不绘制火焰。 */
+export type FlameLevel = Exclude<EffortLevel, "off" | "none">;
+
+export function isFlameLevel(level: EffortLevel): level is FlameLevel {
+  return level !== "off" && level !== "none";
+}
+
+/** 燃烧档位，按滑杆顺序排列。 */
+export const FLAME_LEVELS: readonly FlameLevel[] = EFFORT_LEVELS.filter(isFlameLevel);
+
+export const FLAME_SPECS: Record<FlameLevel, FlameSpec> = {
   low: {
     power: 0.25,
     span: 0.65,
@@ -201,7 +210,7 @@ function Starfield({
   level,
 }: {
   fraction: number;
-  level: EffortLevel;
+  level: FlameLevel;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fractionRef = useRef(fraction);
@@ -314,7 +323,7 @@ function PixelationOverlay({
   level,
   fraction,
 }: {
-  level: EffortLevel;
+  level: FlameLevel;
   fraction: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -415,18 +424,16 @@ function createFlameProgram(gl: WebGLRenderingContext): WebGLProgram | null {
 }
 
 /**
- * WebGL flame overlay for the effort slider: a rocket-engine exhaust plume
- * firing right-to-left across the track (see FLAME_FRAG), over a parallax
- * starfield streaming past. The flame burns at every effort stop — `level`
- * picks the palette and throttle, and a level change glides in over a beat
- * instead of snapping. Falls back to the pixel-noise overlay if a WebGL
- * context can't be created.
+ * 思考强度滑杆的 WebGL 火焰覆盖层：火箭发动机尾焰从右向左喷过轨道
+ *（见 FLAME_FRAG），叠加向右流动的视差星空。`level` 决定调色板与油门，
+ * 切换档位时在一个节拍内平滑过渡而不是瞬切。WebGL 上下文创建失败时回退到
+ * 像素噪声覆盖层。
  */
 export function FlameOverlay({
   level,
   fraction,
 }: {
-  level: EffortLevel;
+  level: FlameLevel;
   /** Thumb position 0..1 — the plume fires from there, not the track edge. */
   fraction: number;
 }) {

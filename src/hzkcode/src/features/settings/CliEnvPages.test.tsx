@@ -55,7 +55,7 @@ describe("功能开关拆出的设置页", () => {
     });
   }
 
-  it("工具页渲染搜索 / 多模态读取 / 任务与计划三张卡", async () => {
+  it("工具页渲染搜索 / 工具发现 / 多模态读取 / 任务与计划四张卡", async () => {
     mocks.settings = {
       cliEnv: {
         HZKCODE_ENABLE_WEB_SEARCH: "1",
@@ -69,18 +69,20 @@ describe("功能开关拆出的设置页", () => {
     expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(4);
   });
 
-  it("后台助手页渲染记忆 / 第二大脑 / 分类器三张卡", async () => {
+  it("后台助手页渲染记忆 / 第二大脑 / 摘要压缩 / 分类器四张卡", async () => {
     mocks.settings = {
       cliEnv: {
         HZKCODE_ENABLE_USER_MEMORY: "1",
         HZKCODE_MEMORY_MODEL: "mem-2",
         HZKCODE_ENABLE_SECOND_BRAIN: "1",
+        HZKCODE_COMPACT_MODEL: "compact-model",
         HZKCODE_AUTO_MODE_MODEL: "mid",
       },
     };
     await render(<AssistantsSection />);
     const values = inputValues(container);
     expect(values).toContain("mem-2");
+    expect(values).toContain("compact-model");
     expect(values).toContain("mid");
   });
 
@@ -106,7 +108,7 @@ describe("功能开关拆出的设置页", () => {
     expect(plain).not.toContain("oss-secret");
   });
 
-  it("行为标签渲染工作状态汇报与上下文加载", async () => {
+  it("行为标签渲染工作状态 / 上下文 / 提示词模式 / 文件位置", async () => {
     mocks.settings = {
       cliEnv: {
         HZKCODE_REPORT_WORK_STATUS: "3",

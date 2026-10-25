@@ -738,6 +738,99 @@ pub fn session_rewindable_uuids(engine: &str, session_id: &str) -> Option<Vec<St
     Some(rewindable)
 }
 
+/// CLI 以“同会话最后一条记录生效”恢复的会话级元数据（其 loadFullLog 按
+/// sessionId 覆盖保存）：分叉不带它们，新会话恢复后会丢掉身份、提示词模式、
+/// 工作模式、模型状态与缓存键。这些条目不是链节点，分叉时只按原样复制，
+/// 不写入 parentUuid。
+const FORK_METADATA_TYPES: [&str; 6] = [
+    "agent-setting",
+    "prompt-mode",
+    "work-mode",
+    "model-state",
+    "identity-tool-extensions",
+    "prompt-cache-key",
+];
+
+fn is_session_metadata(entry: &Value, ty: &str, session_id: &str) -> bool {
+    entry.get("type").and_then(Value::as_str) == Some(ty)
+        && entry.get("sessionId").and_then(Value::as_str) == Some(session_id)
+}
+
+/// 把来源会话中每种会话级元数据的最后一条记录带进分叉：重写 sessionId，
+/// 不写链字段；prompt-cache-key 按 CLI /branch 的做法生成新 uuid（键值本身
+/// 随会话保留）。空 agentSetting 也是有效记录——它表示默认身份，必须覆盖
+/// 更早的非空值，不能跳过。
+///
+/// identity-tool-extensions 按最新记录 fail-closed：最新一条存在但
+/// extensions 不是数组时写空数组，绝不回退到更早、可能更宽的授权（与 CLI
+/// 恢复时“最新记录损坏即清空”一致）。
+fn fork_metadata_lines(
+    entries: &[Value],
+    session_id: &str,
+    fork_id: &str,
+) -> Result<Vec<String>, String> {
+    let mut lines = Vec::new();
+    for ty in FORK_METADATA_TYPES {
+        let found = if ty == "identity-tool-extensions" {
+            entries
+                .iter()
+                .rev()
+                .find(|entry| is_session_metadata(entry, ty, session_id))
+                .map(|entry| match entry.get("extensions") {
+                    Some(extensions) if extensions.is_array() => {
+                        serde_json::json!({ "extensions": extensions })
+                    }
+                    _ => serde_json::json!({ "extensions": [] }),
+                })
+        } else {
+            entries.iter().rev().find_map(|entry| {
+                if !is_session_metadata(entry, ty, session_id) {
+                    return None;
+                }
+                match ty {
+                    "agent-setting" => entry
+                        .get("agentSetting")
+                        .and_then(Value::as_str)
+                        .map(|value| serde_json::json!({ "agentSetting": value })),
+                    "prompt-mode" => entry
+                        .get("mode")
+                        .and_then(Value::as_str)
+                        .filter(|mode| matches!(*mode, "compact" | "full"))
+                        .map(|mode| serde_json::json!({ "mode": mode })),
+                    "work-mode" | "model-state" => entry
+                        .get("state")
+                        .filter(|state| state.is_object())
+                        .map(|state| serde_json::json!({ "state": state })),
+                    "prompt-cache-key" => entry
+                        .get("promptCacheKey")
+                        .and_then(Value::as_str)
+                        .filter(|key| !key.is_empty())
+                        .map(|key| {
+                            let mut payload = serde_json::json!({ "promptCacheKey": key });
+                            if let Some(subagent) =
+                                entry.get("subagentPromptCacheKey").and_then(Value::as_str)
+                            {
+                                payload["subagentPromptCacheKey"] =
+                                    Value::String(subagent.to_string());
+                            }
+                            payload
+                        }),
+                    _ => None,
+                }
+            })
+        };
+        let Some(mut payload) = found else { continue };
+        let obj = payload.as_object_mut().ok_or("会话元数据格式异常")?;
+        obj.insert("type".into(), Value::String(ty.to_string()));
+        obj.insert("sessionId".into(), Value::String(fork_id.to_string()));
+        if ty == "prompt-cache-key" {
+            obj.insert("uuid".into(), Value::String(uuid::Uuid::new_v4().to_string()));
+        }
+        lines.push(serde_json::to_string(&payload).map_err(|e| e.to_string())?);
+    }
+    Ok(lines)
+}
+
 /// Fork the session at `target_uuid`: the main conversation entries up to
 /// and including the target (a reply or a user prompt are both kept),
 /// `sessionId` rewritten, the parent chain rebuilt, `forkedFrom`
@@ -861,6 +954,10 @@ fn branch_session_blocking(
         );
     }
 
+    // 会话级状态（身份、提示词/工作模式、模型状态、缓存键）随分叉带走；
+    // 没有这些记录，新会话恢复后就成了一片空白。
+    lines.extend(fork_metadata_lines(&entries, session_id, &fork_id)?);
+
     // Inherit the source's custom title the way the CLI does; the entry
     // keeps the CLI's own /resume listing in sync with the sidebar.
     let source_title: Option<String> = db
@@ -969,11 +1066,16 @@ pub struct CloneResult {
 /// source file is untouched), `parentUuid` is rebuilt as a linear chain
 /// (compact boundaries keep their original null parent), and the custom
 /// title is inherited as-is.
+///
+/// `clear_agent` 为真时在新文件末尾补写空身份与空追加工具范围：GUI 切到
+/// 无身份后克隆不传 `--agent`，CLI 会从转录恢复来源会话的旧身份，必须由
+/// 后写入的记录覆盖（CLI 恢复取同会话最后一条）。
 fn clone_session_blocking(
     db: &crate::db::Db,
     engine: &str,
     session_id: &str,
     workspace_path: &str,
+    clear_agent: bool,
 ) -> Result<CloneResult, String> {
     if engine != "claude" {
         return Err(format!("clone_session: unknown engine {engine}"));
@@ -1076,6 +1178,29 @@ fn clone_session_blocking(
         );
     }
 
+    // 会话级状态（身份、提示词/工作模式、模型状态、缓存键）随克隆带走；
+    // 没有这些记录，新会话恢复后就成了一片空白。
+    lines.extend(fork_metadata_lines(&entries, session_id, &fork_id)?);
+
+    if clear_agent {
+        // 切到无身份的克隆：空字符串表示默认身份，空数组表示没有追加授权。
+        // 追加在继承记录之后，按 CLI 的“最后一条生效”覆盖来源身份。
+        for reset in [
+            serde_json::json!({
+                "type": "agent-setting",
+                "agentSetting": "",
+                "sessionId": fork_id,
+            }),
+            serde_json::json!({
+                "type": "identity-tool-extensions",
+                "sessionId": fork_id,
+                "extensions": [],
+            }),
+        ] {
+            lines.push(serde_json::to_string(&reset).map_err(|e| e.to_string())?);
+        }
+    }
+
     // Inherit the source's custom title as-is — the identity fork keeps the
     // original title (unlike /branch, which numbers a new branch).
     let title: Option<String> = db
@@ -1148,17 +1273,26 @@ fn clone_session_blocking(
 /// Clone a session under a fresh id (the identity-switch fork): the source
 /// file stays untouched, callers switch to the returned id and continue
 /// there. An empty conversation returns `cloned: false` with the source id.
+/// `clear_agent` 仅在显式传入 true 时清空克隆中的身份与追加工具范围；未传
+/// （默认）仍继承来源会话。
 #[tauri::command]
 pub async fn clone_session(
     state: tauri::State<'_, crate::AppState>,
     engine: String,
     session_id: String,
     workspace_path: String,
+    clear_agent: Option<bool>,
 ) -> Result<CloneResult, String> {
     let db = Arc::clone(&state.db);
     let sink = Arc::clone(&state.sink);
     let result = tauri::async_runtime::spawn_blocking(move || {
-        clone_session_blocking(&db, &engine, &session_id, &workspace_path)
+        clone_session_blocking(
+            &db,
+            &engine,
+            &session_id,
+            &workspace_path,
+            clear_agent.unwrap_or(false),
+        )
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -1721,6 +1855,334 @@ mod tests {
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), before);
     }
 
+    fn fork_metadata<'a>(forked: &'a [Value], ty: &str) -> &'a Value {
+        forked
+            .iter()
+            .find(|entry| entry.get("type").and_then(Value::as_str) == Some(ty))
+            .unwrap_or_else(|| panic!("fork is missing a {ty} entry"))
+    }
+
+    #[test]
+    fn branch_inherits_session_metadata() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let dir = config_dir.join("projects").join("-ws");
+        std::fs::create_dir_all(dir.join("src-7/subagents")).unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+        let src = dir.join("src-7.jsonl");
+        let source_lines = [
+            json!({"type":"user","uuid":"u1","sessionId":"src-7","message":{"role":"user","content":"hi"}}),
+            json!({"type":"assistant","uuid":"a1","sessionId":"src-7","message":{"role":"assistant","content":[{"type":"text","text":"yo"}]}}),
+            json!({"type":"agent-setting","agentSetting":"审查员","sessionId":"src-7"}),
+            json!({"type":"prompt-mode","sessionId":"src-7","mode":"compact"}),
+            json!({"type":"work-mode","sessionId":"src-7","state":{"mode":"readonly","profiles":{}}}),
+            json!({"type":"model-state","sessionId":"src-7","state":{"mainLoopModel":"high"}}),
+            json!({"type":"identity-tool-extensions","sessionId":"src-7","extensions":[{"agentType":"审查员","tools":["Bash"]}]}),
+            json!({"type":"prompt-cache-key","uuid":"cache-entry-1","sessionId":"src-7","promptCacheKey":"key-1","subagentPromptCacheKey":"sub-1"}),
+        ];
+        let source_text = source_lines
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        std::fs::write(&src, &source_text).unwrap();
+        // 旁挂成员记录即使携带同一 sessionId 也不能被带入。
+        let sidecar = dir.join("src-7/subagents/agent-x.jsonl");
+        let sidecar_text = concat!(
+            r#"{"type":"agent-setting","agentSetting":"成员身份","sessionId":"src-7"}"#,
+            "\n",
+            r#"{"type":"prompt-cache-key","uuid":"member-1","sessionId":"src-7","promptCacheKey":"member-key"}"#,
+            "\n"
+        );
+        std::fs::write(&sidecar, sidecar_text).unwrap();
+
+        let result = branch_session_blocking(&db, "claude", "src-7", "/ws", "a1").unwrap();
+        let forked: Vec<Value> =
+            std::fs::read_to_string(dir.join(format!("{}.jsonl", result.session_id)))
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+
+        assert_eq!(fork_metadata(&forked, "agent-setting")["agentSetting"], "审查员");
+        assert_eq!(fork_metadata(&forked, "prompt-mode")["mode"], "compact");
+        assert_eq!(fork_metadata(&forked, "work-mode")["state"]["mode"], "readonly");
+        assert_eq!(
+            fork_metadata(&forked, "model-state")["state"]["mainLoopModel"],
+            "high"
+        );
+        assert_eq!(
+            fork_metadata(&forked, "identity-tool-extensions")["extensions"][0]["agentType"],
+            "审查员"
+        );
+        assert_eq!(
+            fork_metadata(&forked, "identity-tool-extensions")["extensions"][0]["tools"][0],
+            "Bash"
+        );
+        let cache = fork_metadata(&forked, "prompt-cache-key");
+        assert_eq!(cache["promptCacheKey"], "key-1");
+        assert_eq!(cache["subagentPromptCacheKey"], "sub-1");
+        assert_ne!(cache["uuid"].as_str(), Some("cache-entry-1"));
+        for ty in FORK_METADATA_TYPES {
+            let entry = fork_metadata(&forked, ty);
+            assert_eq!(entry["sessionId"].as_str(), Some(result.session_id.as_str()));
+            assert!(entry.get("parentUuid").is_none(), "{ty} joined the chain");
+        }
+        // 只有复制的消息进入链。
+        let transcript: Vec<&Value> = forked
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry.get("type").and_then(Value::as_str),
+                    Some("user" | "assistant")
+                )
+            })
+            .collect();
+        assert_eq!(transcript.len(), 2);
+        assert!(transcript[0]["parentUuid"].is_null());
+        assert_eq!(transcript[1]["parentUuid"].as_str(), Some("u1"));
+
+        // 来源会话与成员旁挂文件逐字节不变。
+        assert_eq!(std::fs::read_to_string(&src).unwrap(), source_text);
+        assert_eq!(std::fs::read_to_string(&sidecar).unwrap(), sidecar_text);
+    }
+
+    #[test]
+    fn clone_inherits_the_last_metadata_across_segments() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let dir = config_dir.join("projects").join("-ws");
+        std::fs::create_dir_all(dir.join("sess-2/segments")).unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+        let root_text = concat!(
+            r#"{"type":"user","uuid":"u1","parentUuid":null,"sessionId":"sess-2","message":{"role":"user","content":"hi"}}"#,
+            "\n",
+            r#"{"type":"agent-setting","agentSetting":"旧身份","sessionId":"sess-2"}"#,
+            "\n",
+            r#"{"type":"prompt-mode","sessionId":"sess-2","mode":"full"}"#,
+            "\n",
+            r#"{"type":"work-mode","sessionId":"sess-2","state":{"mode":"default"}}"#,
+            "\n",
+            r#"{"type":"model-state","sessionId":"sess-2","state":{"mainLoopModel":"low"}}"#,
+            "\n",
+            r#"{"type":"identity-tool-extensions","sessionId":"sess-2","extensions":[{"agentType":"Old","tools":["Bash"]}]}"#,
+            "\n",
+            r#"{"type":"prompt-cache-key","uuid":"old-entry","sessionId":"sess-2","promptCacheKey":"old-key"}"#,
+            "\n"
+        );
+        let active_text = concat!(
+            r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","sessionId":"sess-2","message":{"role":"assistant","content":[{"type":"text","text":"yo"}]}}"#,
+            "\n",
+            r#"{"type":"agent-setting","agentSetting":"新身份","sessionId":"sess-2"}"#,
+            "\n",
+            r#"{"type":"prompt-mode","sessionId":"sess-2","mode":"compact"}"#,
+            "\n",
+            r#"{"type":"work-mode","sessionId":"sess-2","state":{"mode":"readonly"}}"#,
+            "\n",
+            r#"{"type":"model-state","sessionId":"sess-2","state":{"mainLoopModel":"high"}}"#,
+            "\n",
+            r#"{"type":"identity-tool-extensions","sessionId":"sess-2","extensions":[{"agentType":"New","tools":["Bash"]}]}"#,
+            "\n",
+            r#"{"type":"prompt-cache-key","uuid":"new-entry","sessionId":"sess-2","promptCacheKey":"new-key"}"#,
+            "\n"
+        );
+        std::fs::write(dir.join("sess-2/segments/seg-1.jsonl"), root_text).unwrap();
+        std::fs::write(dir.join("sess-2.jsonl"), active_text).unwrap();
+        std::fs::write(
+            dir.join("sess-2/segments.json"),
+            r#"{"version":1,"sessionId":"sess-2","activeSegment":"seg-2","segments":[
+                {"id":"seg-1","seq":1,"file":"segments/seg-1.jsonl","kind":"root","parent":null},
+                {"id":"seg-2","seq":2,"file":"segments/seg-2.jsonl","kind":"compact","parent":"seg-1"}]}"#,
+        )
+        .unwrap();
+
+        let cloned = clone_session_blocking(&db, "claude", "sess-2", "/ws", false).unwrap();
+        assert!(cloned.cloned);
+        let forked: Vec<Value> =
+            std::fs::read_to_string(dir.join(format!("{}.jsonl", cloned.session_id)))
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+
+        assert_eq!(fork_metadata(&forked, "agent-setting")["agentSetting"], "新身份");
+        assert_eq!(fork_metadata(&forked, "prompt-mode")["mode"], "compact");
+        assert_eq!(fork_metadata(&forked, "work-mode")["state"]["mode"], "readonly");
+        assert_eq!(
+            fork_metadata(&forked, "model-state")["state"]["mainLoopModel"],
+            "high"
+        );
+        assert_eq!(
+            fork_metadata(&forked, "identity-tool-extensions")["extensions"][0]["agentType"],
+            "New"
+        );
+        let cache = fork_metadata(&forked, "prompt-cache-key");
+        assert_eq!(cache["promptCacheKey"], "new-key");
+        assert_ne!(cache["uuid"].as_str(), Some("new-entry"));
+        for ty in FORK_METADATA_TYPES {
+            let count = forked
+                .iter()
+                .filter(|entry| entry.get("type").and_then(Value::as_str) == Some(ty))
+                .count();
+            assert_eq!(count, 1, "{ty} 应只复制最后一条记录");
+            assert_eq!(
+                fork_metadata(&forked, ty)["sessionId"].as_str(),
+                Some(cloned.session_id.as_str())
+            );
+        }
+        // 复制的消息保持重建后的线性链。
+        assert!(forked[0]["parentUuid"].is_null());
+        assert_eq!(forked[1]["parentUuid"].as_str(), Some("u1"));
+
+        // 来源分段链逐字节不变。
+        assert_eq!(
+            std::fs::read_to_string(dir.join("sess-2.jsonl")).unwrap(),
+            active_text
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("sess-2/segments/seg-1.jsonl")).unwrap(),
+            root_text
+        );
+    }
+
+    #[test]
+    fn fork_keeps_an_empty_agent_setting_reset() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let dir = config_dir.join("projects").join("-ws");
+        std::fs::create_dir_all(&dir).unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+        std::fs::write(
+            dir.join("src-3.jsonl"),
+            concat!(
+                r#"{"type":"user","uuid":"u1","sessionId":"src-3","message":{"role":"user","content":"hi"}}"#,
+                "\n",
+                r#"{"type":"assistant","uuid":"a1","sessionId":"src-3","message":{"role":"assistant","content":[{"type":"text","text":"yo"}]}}"#,
+                "\n",
+                r#"{"type":"agent-setting","agentSetting":"旧身份","sessionId":"src-3"}"#,
+                "\n",
+                r#"{"type":"agent-setting","agentSetting":"","sessionId":"src-3"}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        let result = branch_session_blocking(&db, "claude", "src-3", "/ws", "a1").unwrap();
+        let forked: Vec<Value> =
+            std::fs::read_to_string(dir.join(format!("{}.jsonl", result.session_id)))
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+        let settings: Vec<&Value> = forked
+            .iter()
+            .filter(|entry| entry.get("type").and_then(Value::as_str) == Some("agent-setting"))
+            .collect();
+        assert_eq!(settings.len(), 1);
+        assert_eq!(settings[0]["agentSetting"].as_str(), Some(""));
+    }
+
+    #[test]
+    fn fork_fails_closed_on_a_corrupt_latest_identity_scope() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let dir = config_dir.join("projects").join("-ws");
+        std::fs::create_dir_all(&dir).unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+        std::fs::write(
+            dir.join("src-5.jsonl"),
+            concat!(
+                r#"{"type":"user","uuid":"u1","sessionId":"src-5","message":{"role":"user","content":"hi"}}"#,
+                "\n",
+                r#"{"type":"assistant","uuid":"a1","sessionId":"src-5","message":{"role":"assistant","content":[{"type":"text","text":"yo"}]}}"#,
+                "\n",
+                // 更早的宽授权不能作为最新损坏记录的回退。
+                r#"{"type":"identity-tool-extensions","sessionId":"src-5","extensions":[{"agentType":"Reviewer","tools":["Bash","Edit"]}]}"#,
+                "\n",
+                r#"{"type":"identity-tool-extensions","sessionId":"src-5","extensions":"broken"}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        let result = branch_session_blocking(&db, "claude", "src-5", "/ws", "a1").unwrap();
+        let forked: Vec<Value> =
+            std::fs::read_to_string(dir.join(format!("{}.jsonl", result.session_id)))
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+        let scopes: Vec<&Value> = forked
+            .iter()
+            .filter(|entry| {
+                entry.get("type").and_then(Value::as_str) == Some("identity-tool-extensions")
+            })
+            .collect();
+        assert_eq!(scopes.len(), 1);
+        assert_eq!(scopes[0]["extensions"].as_array().map(Vec::len), Some(0));
+    }
+
+    #[test]
+    fn clone_can_clear_the_agent_when_switching_to_no_identity() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        let config_dir = scratch.0.join("cli");
+        let dir = config_dir.join("projects").join("-ws");
+        std::fs::create_dir_all(&dir).unwrap();
+        let _guard = ConfigDirGuard::set(&config_dir);
+        std::fs::write(
+            dir.join("src-6.jsonl"),
+            concat!(
+                r#"{"type":"user","uuid":"u1","sessionId":"src-6","message":{"role":"user","content":"hi"}}"#,
+                "\n",
+                r#"{"type":"assistant","uuid":"a1","sessionId":"src-6","message":{"role":"assistant","content":[{"type":"text","text":"yo"}]}}"#,
+                "\n",
+                r#"{"type":"agent-setting","agentSetting":"审查员","sessionId":"src-6"}"#,
+                "\n",
+                r#"{"type":"identity-tool-extensions","sessionId":"src-6","extensions":[{"agentType":"审查员","tools":["Bash"]}]}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        let cloned = clone_session_blocking(&db, "claude", "src-6", "/ws", true).unwrap();
+        assert!(cloned.cloned);
+        let forked: Vec<Value> =
+            std::fs::read_to_string(dir.join(format!("{}.jsonl", cloned.session_id)))
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+        // 继承的记录保留在前，最后一条重置记录按 CLI 的“最后生效”覆盖它。
+        let last_agent = forked
+            .iter()
+            .rev()
+            .find(|entry| entry.get("type").and_then(Value::as_str) == Some("agent-setting"))
+            .unwrap();
+        assert_eq!(last_agent["agentSetting"].as_str(), Some(""));
+        assert_eq!(
+            last_agent["sessionId"].as_str(),
+            Some(cloned.session_id.as_str())
+        );
+        let last_scope = forked
+            .iter()
+            .rev()
+            .find(|entry| {
+                entry.get("type").and_then(Value::as_str) == Some("identity-tool-extensions")
+            })
+            .unwrap();
+        assert_eq!(last_scope["extensions"].as_array().map(Vec::len), Some(0));
+        assert_eq!(
+            last_scope["sessionId"].as_str(),
+            Some(cloned.session_id.as_str())
+        );
+    }
+
     #[test]
     fn branch_skips_a_rewound_tail() {
         // After a rewind (--resume-session-at) the append-only file keeps the
@@ -1943,7 +2405,7 @@ mod tests {
         )
         .unwrap();
 
-        let cloned = clone_session_blocking(&db, "claude", "src-1", "/ws").unwrap();
+        let cloned = clone_session_blocking(&db, "claude", "src-1", "/ws", false).unwrap();
         assert!(cloned.cloned);
         assert_ne!(cloned.session_id, "src-1");
         let content =
@@ -1966,7 +2428,7 @@ mod tests {
         assert!(dir.join("src-1.jsonl").exists());
 
         // Cloning twice yields distinct ids.
-        let again = clone_session_blocking(&db, "claude", "src-1", "/ws").unwrap();
+        let again = clone_session_blocking(&db, "claude", "src-1", "/ws", false).unwrap();
         assert!(again.cloned);
         assert_ne!(again.session_id, cloned.session_id);
     }
@@ -1986,7 +2448,7 @@ mod tests {
         )
         .unwrap();
 
-        let cloned = clone_session_blocking(&db, "claude", "src-1", "/ws").unwrap();
+        let cloned = clone_session_blocking(&db, "claude", "src-1", "/ws", false).unwrap();
         assert!(!cloned.cloned);
         assert_eq!(cloned.session_id, "src-1");
         assert!(!std::fs::read_to_string(dir.join("src-1.jsonl"))

@@ -394,7 +394,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     let recordedAgent = getRecordedAgent(tab.workspacePath, tab.sessionId);
     if (recordedAgent === undefined && tab.sessionId) {
       try {
-        recordedAgent = await ipc.getSessionAgentSetting(engine, tab.sessionId);
+        recordedAgent = (await ipc.getSessionAgentSetting(engine, tab.sessionId)) || null;
       } catch {
         recordedAgent = undefined;
       }
@@ -406,7 +406,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     ) {
       let cloned: { sessionId: string; cloned: boolean } | null = null;
       try {
-        cloned = await ipc.cloneSession(engine, tab.sessionId, tab.workspacePath);
+        cloned = await ipc.cloneSession(engine, tab.sessionId, tab.workspacePath, agentName === null);
       } catch (error) {
         patchSession(set, key, { error: errorText(error) });
         return;
@@ -841,6 +841,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     workspaceAliases: {},
     archivedWorkspaces: [],
     sendShortcut: "enter",
+    showThinking: true,
     thinkingAutoCollapse: true,
     detailedDisplay: false,
     bySession: {},
@@ -951,6 +952,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
             workspaceAliases: settings.workspaceAliases ?? {},
             archivedWorkspaces: settings.archivedWorkspaces ?? [],
             sendShortcut: settings.composerSendShortcut ?? "enter",
+            showThinking: settings.showThinking ?? true,
             thinkingAutoCollapse: settings.thinkingAutoCollapse ?? true,
             detailedDisplay: settings.detailedDisplay ?? false,
           }),
@@ -1602,6 +1604,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
     },
     setSendShortcut: (shortcut) => {
       set({ sendShortcut: shortcut });
+    },
+    setShowThinking: (show) => {
+      set({ showThinking: show });
     },
     setThinkingAutoCollapse: (autoCollapse) => {
       set({ thinkingAutoCollapse: autoCollapse });

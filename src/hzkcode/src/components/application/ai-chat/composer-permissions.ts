@@ -1,60 +1,61 @@
 import Gauge from "lucide-react/dist/esm/icons/gauge";
 import Lock from "lucide-react/dist/esm/icons/lock";
-import LockKeyhole from "lucide-react/dist/esm/icons/lock-keyhole";
 import CircleHelp from "lucide-react/dist/esm/icons/circle-help";
 import PencilLine from "lucide-react/dist/esm/icons/pencil-line";
 import Route from "lucide-react/dist/esm/icons/route";
 import Shield from "lucide-react/dist/esm/icons/shield";
 import ShieldOff from "lucide-react/dist/esm/icons/shield-off";
-import type { ComposerPermissionOption } from "./permission-menu";
+import type { LucideIcon } from "lucide-react";
+import type {
+  PermissionBoundary,
+  PermissionSwitchKey,
+} from "./permission-modes";
 
-/** The CLI's permission modes in its Shift+Tab cycle order; Auto Ask is the
- *  built-in CLI's default and the composer's starting mode. Ids are the
- *  CLI's machine values ("bypass" is this client's shorthand for the
- *  skip-permissions launch flag). */
-export const COMPOSER_PERMISSIONS: ComposerPermissionOption[] = [
+export interface PermissionBoundaryOption {
+  id: PermissionBoundary;
+  /** i18n keys under `chat.` for label and description. */
+  labelKey: string;
+  descriptionKey: string;
+  icon: LucideIcon;
+  /** Figma draws the route glyph mirrored on the vertical axis. */
+  flip?: boolean;
+}
+
+export interface PermissionSwitchOption {
+  id: PermissionSwitchKey;
+  labelKey: string;
+  descriptionKey: string;
+  icon: LucideIcon;
+}
+
+export interface LegacyPermissionOption {
+  id: "plan";
+  labelKey: string;
+  descriptionKey: string;
+  icon: LucideIcon;
+  flip?: boolean;
+}
+
+/** 边界按 CLI 循环顺序排列；bypass 单独一行且没有开关。 */
+export const PERMISSION_BOUNDARY_OPTIONS: PermissionBoundaryOption[] = [
   {
     id: "default",
-    labelKey: "permissionDefault",
-    descriptionKey: "permissionDefaultDesc",
+    labelKey: "permissionBoundaryDefault",
+    descriptionKey: "permissionBoundaryDefaultDesc",
     icon: Shield,
   },
   {
-    id: "acceptEdits",
-    labelKey: "permissionAcceptEdits",
-    descriptionKey: "permissionAcceptEditsDesc",
-    icon: PencilLine,
-  },
-  {
-    id: "plan",
-    labelKey: "permissionPlan",
-    descriptionKey: "permissionPlanDesc",
-    icon: Route,
-    flip: true,
-  },
-  {
     id: "readonly",
-    labelKey: "permissionReadonly",
-    descriptionKey: "permissionReadonlyDesc",
+    labelKey: "permissionBoundaryReadonly",
+    descriptionKey: "permissionBoundaryReadonlyDesc",
     icon: Lock,
   },
   {
-    id: "readonlyAsk",
-    labelKey: "permissionReadonlyAsk",
-    descriptionKey: "permissionReadonlyAskDesc",
-    icon: LockKeyhole,
-  },
-  {
-    id: "auto",
-    labelKey: "permissionAutoAsk",
-    descriptionKey: "permissionAutoAskDesc",
-    icon: CircleHelp,
-  },
-  {
-    id: "autoContinue",
-    labelKey: "permissionAutoContinue",
-    descriptionKey: "permissionAutoContinueDesc",
-    icon: Gauge,
+    id: "plan",
+    labelKey: "permissionBoundaryPlan",
+    descriptionKey: "permissionBoundaryPlanDesc",
+    icon: Route,
+    flip: true,
   },
   {
     id: "bypass",
@@ -63,3 +64,35 @@ export const COMPOSER_PERMISSIONS: ComposerPermissionOption[] = [
     icon: ShieldOff,
   },
 ];
+
+/** 三个开关；自动接受修改只在默认边界可用。 */
+export const PERMISSION_SWITCH_OPTIONS: PermissionSwitchOption[] = [
+  {
+    id: "autoReview",
+    labelKey: "permissionSwitchAutoReview",
+    descriptionKey: "permissionSwitchAutoReviewDesc",
+    icon: CircleHelp,
+  },
+  {
+    id: "autoContinue",
+    labelKey: "permissionSwitchAutoContinue",
+    descriptionKey: "permissionSwitchAutoContinueDesc",
+    icon: Gauge,
+  },
+  {
+    id: "acceptEdits",
+    labelKey: "permissionSwitchAcceptEdits",
+    descriptionKey: "permissionSwitchAcceptEditsDesc",
+    icon: PencilLine,
+  },
+];
+
+/** 旧 `plan` 不属于新视图的边界：单独列出，保留既有偏好的旧语义，
+ *  不擅自放宽。 */
+export const LEGACY_PLAN_OPTION: LegacyPermissionOption = {
+  id: "plan",
+  labelKey: "permissionLegacyPlan",
+  descriptionKey: "permissionLegacyPlanDesc",
+  icon: Route,
+  flip: true,
+};

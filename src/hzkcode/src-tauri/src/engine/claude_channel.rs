@@ -24,6 +24,15 @@ const ROUTING_KEYS: &[&str] = &[
     "HZKCODE_DEFAULT_HIGH_MODEL",
     "HZKCODE_DEFAULT_MID_MODEL",
     "HZKCODE_DEFAULT_LOW_MODEL",
+    "HZKCODE_DEFAULT_HIGH_MODEL_API_MODE",
+    "HZKCODE_DEFAULT_MID_MODEL_API_MODE",
+    "HZKCODE_DEFAULT_LOW_MODEL_API_MODE",
+    "HZKCODE_DEFAULT_HIGH_MODEL_EFFORT_LEVEL",
+    "HZKCODE_DEFAULT_MID_MODEL_EFFORT_LEVEL",
+    "HZKCODE_DEFAULT_LOW_MODEL_EFFORT_LEVEL",
+    "HZKCODE_DEFAULT_HIGH_MODEL_RESPONSES_WEBSOCKET",
+    "HZKCODE_DEFAULT_MID_MODEL_RESPONSES_WEBSOCKET",
+    "HZKCODE_DEFAULT_LOW_MODEL_RESPONSES_WEBSOCKET",
     "HZKCODE_PROVIDER",
     "HZKCODE_AUTH_MODE",
     "HZKCODE_API_MODE",
@@ -58,18 +67,8 @@ pub(super) fn resolve_model(
     // 归一，存量会话与渠道数据不迁移也能解析到同一档位。
     let raw =
         super::models::normalize_tier_alias(&super::models::strip_context_suffix(selected));
-    // Tier alias → the custom id its capability tier is pointed at.
-    let tier_key = match raw.as_str() {
-        "high" => Some("HZKCODE_DEFAULT_HIGH_MODEL"),
-        "mid" => Some("HZKCODE_DEFAULT_MID_MODEL"),
-        "low" => Some("HZKCODE_DEFAULT_LOW_MODEL"),
-        _ => None,
-    };
-    let resolved = match tier_key.and_then(|key| env.get(key)) {
-        Some(value) => super::models::strip_context_suffix(value),
-        None => raw,
-    };
-    Some(resolved)
+    // 同一模型可绑定多个档位；保留档位身份才能选择各自的协议与思考默认值。
+    Some(raw)
 }
 
 pub(super) fn apply(
@@ -118,6 +117,13 @@ fn stage(
         .iter()
         .map(|key| (key.to_string(), Value::String(String::new())))
         .collect();
+    // 空接入点表示不追加版本段，不能用它遮盖渠道默认值。
+    let default_endpoint = if env.get("HZKCODE_PROVIDER").is_some_and(|brand| brand.trim().eq_ignore_ascii_case("gemini")) {
+        "v1beta"
+    } else {
+        "v1"
+    };
+    overlay.insert("HZKCODE_BASE_URL_ENDPOINT".into(), Value::String(default_endpoint.into()));
     overlay.extend(
         env.iter()
             .map(|(key, value)| (key.clone(), Value::String(value.clone()))),
@@ -242,12 +248,12 @@ mod tests {
             ("HZKCODE_DEFAULT_MID_MODEL".into(), "relay-model".into()),
         ]);
         for (selected, expected) in [
-            (None, "relay-model"),
-            (Some("default"), "relay-model"),
-            (Some("mid"), "relay-model"),
-            // Legacy spellings normalize before the tier lookup.
-            (Some("sonnet"), "relay-model"),
-            (Some("sonnet[1m]"), "relay-model"),
+            (None, "mid"),
+            (Some("default"), "mid"),
+            (Some("mid"), "mid"),
+            // 旧拼写归一，但模型绑定由引擎处理以保留档位身份。
+            (Some("sonnet"), "mid"),
+            (Some("sonnet[1m]"), "mid"),
             (Some("custom-id"), "custom-id"),
             // An unmapped tier collapses to the 3.1.2 alias spell.
             (Some("opus"), "high"),
@@ -266,6 +272,52 @@ mod tests {
             resolve_model(Some("sonnet"), Some(&empty), &HashMap::new()).as_deref(),
             Some("mid")
         );
+    }
+
+    #[test]
+    fn shared_model_bindings_keep_distinct_tier_protocols() {
+        let provider = serde_json::json!({});
+        let env = HashMap::from([
+            ("HZKCODE_DEFAULT_HIGH_MODEL".into(), "shared-model".into()),
+            ("HZKCODE_DEFAULT_MID_MODEL".into(), "shared-model".into()),
+            ("HZKCODE_DEFAULT_HIGH_MODEL_API_MODE".into(), "anthropic".into()),
+            ("HZKCODE_DEFAULT_MID_MODEL_API_MODE".into(), "responses".into()),
+        ]);
+        for tier in ["high", "mid", "low"] {
+            assert_eq!(resolve_model(Some(tier), Some(&provider), &env).as_deref(), Some(tier));
+        }
+        let directory = std::env::temp_dir().join(format!("hzkcode-tier-overlay-{}", uuid::Uuid::new_v4()));
+        let mut command = built();
+        stage(&mut command, &provider, &env, Some("mid"), None, &directory).unwrap();
+        let staged: Value = serde_json::from_slice(&std::fs::read(&command.cleanup_files[0]).unwrap()).unwrap();
+        assert_eq!(staged["model"], "mid");
+        assert_eq!(staged["env"]["HZKCODE_DEFAULT_HIGH_MODEL_API_MODE"], "anthropic");
+        assert_eq!(staged["env"]["HZKCODE_DEFAULT_MID_MODEL_API_MODE"], "responses");
+        assert_eq!(staged["env"]["HZKCODE_DEFAULT_LOW_MODEL_API_MODE"], "");
+        assert_eq!(staged["env"]["HZKCODE_DEFAULT_MID_MODEL_EFFORT_LEVEL"], "");
+        assert_eq!(staged["env"]["HZKCODE_DEFAULT_HIGH_MODEL_RESPONSES_WEBSOCKET"], "");
+    }
+
+    #[test]
+    fn channel_endpoint_defaults_without_overriding_explicit_values() {
+        let directory = std::env::temp_dir().join(format!("hzkcode-endpoint-{}", uuid::Uuid::new_v4()));
+        for (endpoint, expected) in [(None, "v1"), (Some(""), ""), (Some("api/paas/v4"), "api/paas/v4")] {
+            let mut provider = serde_json::json!({"env": {}});
+            if let Some(endpoint) = endpoint {
+                provider["env"]["HZKCODE_BASE_URL_ENDPOINT"] = Value::String(endpoint.into());
+            }
+            let env = crate::provider_files::channel_env("claude", &provider).unwrap();
+            let mut command = built();
+            stage(&mut command, &provider, &env, None, None, &directory).unwrap();
+            let staged: Value = serde_json::from_slice(&std::fs::read(&command.cleanup_files[0]).unwrap()).unwrap();
+            assert_eq!(staged["env"]["HZKCODE_BASE_URL_ENDPOINT"], expected);
+        }
+        let provider = serde_json::json!({"env": {"HZKCODE_PROVIDER": " GeMiNi "}});
+        let env = crate::provider_files::channel_env("claude", &provider).unwrap();
+        let mut command = built();
+        stage(&mut command, &provider, &env, None, None, &directory).unwrap();
+        let staged: Value = serde_json::from_slice(&std::fs::read(&command.cleanup_files[0]).unwrap()).unwrap();
+        assert_eq!(staged["env"]["HZKCODE_BASE_URL_ENDPOINT"], "v1beta");
     }
 
     #[test]

@@ -1,14 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { FLAME_SPECS, nozzleForFraction } from "./effort-flame";
+import {
+  FLAME_LEVELS,
+  FLAME_SPECS,
+  isFlameLevel,
+  nozzleForFraction,
+} from "./effort-flame";
 import { EFFORT_LEVELS } from "./effort-levels";
 
 describe("FLAME_SPECS", () => {
-  it("covers every effort stop", () => {
-    expect(Object.keys(FLAME_SPECS).sort()).toEqual([...EFFORT_LEVELS].sort());
+  it("covers exactly the burning stops", () => {
+    expect([...FLAME_LEVELS]).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(Object.keys(FLAME_SPECS).sort()).toEqual([...FLAME_LEVELS].sort());
+  });
+
+  it("leaves off and none cold", () => {
+    expect(EFFORT_LEVELS.filter(isFlameLevel)).toEqual([...FLAME_LEVELS]);
+    expect(isFlameLevel("off")).toBe(false);
+    expect(isFlameLevel("none")).toBe(false);
   });
 
   it("throttles up monotonically with the level, full burn at max", () => {
-    const powers = EFFORT_LEVELS.map((level) => FLAME_SPECS[level].power);
+    const powers = FLAME_LEVELS.map((level) => FLAME_SPECS[level].power);
     for (let i = 1; i < powers.length; i++) {
       expect(powers[i]).toBeGreaterThan(powers[i - 1]);
     }
@@ -25,7 +37,7 @@ describe("FLAME_SPECS", () => {
   });
 
   it("keeps each palette ordered toward the hot core", () => {
-    for (const level of EFFORT_LEVELS) {
+    for (const level of FLAME_LEVELS) {
       const { deep, mid, bright } = FLAME_SPECS[level];
       const sum = (c: readonly [number, number, number]) => c[0] + c[1] + c[2];
       // The hot-core tone is the brightest of the three.
@@ -35,7 +47,7 @@ describe("FLAME_SPECS", () => {
   });
 
   it("keeps a per-level vertical footprint that grows with the level", () => {
-    const scales = EFFORT_LEVELS.map((level) => FLAME_SPECS[level].vscale);
+    const scales = FLAME_LEVELS.map((level) => FLAME_SPECS[level].vscale);
     for (let i = 1; i < scales.length; i++) {
       expect(scales[i]).toBeGreaterThan(scales[i - 1]);
     }
@@ -43,7 +55,7 @@ describe("FLAME_SPECS", () => {
   });
 
   it("keeps a per-level starfield rush that grows with the level", () => {
-    const rushes = EFFORT_LEVELS.map((level) => FLAME_SPECS[level].rush);
+    const rushes = FLAME_LEVELS.map((level) => FLAME_SPECS[level].rush);
     for (let i = 1; i < rushes.length; i++) {
       expect(rushes[i]).toBeGreaterThan(rushes[i - 1]);
     }
@@ -53,7 +65,7 @@ describe("FLAME_SPECS", () => {
   it("keeps a per-level flame span that grows with the level", () => {
     // The flame's own length: a stubby lick at the gentlest stop, the whole
     // burnt stretch at max.
-    const spans = EFFORT_LEVELS.map((level) => FLAME_SPECS[level].span);
+    const spans = FLAME_LEVELS.map((level) => FLAME_SPECS[level].span);
     for (let i = 1; i < spans.length; i++) {
       expect(spans[i]).toBeGreaterThan(spans[i - 1]);
     }

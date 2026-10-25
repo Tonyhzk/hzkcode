@@ -48,7 +48,7 @@ vi.mock("@/lib/events", () => ({
 }));
 
 const { useChatStore } = await import("./store");
-const { selectSelectedAgent, getSelectedAgent, getRecordedAgent } = await import(
+const { selectSelectedAgent, clearSelectedAgent, getSelectedAgent, getRecordedAgent } = await import(
   "@/features/agents/selected-agent"
 );
 const { useAgentStore } = await import("@/features/agents/agent-store");
@@ -187,7 +187,7 @@ describe("identity send path", () => {
     selectSelectedAgent(WS, "s-1", customAgent({ id: "a2", name: "新身份" }));
     await useChatStore.getState().send("again", []);
 
-    expect(vi.mocked(ipc.cloneSession)).toHaveBeenCalledWith("claude", "s-1", WS);
+    expect(vi.mocked(ipc.cloneSession)).toHaveBeenCalledWith("claude", "s-1", WS, false);
     const last = sentArgs(vi.mocked(ipc.sendMessage).mock.calls.length - 1);
     expect(last.sessionId).toBe("s-2");
     const defs = JSON.parse(last.agentsJson ?? "{}") as Record<string, unknown>;
@@ -265,7 +265,29 @@ describe("identity send path", () => {
     localStorage.removeItem("hzkcode.sessionAgentByThread:v1");
     vi.mocked(ipc.getSessionAgentSetting).mockResolvedValueOnce("别的身份");
     await useChatStore.getState().send("third", []);
-    expect(vi.mocked(ipc.cloneSession)).toHaveBeenCalledWith("claude", "s-1", WS);
+    expect(vi.mocked(ipc.cloneSession)).toHaveBeenCalledWith("claude", "s-1", WS, false);
+  });
+
+  it("treats an empty stored agent setting as the default identity", async () => {
+    useChatStore.getState().startNewChat(WS);
+    await useChatStore.getState().selectSession("claude", "s-1", WS);
+    vi.mocked(ipc.getSessionAgentSetting).mockResolvedValueOnce("");
+    await useChatStore.getState().send("continue", []);
+    expect(ipc.cloneSession).not.toHaveBeenCalled();
+    expect(sentArgs().sessionId).toBe("s-1");
+    expect(sentArgs().agentName).toBeNull();
+  });
+
+  it("clears the inherited identity when switching to default in a clone", async () => {
+    vi.mocked(ipc.sendMessage).mockResolvedValueOnce({ runId: "run-1", sessionId: "s-1" });
+    selectSelectedAgent(WS, null, customAgent());
+    useChatStore.getState().startNewChat(WS);
+    await useChatStore.getState().send("hi", []);
+    clearSelectedAgent(WS, "s-1");
+    await useChatStore.getState().send("continue", []);
+    expect(ipc.cloneSession).toHaveBeenCalledWith("claude", "s-1", WS, true);
+    expect(sentArgs(1).sessionId).toBe("s-2");
+    expect(sentArgs(1).agentName).toBeNull();
   });
 
   it("keeps the record empty when the send fails", async () => {

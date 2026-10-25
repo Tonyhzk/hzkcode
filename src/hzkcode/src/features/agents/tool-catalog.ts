@@ -1,17 +1,14 @@
 /**
- * Built-in tool catalog for the identity editor's whitelist picker.
+ * 身份编辑器工具白名单选择器的内置工具目录。
  *
- * Names must match the bundled CLI's tool names exactly: the engine silently
- * ignores unknown names, and under a whitelist (`--tools`) every unlisted
- * built-in tool is auto-denied — so a typo would silently strip the wrong
- * tools. Verified against hzk-code-agent 3.1.2 (`getAllBaseTools()` in
- * src/tools.ts and the NAME constants under
- * packages/builtin-tools/src/tools/*), cross-checked against the two
- * binaries' stream-json `system/init` tool lists (the 3.1.0 → 3.1.2 diff is
- * the single SessionGroups addition), limited to tools the bundled build can
- * actually expose. Labels are localized data (the agent catalog uses the
- * same per-language shape) rather than i18n keys — this list is content, not
- * UI chrome.
+ * 名称必须与内置 CLI 的工具名完全一致：引擎会静默忽略未知名称，而在白名单
+ *（`--tools`）下，未列出的内置工具都会被自动拒绝——拼错一个名字就会静默
+ * 去掉错误的工具。已对照 hzk-code-agent 3.5.0 的 `getAllBaseTools()`
+ *（src/tools.ts）与 `packages/builtin-tools/src/tools/*` 下的 NAME 常量，
+ * 仅保留内置构建实际能暴露的工具。3.1.3 之后新增的是 TeamSpawn、BuiltinDocs
+ * 与 RespondToAgentRequest；AskParentQuestion 不进入主会话白名单，因为引擎
+ * 将它固定分配给子代理与团队成员。标签是本地化数据（智能体目录使用相同的
+ * 按语言组织方式），不是 i18n key——这份列表是内容，不是界面装饰。
  */
 
 export interface ToolCatalogEntry {
@@ -93,9 +90,14 @@ export const TOOL_CATALOG: readonly ToolCatalogGroup[] = [
         name: "SendMessage",
         label: { zh: "跨会话消息", en: "Cross-session messages" },
       },
+      {
+        name: "RespondToAgentRequest",
+        label: { zh: "处理子代理请求", en: "Handle subagent requests" },
+      },
       { name: "ListPeers", label: { zh: "列出本机会话", en: "List local sessions" } },
       { name: "SessionGroups", label: { zh: "会话群组", en: "Session groups" } },
       { name: "TeamCreate", label: { zh: "创建协作团队", en: "Create a team" } },
+      { name: "TeamSpawn", label: { zh: "创建团队成员", en: "Create a team member" } },
       { name: "TeamDelete", label: { zh: "解散协作团队", en: "Delete a team" } },
       {
         name: "VerifyPlanExecution",
@@ -109,6 +111,7 @@ export const TOOL_CATALOG: readonly ToolCatalogGroup[] = [
     title: { zh: "其他", en: "Other" },
     entries: [
       { name: "Skill", label: { zh: "调用技能", en: "Invoke skills" } },
+      { name: "BuiltinDocs", label: { zh: "查询内置资料", en: "Read built-in docs" } },
       { name: "SessionTitle", label: { zh: "维护会话标题", en: "Maintain the session title" } },
       { name: "NotifyUser", label: { zh: "发送通知", en: "Send notifications" } },
       {

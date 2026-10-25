@@ -8,7 +8,7 @@ import { cx } from "@/utils/cx";
 import { SOFT_EASE } from "@/components/application/agent-log/agent-log-motion";
 import { StepRow, type TaskListChip } from "@/components/application/task-list/task-list";
 import { getFileTreeIconSvg } from "@/features/files/fileIcons";
-import { markToolKeys, toolEntranceKey, type ProcessItem } from "./timeline-rows";
+import { displayToolItem, markToolKeys, toolEntranceKey, type ProcessItem } from "./timeline-rows";
 import { ToolPayloadViewer } from "./ToolPayloadViewer";
 
 /** Classify a tool-call label (tool name or shell command) into a type chip. */
@@ -74,18 +74,23 @@ type ProcessSection =
       firstIndex: number;
     };
 
-function groupProcessSections(items: ProcessItem[]): ProcessSection[] {
+function groupProcessSections(
+  items: ProcessItem[],
+  showThinking: boolean,
+): ProcessSection[] {
   const sections: ProcessSection[] = [];
   items.forEach((item, index) => {
     if (item.type === "thinking") {
+      if (!showThinking) return;
       sections.push({ type: "thinking", text: item.text, live: item.live, firstIndex: index });
     } else {
       const last = sections[sections.length - 1];
+      const display = displayToolItem(item);
       const call = {
-        text: item.text,
-        path: item.path ?? null,
-        args: item.args,
-        result: item.result,
+        text: display.text,
+        path: display.path ?? null,
+        args: display.args,
+        result: display.result,
         index,
       };
       if (last?.type === "tools") last.calls.push(call);
@@ -399,6 +404,7 @@ export const ProcessDisclosure = memo(function ProcessDisclosure({
   turnLive = false,
   thinkingAutoCollapse = true,
   detailedDisplay = false,
+  showThinking = true,
   processId,
   seenTools,
 }: {
@@ -415,11 +421,17 @@ export const ProcessDisclosure = memo(function ProcessDisclosure({
   /** True (设置 → 通用 → 行为 → 详细显示): tool calls print their arguments
    *  and results inline instead of behind the payload toggle. */
   detailedDisplay?: boolean;
+  /** False（设置 → 通用 → 行为 → 显示思考过程）：隐藏本行中的思考块与计数；
+   *  工具调用保持显示。仅影响显示，模型仍会思考，转录仍保留内容。 */
+  showThinking?: boolean;
   processId: number;
   seenTools: Set<string>;
 }) {
   const { t } = useTranslation();
-  const sections = useMemo(() => groupProcessSections(items), [items]);
+  const sections = useMemo(
+    () => groupProcessSections(items, showThinking),
+    [items, showThinking],
+  );
   const hasLiveThinking = sections.some((s) => s.type === "thinking" && s.live);
   const { expanded, toggleExpanded } = useProcessExpansion(
     autoExpand,
@@ -435,8 +447,12 @@ export const ProcessDisclosure = memo(function ProcessDisclosure({
   useLayoutEffect(() => {
     markToolKeys(seenTools, processId, items);
   }, [items, processId, seenTools]);
-  const thinkingCount = items.filter((item) => item.type === "thinking").length;
-  const toolCount = items.length - thinkingCount;
+  const thinkingCount = showThinking
+    ? items.filter((item) => item.type === "thinking").length
+    : 0;
+  const toolCount = items.filter((item) => item.type === "tool").length;
+  // 思考隐藏且没有工具调用时，整行不显示，而不是留下空的摘要行。
+  if (thinkingCount === 0 && toolCount === 0) return null;
   // A lone thinking block skips the "思考 1 次" summary: the header is the
   // "思考过程" title itself, and the expanded body drops the inner repeat.
   const singleThinking = items.length === 1 && items[0].type === "thinking";

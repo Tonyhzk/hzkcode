@@ -52,17 +52,62 @@ function getMsgRow(message: Message, turnFinal: boolean): MsgRow {
   return row;
 }
 
+/** 工具调用的路径参数，与引擎一致（path / file_path / filePath）。 */
+function toolPathFromArgs(args: Record<string, unknown>): string | null {
+  for (const key of ["path", "file_path", "filePath"]) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+/** 延迟工具调用的显示投影：ExecuteExtraTool 包裹目标工具名与参数。
+ *  只改写显示副本，原消息、args 与转录保持不变，权限卡仍指向包装器调用。
+ *  目标名或参数无法解析时保留包装器行，包括多层包装。 */
+export function displayToolItem(item: ProcessItem): ProcessItem {
+  if (item.type !== "tool" || item.text !== "ExecuteExtraTool") return item;
+  const wrapped = item.args;
+  if (!wrapped || typeof wrapped !== "object" || Array.isArray(wrapped)) return item;
+  const { tool_name, params } = wrapped as Record<string, unknown>;
+  if (typeof tool_name !== "string" || !tool_name.trim()) return item;
+  const name = tool_name.trim();
+  if (name === "ExecuteExtraTool") return item;
+  if (!params || typeof params !== "object" || Array.isArray(params)) return item;
+  const args = params as Record<string, unknown>;
+  return {
+    ...item,
+    text: name,
+    path: toolPathFromArgs(args) ?? item.path,
+    args,
+  };
+}
+
+/** 工具消息的显示副本；原消息不变。 */
+export function displayToolMessage(message: Message): ProcessItem {
+  return displayToolItem({
+    type: "tool",
+    text: message.text,
+    live: message.live,
+    path: message.path,
+    args: message.args,
+    result: message.result,
+  });
+}
+
 function getProcessItem(message: Message): ProcessItem {
   let item = processItemCache.get(message);
   if (!item) {
-    item = {
-      type: message.role === "tool" ? "tool" : "thinking",
-      text: message.text,
-      live: message.live,
-      path: message.path,
-      args: message.args,
-      result: message.result,
-    };
+    item =
+      message.role === "tool"
+        ? displayToolMessage(message)
+        : {
+            type: "thinking",
+            text: message.text,
+            live: message.live,
+            path: message.path,
+            args: message.args,
+            result: message.result,
+          };
     processItemCache.set(message, item);
   }
   return item;

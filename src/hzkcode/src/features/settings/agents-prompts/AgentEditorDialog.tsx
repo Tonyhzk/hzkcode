@@ -9,6 +9,10 @@ import { ModalShell } from "@/components/dialogs";
 import { cx } from "@/utils/cx";
 import type { AgentConfig } from "@/lib/ipc";
 import { TOOL_CATALOG, TOOL_CATALOG_NAMES } from "@/features/agents/tool-catalog";
+import {
+  EFFORT_LABEL_KEYS,
+  EFFORT_LEVELS,
+} from "@/components/application/ai-chat/effort-levels";
 import { normalizeTierAlias } from "@/features/settings/providers";
 import i18n from "@/lib/i18n";
 
@@ -19,6 +23,8 @@ const NAME_MAX = 64;
 const PROMPT_MAX = 100000;
 const UNSET_OPTION_ID = "__unset__";
 
+const TOOL_CATALOG_NAME_SET = new Set(TOOL_CATALOG_NAMES);
+
 /** Identity model: an engine tier alias resolved against the channel, or
  *  follow. The tier spell is the CLI's own (high/mid/low since 3.1.1). */
 const MODEL_OPTIONS: readonly { id: string; labelKey: string }[] = [
@@ -27,8 +33,6 @@ const MODEL_OPTIONS: readonly { id: string; labelKey: string }[] = [
   { id: "mid", labelKey: "settings.agentModelMid" },
   { id: "low", labelKey: "settings.agentModelLow" },
 ];
-
-const EFFORT_OPTIONS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 /** Context components (CLI identity frontmatter values, in card order). */
 const CONTEXT_COMPONENTS: readonly { id: string; labelKey: string }[] = [
@@ -76,6 +80,14 @@ export function AgentEditorDialog({
   // picker shows as all boxes checked (and stores back as null).
   const [tools, setTools] = useState<Set<string>>(
     () => new Set(initial?.tools ?? TOOL_CATALOG_NAMES),
+  );
+  // 当前工具目录不认识的已存名称——旧版/新版构建、手写列表或 MCP 工具。
+  // 选择器无法展示它们，但保存时不能静默丢弃：它们保留在勾选集合中，
+  // 并随提交写回，除非用户清空全部。
+  const [extraTools] = useState<string[]>(() =>
+    Array.from(
+      new Set((initial?.tools ?? []).filter((tool) => !TOOL_CATALOG_NAME_SET.has(tool))),
+    ),
   );
   // A stored legacy alias (opus/sonnet/haiku) normalizes to its tier spell,
   // so an identity written before 3.1.1 shows — and saves — the current one.
@@ -128,7 +140,11 @@ export function AgentEditorDialog({
       // The picker is a whitelist: the checked set is saved explicitly even
       // when everything is checked (unlisted built-ins must stay denied);
       // only agents from before this field existed keep "unrestricted".
-      tools: TOOL_CATALOG_NAMES.filter((tool) => tools.has(tool)),
+      // 目录之外的已存名称会追加回去，保存不会丢弃它们。
+      tools: [
+        ...TOOL_CATALOG_NAMES.filter((tool) => tools.has(tool)),
+        ...extraTools.filter((tool) => tools.has(tool)),
+      ],
       model: model || null,
       context: allContextChecked
         ? null
@@ -228,9 +244,9 @@ export function AgentEditorDialog({
             <SelectItem id={UNSET_OPTION_ID}>
               {t("settings.agentEffortFollow")}
             </SelectItem>
-            {EFFORT_OPTIONS.map((level) => (
+            {EFFORT_LEVELS.map((level) => (
               <SelectItem key={level} id={level}>
-                {level}
+                {t(EFFORT_LABEL_KEYS[level])}
               </SelectItem>
             ))}
           </Select>
@@ -265,7 +281,9 @@ export function AgentEditorDialog({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setTools(new Set(TOOL_CATALOG_NAMES))}
+                onClick={() =>
+                  setTools(new Set([...TOOL_CATALOG_NAMES, ...extraTools]))
+                }
                 className={cx(
                   "cursor-pointer text-body-2-regular text-text-tertiary",
                   "hover:text-text-secondary",
