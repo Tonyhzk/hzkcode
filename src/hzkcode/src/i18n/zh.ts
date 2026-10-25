@@ -235,6 +235,10 @@ export const zh = {
     rewindDirtyEditors:
       "有未保存的编辑器内容，请先保存或关闭后再回退文件。",
     sessionToggles: "会话开关",
+    sessionEntryBehavior: "行为",
+    sessionEntryPrompt: "提示词",
+    sessionEntryProxy: "代理",
+    sessionEntryContext: "上下文",
     sessionProxy: "会话代理",
     secondBrain: "第二大脑",
     sessionProxyFollow: "跟随默认",

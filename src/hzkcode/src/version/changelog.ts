@@ -25,7 +25,8 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - 内置引擎升级到 3.5.1
 
 新功能
-- 会话开关新增提示词模式、身份、持续行为模式和接口协议，修改设置无需发送聊天消息
+- 输入框外侧与用量统计同排显示身份、行为、提示词、协议、代理、第二大脑与上下文按钮；当前协议直接可见，输入框内部不增加按钮行
+- 提示词模式、身份、持续行为模式和接口协议可直接修改，无需发送聊天消息
 - 已有对话可选择在当前会话切换身份、克隆后切换或追加身份；新对话直接切换，默认身份不能追加
 - 提示词模式可在当前会话修改或克隆后修改，接口协议支持恢复默认
 - 应用自带角色、自定义角色和引擎身份使用同一应用流程
@@ -37,7 +38,8 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - Bundled engine upgraded to 3.5.1
 
 Features
-- Session switches now control prompt mode, identity, persistent interaction mode, and API format without sending a chat message
+- Identity, behavior, prompts, API format, proxy, second brain, and context now have dedicated buttons outside the input box, on the same row as usage; the active API format is visible without adding rows inside the input box
+- Control prompt mode, identity, persistent interaction mode, and API format without sending a chat message
 - Apply an identity in the current conversation, clone first, or append it; empty conversations switch in place, and the default identity cannot be appended
 - Change prompt mode in place or in a clone, and reset the API format to its default
 - App-bundled personas, custom personas, and engine identities share one application flow

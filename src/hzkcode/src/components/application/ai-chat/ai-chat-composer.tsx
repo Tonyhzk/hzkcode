@@ -48,7 +48,7 @@ import {
 import {
   isUsableProxyUrl,
 } from "@/components/application/ai-chat/proxy-url";
-import { SessionToggles } from "@/components/application/ai-chat/session-toggles";
+import { SessionControls } from "@/components/application/ai-chat/session-toggles";
 import { ipc } from "@/lib/ipc";
 import { listenSettingsChanged } from "@/lib/events";
 import { useTauriEvent } from "@/hooks/use-tauri-event";
@@ -564,8 +564,8 @@ export function StatusBar({
     [t],
   );
   return (
-    <div className="flex h-[26px] w-full items-center justify-between select-none">
-      <div className="flex items-center gap-3">
+    <div data-testid="composer-status-bar" className="flex h-[26px] w-full min-w-0 items-center gap-2 select-none">
+      <div className="flex min-w-0 max-w-[25%] items-center gap-3 overflow-hidden empty:hidden">
         {folders && folders.length > 0 && (
           <ProjectFolderMenu
             folders={folders}
@@ -602,8 +602,10 @@ export function StatusBar({
           );
         })}
       </div>
-      <div className="flex items-center gap-3">
-        <SessionToggles />
+      <div data-testid="session-control-strip" className="session-control-strip flex h-6 min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+        <SessionControls />
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
         <ProxyQuickToggle />
         {/* Context meter is always on: 0% until the first usage report. */}
         <AriaDialogTrigger

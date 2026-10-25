@@ -159,6 +159,14 @@ body {
   background: transparent;
 }
 
+/* 与全局滚动条规则处于同一层，避免工具栏被滚动条撑高。 */
+.session-control-strip {
+  scrollbar-width: none;
+}
+.session-control-strip::-webkit-scrollbar {
+  display: none;
+}
+
 html {
   color-scheme: light;
   background-color: var(--color-background-full);

@@ -7,7 +7,7 @@ vi.mock("react-i18next", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-i18next")>()),
   useTranslation: () => ({ t: (key: string) => key }),
 }));
-vi.mock("./session-toggles", () => ({ SessionToggles: () => null }));
+vi.mock("./session-toggles", () => ({ SessionControls: () => null }));
 vi.mock("@/lib/ipc", () => ({
   ipc: {
     getAppSettings: vi.fn(async () => ({})),

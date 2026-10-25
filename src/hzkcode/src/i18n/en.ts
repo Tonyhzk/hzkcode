@@ -249,6 +249,10 @@ export const en: Messages = {
     rewindDirtyEditors:
       "Save or close your unsaved editor changes before reverting files.",
     sessionToggles: "Session switches",
+    sessionEntryBehavior: "Behavior",
+    sessionEntryPrompt: "Prompt",
+    sessionEntryProxy: "Proxy",
+    sessionEntryContext: "Context",
     sessionProxy: "Session proxy",
     secondBrain: "Second brain",
     sessionProxyFollow: "Follow default",

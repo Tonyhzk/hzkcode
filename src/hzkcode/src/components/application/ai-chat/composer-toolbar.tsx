@@ -4,11 +4,7 @@ import ArrowUp from "lucide-react/dist/esm/icons/arrow-up";
 import CircleStop from "lucide-react/dist/esm/icons/circle-stop";
 import { cx } from "@/utils/cx";
 
-/**
- * ComposerToolbar — the composer's bottom row: menu slots (add attachment,
- * CLI + model switcher, permission mode) on the left; the send button on the
- * right, which becomes a stop control while a turn streams.
- */
+/** 输入框内部只保留附件、模型、工作模式与发送/停止按钮。 */
 export function ComposerToolbar({
   addMenu,
   cliMenu,
