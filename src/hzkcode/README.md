@@ -29,9 +29,12 @@ The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on mac
 - Per-tab **model and effort overrides**: different tabs in the same window can run different models or thinking levels. Effort has seven levels — off, none, low, medium, high, xhigh, max; `off` means the effort field is not sent, not that thinking is disabled.
 - Session history survives restarts; the history scanner reads the CLI's native session files and keeps titles in sync.
 
-### What's new in 3.5.0
+### What's new in 3.5.1
 
-- Runs the **3.5.0 engine**; the macOS arm64 binary slot carries this build.
+- Bundles the **3.5.1 engine** in desktop version **3.5.1-1**.
+- **Control a conversation from Session switches**: change full or compact prompts, identity, persistent interaction mode, or API format without sending a chat message.
+- **Choose how to apply an identity**: switch in the current conversation, clone it, or append an identity to an existing conversation. Empty conversations switch in place; the default identity cannot be appended. App-bundled personas, custom personas, and engine identities remain available.
+- **Resume with saved session settings**: in-place changes preserve history and clones leave the source intact. Appending preserves the base identity, model, and permissions. Failed operations retain the current session and selection for retry.
 - **Work modes separate boundaries from switches**: default, read-only, and plan are boundaries; auto review, auto continue, and auto accept edits are switches. Switches stay bounded by the active boundary, and menu edits apply on confirmation.
 - **Tools are discovered on demand by default**: turning this off provides every tool description up front.
 - **Compaction has its own settings**: the summary model, channel, thinking level, and streaming can differ from the main conversation.

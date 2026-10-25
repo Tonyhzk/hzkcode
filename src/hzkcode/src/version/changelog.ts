@@ -18,6 +18,36 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: "3.5.1-1",
+    date: "2026-10-26",
+    content: {
+      zh: `引擎更新
+- 内置引擎升级到 3.5.1
+
+新功能
+- 会话开关新增提示词模式、身份、持续行为模式和接口协议，修改设置无需发送聊天消息
+- 已有对话可选择在当前会话切换身份、克隆后切换或追加身份；新对话直接切换，默认身份不能追加
+- 提示词模式可在当前会话修改或克隆后修改，接口协议支持恢复默认
+- 应用自带角色、自定义角色和引擎身份使用同一应用流程
+
+修复
+- 恢复会话时保留已保存的身份和设置，不再被旧的界面默认值覆盖
+- 切换身份不再在下一次发送时自动克隆；操作失败保留当前对话与选择`,
+      en: `Engine update
+- Bundled engine upgraded to 3.5.1
+
+Features
+- Session switches now control prompt mode, identity, persistent interaction mode, and API format without sending a chat message
+- Apply an identity in the current conversation, clone first, or append it; empty conversations switch in place, and the default identity cannot be appended
+- Change prompt mode in place or in a clone, and reset the API format to its default
+- App-bundled personas, custom personas, and engine identities share one application flow
+
+Fixes
+- Resuming preserves saved identities and settings instead of overriding them with stale UI defaults
+- Identity changes no longer silently clone on the next send; failed operations retain the current conversation and selection`,
+    },
+  },
+  {
     version: "3.5.0-1",
     date: "2026-10-26",
     content: {
