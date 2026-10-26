@@ -42,9 +42,9 @@ pub struct AgentConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct AgentStore {
+pub(crate) struct AgentStore {
     #[serde(default)]
-    agents: Vec<AgentConfig>,
+    pub(crate) agents: Vec<AgentConfig>,
 }
 
 const MAX_NAME_CHARS: usize = 64;
@@ -54,6 +54,13 @@ const MAX_TOOL_NAME_CHARS: usize = 64;
 const MAX_MODEL_CHARS: usize = 128;
 const CONTEXT_COMPONENTS: [&str; 3] = ["prompts", "claudemd", "memory"];
 const EFFORT_LEVELS: [&str; 7] = ["off", "none", "low", "medium", "high", "xhigh", "max"];
+
+// 配置恢复与编辑共用写锁，防止恢复过程中混入旧页面的保存。
+static AGENTS_WRITE_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
+pub(crate) fn agents_write_lock() -> parking_lot::MutexGuard<'static, ()> {
+    AGENTS_WRITE_LOCK.lock()
+}
 
 fn agents_file() -> PathBuf {
     crate::paths::app_home().join("agents.json")
@@ -93,6 +100,7 @@ fn write_store(store: &AgentStore) -> Result<(), String> {
 }
 
 fn write_store_to(path: &Path, store: &AgentStore) -> Result<(), String> {
+    crate::config_backup::ensure_writable()?;
     #[cfg(test)]
     crate::test_support::guard_test_write(path)?;
     if let Some(parent) = path.parent() {
@@ -101,8 +109,28 @@ fn write_store_to(path: &Path, store: &AgentStore) -> Result<(), String> {
     }
     let content = serde_json::to_string_pretty(store)
         .map_err(|e| format!("Failed to serialize agents: {e}"))?;
-    std::fs::write(path, content)
-        .map_err(|e| format!("Failed to write {}: {e}", path.display()))
+    crate::settings::atomic_write(path, &content)
+}
+
+pub(crate) fn validate_agent_for_import(agent: &AgentConfig) -> Result<AgentConfig, String> {
+    let id = agent.id.trim();
+    if id.is_empty() {
+        return Err("Agent id is required".to_string());
+    }
+    if id.chars().count() > 128 || id.chars().any(char::is_control) {
+        return Err("Agent id is invalid".to_string());
+    }
+    Ok(AgentConfig {
+        id: id.to_string(),
+        name: validate_name(&agent.name)?,
+        prompt: validate_prompt(agent.prompt.clone())?,
+        icon: sanitize_icon(agent.icon.clone()),
+        created_at: agent.created_at,
+        tools: validate_tools(agent.tools.clone())?,
+        model: validate_model(agent.model.clone())?,
+        context: validate_context(agent.context.clone())?,
+        effort: validate_effort(agent.effort.clone())?,
+    })
 }
 
 /// Trimmed name, or a validation error: required, 1–64 chars.
@@ -240,6 +268,7 @@ fn agent_add_blocking(
     context: Option<Vec<String>>,
     effort: Option<String>,
 ) -> Result<AgentConfig, String> {
+    let _guard = agents_write_lock();
     let mut store = read_store()?;
     let agent = AgentConfig {
         id: uuid::Uuid::new_v4().to_string(),
@@ -269,6 +298,7 @@ fn agent_update_blocking(
     context: Option<Vec<String>>,
     effort: Option<String>,
 ) -> Result<bool, String> {
+    let _guard = agents_write_lock();
     let mut store = read_store()?;
     let Some(agent) = store.agents.iter_mut().find(|agent| agent.id == id) else {
         return Ok(false);
@@ -285,6 +315,7 @@ fn agent_update_blocking(
 }
 
 fn agent_delete_blocking(id: String) -> Result<bool, String> {
+    let _guard = agents_write_lock();
     let mut store = read_store()?;
     let before = store.agents.len();
     store.agents.retain(|agent| agent.id != id);
@@ -408,6 +439,7 @@ fn import_legacy_agents_from(
     }
 
     if legacy_path.is_file() {
+        let _guard = agents_write_lock();
         let content = std::fs::read_to_string(legacy_path)
             .map_err(|e| format!("read {}: {e}", legacy_path.display()))?;
         let legacy: LegacyAgentFile = serde_json::from_str(&content)

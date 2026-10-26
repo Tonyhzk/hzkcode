@@ -72,6 +72,12 @@ pub struct RelayState {
     inner: Mutex<Option<Running>>,
 }
 
+impl RelayState {
+    pub(crate) fn is_running(&self) -> bool {
+        self.inner.lock().is_some()
+    }
+}
+
 struct Running {
     info: RelayInfo,
     stop: watch::Sender<bool>,

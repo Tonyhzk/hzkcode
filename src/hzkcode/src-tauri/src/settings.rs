@@ -592,6 +592,7 @@ pub fn persist_settings(settings: &mut AppSettings) -> Result<(), String> {
 pub(crate) fn persist_settings_committed(
     settings: &mut AppSettings,
 ) -> Result<Option<String>, String> {
+    crate::config_backup::ensure_writable()?;
     let path = crate::paths::settings_path();
     persist_settings_to(settings, &path)
 }

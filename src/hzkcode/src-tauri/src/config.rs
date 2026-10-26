@@ -73,6 +73,7 @@ pub fn read_config() -> Result<CliConfig, String> {
 }
 
 fn write_config(config: &CliConfig) -> Result<(), String> {
+    crate::config_backup::ensure_writable()?;
     let path = crate::paths::config_path();
     let content = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
     crate::settings::atomic_write(&path, &content)

@@ -25,6 +25,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - 内置引擎升级到 3.5.1
 
 新功能
+- 新增密码加密的配置导出与导入，可迁移应用设置、渠道密钥、自定义智能体、全局提示词和界面偏好；恢复前可预览，并自动备份原配置
 - 输入框外侧与用量统计同排显示身份、行为、提示词、协议、代理、第二大脑与上下文按钮；当前协议直接可见，输入框内部不增加按钮行
 - 提示词模式、身份、持续行为模式和接口协议可直接修改，无需发送聊天消息
 - 已有对话可选择在当前会话切换身份、克隆后切换或追加身份；新对话直接切换，默认身份不能追加
@@ -43,6 +44,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - Bundled engine upgraded to 3.5.1
 
 Features
+- Password-encrypted configuration export and import transfers app settings, provider credentials, custom agents, global prompts and interface preferences, with a preview and automatic backup before restore
 - Identity, behavior, prompts, API format, proxy, second brain, and context now have dedicated buttons outside the input box, on the same row as usage; the active API format is visible without adding rows inside the input box
 - Control prompt mode, identity, persistent interaction mode, and API format without sending a chat message
 - Apply an identity in the current conversation, clone first, or append it; empty conversations switch in place, and the default identity cannot be appended

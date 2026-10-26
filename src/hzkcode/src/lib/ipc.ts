@@ -415,6 +415,29 @@ export interface AppSettings {
   webRelayKey?: string | null;
 }
 
+export interface ConfigBackupWarning {
+  code: string;
+  field?: string | null;
+}
+
+export interface ConfigBackupPreview {
+  token: string;
+  appVersion: string;
+  exportedAt: string;
+  platform: string;
+  providerCount: number;
+  agentCount: number;
+  promptCount: number;
+  preferenceCount: number;
+  warnings: ConfigBackupWarning[];
+}
+
+export interface ConfigBackupImportResult {
+  backupPath: string;
+  preferences: Record<string, string>;
+  warnings: ConfigBackupWarning[];
+}
+
 export interface DirEntry {
   name: string;
   isDir: boolean;
@@ -820,6 +843,18 @@ export const ipc = {
   fetchProviderModels: (baseUrl: string, apiKey: string) =>
     invoke<ProviderModelList>("fetch_provider_models", { baseUrl, apiKey }),
   // settings
+  configBackupExport: (path: string, password: string, preferences: Record<string, string>) =>
+    invoke<{ path: string }>("config_backup_export", { path, password, preferences }),
+  configBackupPreview: (path: string, password: string) =>
+    invoke<ConfigBackupPreview>("config_backup_preview", { path, password }),
+  configBackupImport: async (token: string, currentPreferences: Record<string, string>) => {
+    const result = await invoke<ConfigBackupImportResult>("config_backup_import", {
+      token,
+      currentPreferences,
+    });
+    settingsPromise = null;
+    return result;
+  },
   getAppSettings: fetchAppSettings,
   /** De-cached read: settings the backend changed on its own (the pairing key
    *  rotates after a pairing and on a timer) never pass through a write here,

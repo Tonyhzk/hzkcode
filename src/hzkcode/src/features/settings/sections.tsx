@@ -9,6 +9,7 @@ import ChartColumn from "lucide-react/dist/esm/icons/chart-column";
 import PlugZap from "lucide-react/dist/esm/icons/plug-zap";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles";
 import Wrench from "lucide-react/dist/esm/icons/wrench";
+import Archive from "lucide-react/dist/esm/icons/archive";
 import i18n from "@/lib/i18n";
 import type { SettingsNavItem } from "@/components/application/settings/settings-modal";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
@@ -25,6 +26,7 @@ import { ServicesSection } from "./ServicesSection";
 import { AboutSection } from "./AboutSection";
 import { WebAccessSection } from "./WebAccessSection";
 import { UsageSection } from "./UsageSection";
+import { ConfigBackupSection } from "./ConfigBackupSection";
 import { ShortcutsSection } from "@/features/shortcuts/ShortcutsSection";
 import { ENGINE_IDS, type EngineId } from "./providers";
 
@@ -155,6 +157,15 @@ settingsRegistry.register({
   group: "data",
   order: 3,
   component: UsageSection,
+});
+settingsRegistry.register({
+  id: "configBackup",
+  key: "configBackup",
+  label: () => i18n.t("backup.title"),
+  icon: Archive,
+  group: "data",
+  order: 4,
+  component: ConfigBackupSection,
 });
 settingsRegistry.register({
   id: "about",

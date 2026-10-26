@@ -52,6 +52,13 @@ fn global_prompts_dir() -> PathBuf {
     crate::paths::app_home().join("prompts")
 }
 
+// 配置恢复与提示词编辑共用写锁。
+static PROMPTS_WRITE_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
+pub(crate) fn prompts_write_lock() -> parking_lot::MutexGuard<'static, ()> {
+    PROMPTS_WRITE_LOCK.lock()
+}
+
 /// Both scopes' directories for a workspace root, workspace first. The
 /// workspace root itself must pass the same workspace/grant check the
 /// file commands use, so a web client cannot point `path` at an arbitrary
@@ -263,6 +270,8 @@ fn prompts_create_blocking(
     argument_hint: Option<String>,
     content: String,
 ) -> Result<CustomPromptEntry, String> {
+    let _guard = prompts_write_lock();
+    crate::config_backup::ensure_writable()?;
     let name = sanitize_prompt_name(name)?;
     let roots = prompt_roots(path, db)?;
     let Some((dir, scope)) = roots.iter().find(|(_, s)| *s == scope) else {
@@ -293,6 +302,8 @@ fn prompts_update_blocking(
     prompt_path: &str,
     updates: PromptUpdates,
 ) -> Result<CustomPromptEntry, String> {
+    let _guard = prompts_write_lock();
+    crate::config_backup::ensure_writable()?;
     let roots = prompt_roots(path, db)?;
     let target = PathBuf::from(prompt_path);
     if !target.exists() {
@@ -359,6 +370,8 @@ fn prompts_delete_blocking(
     path: &str,
     prompt_path: &str,
 ) -> Result<bool, String> {
+    let _guard = prompts_write_lock();
+    crate::config_backup::ensure_writable()?;
     let roots = prompt_roots(path, db)?;
     let target = PathBuf::from(prompt_path);
     if !target.exists() {
@@ -375,6 +388,8 @@ fn prompts_move_blocking(
     prompt_path: &str,
     scope: &str,
 ) -> Result<CustomPromptEntry, String> {
+    let _guard = prompts_write_lock();
+    crate::config_backup::ensure_writable()?;
     let roots = prompt_roots(path, db)?;
     let target = PathBuf::from(prompt_path);
     if !target.exists() {
@@ -600,6 +615,7 @@ fn import_legacy_prompts_from(
         }
     }
 
+    let _guard = prompts_write_lock();
     copy_prompt_files(legacy_global_dir, dest_global_dir);
 
     if legacy_workspaces_path.is_file() {

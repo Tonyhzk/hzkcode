@@ -3,6 +3,7 @@ pub mod agent_catalog;
 pub mod baidu_tongji;
 pub mod cli_lifecycle;
 pub mod config;
+mod config_backup;
 pub mod db;
 pub mod drag_ghost;
 pub mod engine;
@@ -256,6 +257,9 @@ pub fn run() {
             config::reorder_providers,
             provider_models::fetch_provider_models,
             // settings
+            config_backup::config_backup_export,
+            config_backup::config_backup_preview,
+            config_backup::config_backup_import,
             settings::get_app_settings,
             settings::update_app_settings,
             settings::set_window_theme,

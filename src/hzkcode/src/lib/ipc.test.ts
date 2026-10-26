@@ -22,6 +22,42 @@ beforeEach(async () => {
   ({ ipc } = await import("./ipc"));
 });
 
+describe("配置备份接口", () => {
+  it("导出和预览传递指定文件与密码", async () => {
+    const preferences = { "hzkcode.zoom:v1": "120" };
+    invoke.mockResolvedValueOnce({ path: "/tmp/config.hzkbackup" });
+    await ipc.configBackupExport("/tmp/config.hzkbackup", "test-password", preferences);
+    expect(invoke).toHaveBeenCalledWith("config_backup_export", {
+      path: "/tmp/config.hzkbackup", password: "test-password", preferences,
+    });
+    await ipc.configBackupPreview("/tmp/config.hzkbackup", "test-password");
+    expect(invoke).toHaveBeenLastCalledWith("config_backup_preview", {
+      path: "/tmp/config.hzkbackup", password: "test-password",
+    });
+  });
+
+  it("确认恢复使用预览令牌，并使旧设置缓存失效", async () => {
+    invoke.mockResolvedValueOnce(settings({ theme: "dark" }));
+    await ipc.getAppSettings();
+    invoke.mockResolvedValueOnce({ backupPath: "/tmp/b.hzkbackup", preferences: {}, warnings: [] });
+    await ipc.configBackupImport("preview-token", {});
+    expect(invoke).toHaveBeenLastCalledWith("config_backup_import", {
+      token: "preview-token", currentPreferences: {},
+    });
+    invoke.mockResolvedValueOnce(settings({ theme: "light" }));
+    await expect(ipc.getAppSettings()).resolves.toMatchObject({ theme: "light" });
+  });
+
+  it("导入失败不丢弃原设置缓存", async () => {
+    invoke.mockResolvedValueOnce(settings({ theme: "dark" }));
+    await ipc.getAppSettings();
+    invoke.mockRejectedValueOnce("backup_stale");
+    await expect(ipc.configBackupImport("old-token", {})).rejects.toBe("backup_stale");
+    await expect(ipc.getAppSettings()).resolves.toMatchObject({ theme: "dark" });
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("app settings cache", () => {
   it("serves repeat reads from a single backend call", async () => {
     invoke.mockResolvedValue(settings({ theme: "dark" }));
