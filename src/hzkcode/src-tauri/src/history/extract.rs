@@ -944,16 +944,70 @@ fn claude_block_rows(
     }
 }
 
-/// Inner text of a `<local-command-stdout>…</local-command-stdout>` user
-/// message, when the content is exactly that wrapper (mirrors the engine's
-/// live parser).
-fn local_command_stdout_text(content: &str) -> Option<String> {
-    let inner = content
-        .trim()
-        .strip_prefix("<local-command-stdout>")?
-        .strip_suffix("</local-command-stdout>")?
-        .trim();
-    (!inner.is_empty()).then(|| inner.to_string())
+/// 严格包装的本地命令载荷：`(是否 stderr, 文本)`，
+/// 包装为 `<local-command-stdout>…</local-command-stdout>` 或 `-stderr`。
+/// 外层 None 表示不是完整包装；Some(None) 表示空包装（隐藏，
+/// 不回退原文），避免空包装把 XML 泄漏成普通文本。
+fn local_command_wrapped_text(content: &str) -> Option<Option<(bool, String)>> {
+    for tag in ["stdout", "stderr"] {
+        let open = format!("<local-command-{tag}>");
+        let close = format!("</local-command-{tag}>");
+        if let Some(inner) = content
+            .trim()
+            .strip_prefix(&open)
+            .and_then(|rest| rest.strip_suffix(&close))
+        {
+            let inner = inner.trim();
+            return Some((!inner.is_empty()).then(|| (tag == "stderr", inner.to_string())));
+        }
+    }
+    None
+}
+
+/// 从纯字符串或 text 块数组读取本地命令输出；tool_result 载荷和
+/// 未包装的普通用户文本都不算命令输出。
+fn wrapped_local_command_text(content: &Value) -> Option<Option<(bool, String)>> {
+    match content {
+        Value::String(raw) => local_command_wrapped_text(raw),
+        Value::Array(blocks) => {
+            let mut text = String::new();
+            for block in blocks {
+                if block.get("type").and_then(Value::as_str) != Some("text") {
+                    return None;
+                }
+                text.push_str(block.get("text").and_then(Value::as_str)?);
+            }
+            local_command_wrapped_text(&text)
+        }
+        _ => None,
+    }
+}
+
+/// `system/local_command_output` 的 content：SDK 的原始输出字符串；
+/// 仍带转录标签时先解包。
+fn local_command_output_text(content: &str) -> Option<(bool, String)> {
+    match local_command_wrapped_text(content) {
+        Some(Some(payload)) => Some(payload),
+        // 有效空包装：隐藏，不能把原始 XML 当命令输出。
+        Some(None) => None,
+        None => {
+            let text = content.trim();
+            (!text.is_empty()).then(|| (false, text.to_string()))
+        }
+    }
+}
+
+/// 单条本地命令输出对应的行，与实时解析保持一致：stdout 为 assistant
+/// 文本，stderr 为错误通知。
+fn local_command_row(is_error: bool, text: String, ts: Option<String>) -> LineRow {
+    if is_error {
+        LineRow {
+            level: Some("error".to_string()),
+            ..LineRow::new("notice", text, ts)
+        }
+    } else {
+        LineRow::new("assistant", text, ts)
+    }
 }
 
 /// Summary of a `<task-notification>…</task-notification>` user row (the CLI
@@ -1004,6 +1058,30 @@ fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
                 }];
             }
         }
+        let is_meta = value.get("isMeta").and_then(Value::as_bool) == Some(true);
+        if subtype == Some("local_command_output") && !is_meta {
+            let content = value.get("content").and_then(Value::as_str).unwrap_or("");
+            if let Some((is_error, text)) = local_command_output_text(content) {
+                let ts = ts_string(value, &["timestamp"]);
+                return vec![local_command_row(is_error, text, ts)];
+            }
+        }
+        if subtype == Some("local_command") && !is_meta {
+            let content = value.get("content").and_then(Value::as_str).unwrap_or("");
+            let ts = ts_string(value, &["timestamp"]);
+            if let Some(payload) = local_command_wrapped_text(content) {
+                // 空包装隐藏且不回退原文，避免 XML 出现在时间线。
+                return match payload {
+                    Some((is_error, text)) => vec![local_command_row(is_error, text, ts)],
+                    None => Vec::new(),
+                };
+            }
+            // 命令输入面包屑（`<command-name>/x</command-name>` …）：
+            // 还原为输入内容，避免标签原样出现在时间线。
+            if let Some(display) = super::slash_command_display(content) {
+                return vec![LineRow::new("user", display, ts)];
+            }
+        }
         return Vec::new();
     }
     if line_type != "user" && line_type != "assistant" {
@@ -1052,13 +1130,16 @@ fn extract_claude_line(value: &Value, images: ImageMode) -> LineRows {
             vec![LineRow::new("assistant", text, ts)]
         };
     }
-    // Local command confirmations (`<local-command-stdout>…</local-command-stdout>`
-    // user rows): the live renderer shows them as assistant rows; match that.
+    // 本地命令确认（`<local-command-stdout>` / `-stderr` 的 user 行，
+    // 纯字符串或 text 块数组）：与实时渲染一致，stdout 作为 assistant
+    // 文本，stderr 作为错误通知。
     if line_type == "user" {
-        if let Some(Value::String(raw)) = content {
-            if let Some(inner) = local_command_stdout_text(raw) {
-                return vec![LineRow::new("assistant", inner, ts)];
-            }
+        if let Some(payload) = content.and_then(wrapped_local_command_text) {
+            // 空包装隐藏且不回退原文，避免 XML 进入普通用户文本。
+            return match payload {
+                Some((is_error, inner)) => vec![local_command_row(is_error, inner, ts)],
+                None => Vec::new(),
+            };
         }
     }
     // Background-task bookends arrive as `<task-notification>` XML user rows
@@ -1294,6 +1375,220 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].role, "assistant");
         assert_eq!(rows[0].text, "Compacted Context: ~8 → ~52 tokens");
+    }
+
+    #[test]
+    fn claude_local_command_text_block_row_becomes_an_assistant_row() {
+        let line: Value = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": "<local-command-stdout>已启用会话代理：http://127.0.0.1:9090</local-command-stdout>"
+                }]
+            }
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "assistant");
+        assert_eq!(rows[0].text, "已启用会话代理：http://127.0.0.1:9090");
+        assert!(!rows[0].text.contains("local-command-stdout"));
+    }
+
+    #[test]
+    fn claude_plain_user_text_blocks_are_not_command_output() {
+        let line: Value = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{ "type": "text", "text": "帮我看下这个 bug" }]
+            }
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "user");
+        assert_eq!(rows[0].text, "帮我看下这个 bug");
+    }
+
+    #[test]
+    fn claude_tool_result_payload_is_not_command_output() {
+        let line: Value = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": "<local-command-stdout>工具结果里的同名文本</local-command-stdout>"
+                }]
+            }
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert!(!rows.iter().any(|row| row.role == "assistant"));
+        assert!(!rows.iter().any(|row| row.text.contains("工具结果里的同名文本")));
+    }
+
+    #[test]
+    fn claude_meta_user_command_wrapper_is_not_command_output() {
+        let line: Value = serde_json::json!({
+            "type": "user",
+            "isMeta": true,
+            "message": {
+                "role": "user",
+                "content": "<local-command-stdout>模型可见的指导消息</local-command-stdout>"
+            }
+        });
+        assert!(extract_claude_line(&line, ImageMode::Collect).is_empty());
+    }
+
+    #[test]
+    fn claude_system_local_command_stdout_becomes_an_assistant_row() {
+        let line: Value = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command",
+            "content": "<local-command-stdout>已关闭当前会话代理，后续网络请求直连</local-command-stdout>",
+            "level": "info",
+            "timestamp": "2026-10-20T22:23:13.803Z",
+            "uuid": "u-1"
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "assistant");
+        assert_eq!(rows[0].text, "已关闭当前会话代理，后续网络请求直连");
+    }
+
+    #[test]
+    fn claude_system_local_command_stderr_becomes_an_error_notice() {
+        let line: Value = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command",
+            "content": "<local-command-stderr>命令执行失败</local-command-stderr>",
+            "level": "info",
+            "timestamp": "2026-10-20T22:23:13.803Z",
+            "uuid": "u-1"
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "notice");
+        assert_eq!(rows[0].level.as_deref(), Some("error"));
+        assert_eq!(rows[0].text, "命令执行失败");
+    }
+
+    #[test]
+    fn claude_system_local_command_output_becomes_an_assistant_row() {
+        let line: Value = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command_output",
+            "content": "已启用会话代理：http://127.0.0.1:9090",
+            "timestamp": "2026-10-20T22:23:13.803Z",
+            "uuid": "u-1"
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "assistant");
+        assert_eq!(rows[0].text, "已启用会话代理：http://127.0.0.1:9090");
+    }
+
+    #[test]
+    fn claude_local_command_breadcrumb_becomes_a_user_row() {
+        let line: Value = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command",
+            "content": "<command-name>/maxtokens</command-name>\n            <command-message>maxtokens</command-message>\n            <command-args>900000</command-args>",
+            "level": "info",
+            "timestamp": "2026-10-20T22:23:13.803Z",
+            "uuid": "u-1"
+        });
+        let rows = extract_claude_line(&line, ImageMode::Collect);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "user");
+        assert_eq!(rows[0].text, "/maxtokens 900000");
+        assert!(!rows[0].text.contains("<command-"));
+
+        // 只有孤立标签、没有完整面包屑时不还原。
+        let bare: Value = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command",
+            "content": "请解释 <command-name> 标签",
+            "timestamp": "2026-10-20T22:23:13.803Z",
+            "uuid": "u-2"
+        });
+        assert!(extract_claude_line(&bare, ImageMode::Collect).is_empty());
+    }
+
+    #[test]
+    fn claude_system_local_command_empty_wrapper_is_hidden() {
+        for tag in ["stdout", "stderr"] {
+            let line: Value = serde_json::json!({
+                "type": "system",
+                "subtype": "local_command",
+                "content": format!("<local-command-{tag}></local-command-{tag}>"),
+                "level": "info",
+                "timestamp": "2026-10-20T22:23:13.803Z",
+                "uuid": "u-1"
+            });
+            assert!(
+                extract_claude_line(&line, ImageMode::Collect).is_empty(),
+                "{tag} 空包装必须隐藏"
+            );
+        }
+    }
+
+    #[test]
+    fn claude_system_local_command_output_empty_wrapper_is_hidden() {
+        for tag in ["stdout", "stderr"] {
+            let line: Value = serde_json::json!({
+                "type": "system",
+                "subtype": "local_command_output",
+                "content": format!("<local-command-{tag}></local-command-{tag}>"),
+                "timestamp": "2026-10-20T22:23:13.803Z",
+                "uuid": "u-1"
+            });
+            assert!(
+                extract_claude_line(&line, ImageMode::Collect).is_empty(),
+                "{tag} 空包装必须隐藏"
+            );
+        }
+    }
+
+    #[test]
+    fn claude_meta_system_local_command_is_hidden() {
+        let output: Value = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command_output",
+            "content": "模型可见的命令输出",
+            "isMeta": true,
+            "timestamp": "2026-10-20T22:23:13.803Z",
+            "uuid": "u-1"
+        });
+        let transcript: Value = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command",
+            "content": "<local-command-stdout>模型可见的命令输出</local-command-stdout>",
+            "isMeta": true,
+            "timestamp": "2026-10-20T22:23:13.803Z",
+            "uuid": "u-2"
+        });
+        assert!(extract_claude_line(&output, ImageMode::Collect).is_empty());
+        assert!(extract_claude_line(&transcript, ImageMode::Collect).is_empty());
+    }
+
+    #[test]
+    fn claude_user_empty_local_command_wrapper_is_hidden() {
+        for tag in ["stdout", "stderr"] {
+            let line: Value = serde_json::json!({
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": format!("<local-command-{tag}></local-command-{tag}>")
+                }
+            });
+            assert!(
+                extract_claude_line(&line, ImageMode::Collect).is_empty(),
+                "{tag} 空包装必须隐藏"
+            );
+        }
     }
 
     #[test]

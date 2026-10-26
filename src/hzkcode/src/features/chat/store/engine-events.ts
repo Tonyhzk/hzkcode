@@ -30,6 +30,7 @@ import {
   migrateRecordedAgent,
   migrateSelectedAgent,
 } from "@/features/agents/selected-agent";
+import { migrateSessionActivities } from "./session-activity";
 import i18n from "@/lib/i18n";
 
 /**
@@ -486,6 +487,8 @@ function onSession(
   // the same move (the clone detector compares against it).
   migrateSelectedAgent(workspacePath, nativeId);
   migrateRecordedAgent(workspacePath, nativeId);
+  // 草稿期间的会话操作记录跟随首个 session 事件迁到正式 id。
+  migrateSessionActivities(fromKey, newKey);
   // Sidebar row + tab title pick the new session up immediately instead of
   // waiting for the post-turn rescan.
   const firstUser = (deps.get().bySession[newKey]?.messages ?? []).find(

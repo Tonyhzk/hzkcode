@@ -32,6 +32,9 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - 应用自带角色、自定义角色和引擎身份使用同一应用流程
 
 修复
+- 修复新对话先切换身份或行为模式后提示找不到会话的问题
+- 切换身份、行为模式和其他会话设置后，在聊天中显示操作结果；关闭详细显示仍可见
+- 重新打开会话时保留指令输出，不再遗漏结果或显示内部标签
 - 恢复会话时保留已保存的身份和设置，不再被旧的界面默认值覆盖
 - 切换身份不再在下一次发送时自动克隆；操作失败保留当前对话与选择`,
       en: `Engine update
@@ -45,6 +48,9 @@ Features
 - App-bundled personas, custom personas, and engine identities share one application flow
 
 Fixes
+- Fixed a session-not-found error when changing identity or behavior before the first chat message
+- Identity, behavior, and other session-setting changes now show their results in chat, even with detailed display disabled
+- Reopening a conversation preserves command output instead of dropping results or displaying internal tags
 - Resuming preserves saved identities and settings instead of overriding them with stale UI defaults
 - Identity changes no longer silently clone on the next send; failed operations retain the current conversation and selection`,
     },

@@ -2,6 +2,8 @@ import { create } from "zustand";
 import {
   ipc,
   type AgentConfig,
+  type SessionControlCatalog,
+  type SessionControlState,
   type SessionControlParams,
   type SessionControlResult,
   type SessionMeta,
@@ -90,6 +92,11 @@ import {
   sessionControlErrorText,
   type SessionControlCommand,
 } from "./store/session-control";
+import {
+  clearSessionActivities,
+  migrateSessionActivities,
+  recordSessionActivity,
+} from "./store/session-activity";
 import { persistSettings } from "./store/settings-persist";
 import {
   listExternalSessionMetas,
@@ -183,6 +190,103 @@ function readRewindAnchors(): Record<string, string> {
         : null,
     ) ?? {}
   );
+}
+
+/** 身份显示名：优先本次携带的定义、引擎目录，再看应用内置角色与自定义智能体。 */
+function identityLabel(
+  value: string,
+  catalog: SessionControlCatalog | null | undefined,
+): string {
+  const catalogHit = catalog?.identities.find(
+    (entry) => entry.id === value || entry.name === value,
+  );
+  if (catalogHit) return catalogHit.name;
+  const builtIn = useAgentStore
+    .getState()
+    .builtInAgents.find((entry) => entry.id === value || entry.name === value);
+  if (builtIn) return builtIn.name;
+  const agent = useAgentStore
+    .getState()
+    .agents.find((entry) => entry.id === value || entry.name === value);
+  return agent?.name ?? value;
+}
+
+/** 身份/持续模式的显示名优先取引擎目录或本次携带的定义，取不到才退回原值。 */
+function controlTargetLabel(
+  command: SessionControlCommand,
+  catalog: SessionControlCatalog | null | undefined,
+): string {
+  const value = command.value ?? command.agent?.name ?? "";
+  if (command.operation === "identity") {
+    if (!value || value === "default") return "default";
+    if (command.agent && (command.agent.id === value || command.agent.name === value)) {
+      return command.agent.name;
+    }
+    return identityLabel(value, catalog);
+  }
+  if (command.operation === "interaction-mode") {
+    return (
+      catalog?.interactionModes.find((entry) => entry.slug === value)?.name ??
+      value
+    );
+  }
+  return value;
+}
+
+/** 引擎回报的实际生效值；身份按目录解析回显示名。 */
+function controlEffectiveLabel(
+  operation: SessionControlCommand["operation"],
+  state: SessionControlState | null | undefined,
+  catalog: SessionControlCatalog | null | undefined,
+): string | undefined {
+  if (!state) return undefined;
+  if (operation === "identity") {
+    const base = state.identity.base;
+    return base === null ? "default" : identityLabel(base, catalog);
+  }
+  if (operation === "interaction-mode") {
+    const value = state.interactionMode.effective;
+    return (
+      catalog?.interactionModes.find((entry) => entry.slug === value)?.name ??
+      value
+    );
+  }
+  if (operation === "prompt-mode") return state.promptMode.effective;
+  return state.apiMode.effective;
+}
+
+/** 同一值再次提交不算变更，不产生成功记录；克隆总会开新会话，必记。 */
+function controlStateChanged(
+  operation: SessionControlCommand["operation"],
+  before: SessionControlState | null | undefined,
+  after: SessionControlState | null | undefined,
+): boolean {
+  if (!before || !after) return true;
+  if (operation === "identity") {
+    return (
+      before.identity.base !== after.identity.base ||
+      before.identity.extensions.length !== after.identity.extensions.length ||
+      before.identity.extensions.some(
+        (entry, index) => {
+          const next = after.identity.extensions[index];
+          return (
+            !next ||
+            entry.agentType !== next.agentType ||
+            JSON.stringify(entry.tools ?? null) !==
+              JSON.stringify(next.tools ?? null) ||
+            JSON.stringify(entry.disallowedTools ?? null) !==
+              JSON.stringify(next.disallowedTools ?? null)
+          );
+        },
+      )
+    );
+  }
+  const field = operation === "interaction-mode"
+    ? "interactionMode"
+    : operation === "prompt-mode" ? "promptMode" : "apiMode";
+  return before[field].effective !== after[field].effective ||
+    before[field].override !== after[field].override ||
+    before[field].source !== after[field].source;
 }
 
 export const useChatStore = create<ChatStore>((set, get) => {
@@ -662,6 +766,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
       });
       migrateSelectedAgent(workspacePath, targetSessionId);
       migrateRecordedAgent(workspacePath, targetSessionId);
+      // 草稿获得正式 id 后，之前记录的会话操作跟随同一个会话继续展示。
+      migrateSessionActivities(sourceKey, targetKey);
       rememberControlTarget(engine, targetSessionId, provider, result);
       persistTabs(get().openTabs, get().active);
       if (sourceStillActive) {
@@ -1030,6 +1136,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
           };
         });
         persistTabs(get().openTabs, get().active);
+        // 草稿首次发送若由响应直接给出会话 id，操作记录同步迁到正式键。
+        if (newKey !== key) migrateSessionActivities(key, newKey);
         // Sidebar row + tab title pick the new session up immediately
         // instead of waiting for the post-turn rescan.
         upsertSessionMetaInto(
@@ -1549,6 +1657,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           messages: page.messages,
           subagentHistory: page.subagentHistory,
           nextBefore: page.nextBefore,
+          error: null,
           loading: false,
           // Live "usage" events only cover fresh turns; a resumed session
           // adopts the newest usage snapshot carried by its history.
@@ -2213,18 +2322,42 @@ export const useChatStore = create<ChatStore>((set, get) => {
     /** Per-session proxy switch (the composer's 会话开关, the CLI's /proxy):
      *  true = 开启, false = 关闭, null = 跟随默认。每次发送随进程注入。 */
     setSessionProxy: (key, value) => {
+      const previous = get().bySession[key]?.proxyEnabled ?? null;
       patchSession(set, key, { proxyEnabled: value });
+      if (previous !== value) {
+        recordSessionActivity(key, {
+          kind: "proxy",
+          status: "success",
+          value: value === null ? "follow" : value ? "on" : "off",
+        });
+      }
     },
 
     /** Per-session second-brain switch (the CLI's /second-brain on|off). */
     setSessionSecondBrain: (key, value) => {
+      const previous = get().bySession[key]?.secondBrainEnabled ?? null;
       patchSession(set, key, { secondBrainEnabled: value });
+      if (previous !== value) {
+        recordSessionActivity(key, {
+          kind: "second-brain",
+          status: "success",
+          value: value === null ? "follow" : value ? "on" : "off",
+        });
+      }
     },
 
     /** Per-session context-window override (the CLI's /maxtokens): a positive
      *  token count pinned on every send; null 跟随默认。 */
     setSessionAutoCompactWindow: (key, value) => {
+      const previous = get().bySession[key]?.autoCompactWindow ?? null;
       patchSession(set, key, { autoCompactWindow: value });
+      if (previous !== value) {
+        recordSessionActivity(key, {
+          kind: "context",
+          status: "success",
+          value: value === null ? "default" : String(value),
+        });
+      }
     },
     /** Set (or clear) a session's pending rewind point: the next send passes
      *  it as the CLI's `--resume-session-at` (truncate to that message,
@@ -2491,6 +2624,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       }
       set({ actionError: null });
       const key = sessionKey(engine, sessionId, "");
+      clearSessionActivities(key);
       const tab = get().openTabs.find(
         (t) => t.engine === engine && t.sessionId === sessionId,
       );
@@ -2796,6 +2930,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           messages: page.messages,
           subagentHistory: page.subagentHistory,
           nextBefore: page.nextBefore,
+          error: null,
           // Live "usage" events only cover fresh turns; the reload adopts the
           // newest usage snapshot the history carries (same as selectSession).
           usage:
@@ -2821,26 +2956,35 @@ export const useChatStore = create<ChatStore>((set, get) => {
     applySessionControl: async (command: SessionControlCommand) => {
       const tab = get().active;
       if (!tab) return false;
-      if (!supportsSessionControlFor(tab)) {
-        set({ actionError: "session control is unavailable for this session" });
-        return false;
-      }
       const key = sessionKey(tab.engine, tab.sessionId, tab.workspacePath);
+      const controlCatalog = () =>
+        get().bySession[key]?.sessionControl?.catalog ?? null;
+      const fail = (message: string) => {
+        recordSessionActivity(key, {
+          kind: command.operation,
+          status: "error",
+          value: controlTargetLabel(command, controlCatalog()),
+          error: message,
+        });
+        set({ actionError: message });
+        return false;
+      };
+      if (!supportsSessionControlFor(tab)) {
+        return fail("session control is unavailable for this session");
+      }
       if (get().controlBusyByKey[key]) {
-        set({
-          actionError: i18n.t("chat.sessionControlBusy", {
+        return fail(
+          i18n.t("chat.sessionControlBusy", {
             defaultValue: "Session control is busy; try again shortly.",
           }),
-        });
-        return false;
+        );
       }
       if (get().streamingByKey[key]) {
-        set({
-          actionError: i18n.t("chat.sessionControlBusy", {
+        return fail(
+          i18n.t("chat.sessionControlBusy", {
             defaultValue: "Session control is busy; try again shortly.",
           }),
-        });
-        return false;
+        );
       }
       markControlBusy(key);
       let adoptedKey = key;
@@ -2858,24 +3002,46 @@ export const useChatStore = create<ChatStore>((set, get) => {
           request: controlRequestWithRevision(command, current),
         });
         if (result.is_error) {
-          set({ actionError: sessionControlErrorText(result) });
-          return false;
+          return fail(sessionControlErrorText(result));
         }
         if (!result.targetSessionId) {
-          set({ actionError: "session control returned no target session" });
-          return false;
+          return fail("session control returned no target session");
         }
         adoptedKey = sessionKey(
           tab.engine,
           result.targetSessionId,
           tab.workspacePath,
         );
+        const catalog =
+          result.catalog ?? before?.sessionControl?.catalog ?? null;
+        const effective = controlEffectiveLabel(
+          command.operation,
+          result.state,
+          catalog,
+        );
+        const apply = result.cloned ? "clone" : command.apply;
+        // 同一值原地重提不算变更；克隆一定开了新会话，仍需记录。
+        const changed =
+          result.cloned ||
+          controlStateChanged(
+            command.operation,
+            before?.sessionControl?.state,
+            result.state,
+          );
         await adoptControlResult(tab, result, before);
+        if (changed) {
+          recordSessionActivity(adoptedKey, {
+            kind: command.operation,
+            status: "success",
+            value: controlTargetLabel(command, catalog),
+            ...(effective !== undefined ? { effective } : {}),
+            ...(apply ? { apply } : {}),
+          });
+        }
         set({ actionError: null });
         return true;
       } catch (error) {
-        set({ actionError: errorText(error) });
-        return false;
+        return fail(errorText(error));
       } finally {
         clearControlBusy(key);
         if (adoptedKey !== key) clearControlBusy(adoptedKey);

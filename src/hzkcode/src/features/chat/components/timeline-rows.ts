@@ -1,4 +1,5 @@
 import type { Message } from "@/lib/ipc";
+import { isSessionActivityMessage } from "../store/session-activity";
 
 export type ProcessItem = {
   type: "tool" | "thinking";
@@ -184,6 +185,9 @@ export function buildRows(messages: Message[]): TimelineRow[] {
 }
 
 export function rowKey(row: TimelineRow): string | number {
+  if (row.kind === "msg" && isSessionActivityMessage(row.message)) {
+    return `activity-${row.message.sessionActivity.id}`;
+  }
   return row.kind === "msg" ? row.message.seq : `process-${row.firstSeq}`;
 }
 

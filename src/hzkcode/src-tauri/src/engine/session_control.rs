@@ -463,8 +463,29 @@ fn parse_session_control_result(
     Ok(value)
 }
 
-/// 查询或修改一个会话的离线控制状态。修改成功广播会话变更；查询与分类
-/// 失败不广播。运行中的会话拒绝修改（GUI 侧先拦，CLI 侧还有锁）。
+/// 修改成功后在返回前同步登记目标会话的历史索引（纯元数据会话也有文件）；
+/// 查询与失败不登记。索引失败时引擎修改已经保存，错误信息必须说明这一点，
+/// 不能伪装成回滚。
+fn index_control_outcome(
+    db: &crate::db::Db,
+    workspace: &str,
+    outcome: &Value,
+    mutating: bool,
+) -> Result<(), String> {
+    if !mutating || outcome.get("is_error").and_then(Value::as_bool) != Some(false) {
+        return Ok(());
+    }
+    let target = outcome
+        .get("targetSessionId")
+        .and_then(Value::as_str)
+        .ok_or("会话控制修改已保存，但结果没有目标会话，历史索引未登记")?;
+    crate::history::scanner::index_session_file(db, workspace, target)
+        .map_err(|error| format!("会话控制修改已保存，但历史索引登记失败：{error}"))
+}
+
+/// 查询或修改一个会话的离线控制状态。修改成功先同步登记目标会话的历史
+/// 索引，再广播会话变更；查询与分类失败不广播。运行中的会话拒绝修改
+/// （GUI 侧先拦，CLI 侧还有锁）。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn session_control(
@@ -509,10 +530,11 @@ pub async fn session_control(
             }
         }
     }
+    let db = std::sync::Arc::clone(&state.db);
     let engine_id = engine.clone();
     let workspace = workspace_path.clone();
     let outcome = tauri::async_runtime::spawn_blocking(move || {
-        run(
+        let outcome = run(
             &engine_id,
             &workspace,
             &request,
@@ -523,12 +545,14 @@ pub async fn session_control(
             model.as_deref(),
             effort.as_deref(),
             permission_mode.as_deref(),
-        )
+        )?;
+        index_control_outcome(&db, &workspace, &outcome, mutating)?;
+        Ok::<Value, String>(outcome)
     })
     .await
     .map_err(|error| error.to_string())??;
     if mutating && outcome.get("is_error").and_then(Value::as_bool) == Some(false) {
-        // 仅确认写入成功后通知其他窗口刷新，查询与失败不广播。
+        // 仅确认写入与索引登记成功后通知其他窗口刷新，查询与失败不广播。
         state.sink.emit_sessions_changed();
     }
     Ok(outcome)
@@ -821,6 +845,112 @@ mod tests {
     }
 
     #[test]
+    fn successful_changes_index_targets_but_queries_and_failures_do_not() {
+        let _lock = crate::test_support::HOME_ENV_LOCK.lock();
+        let root = std::env::temp_dir().join(format!(
+            "hzkcode-control-index-{}",
+            uuid::Uuid::new_v4()
+        ));
+        crate::test_support::guard_test_write(&root).unwrap();
+        std::fs::create_dir_all(&root).unwrap();
+        struct RestoreEnv(Option<std::ffi::OsString>);
+        impl Drop for RestoreEnv {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("HZKCODE_CONFIG_DIR", value),
+                    None => std::env::remove_var("HZKCODE_CONFIG_DIR"),
+                }
+            }
+        }
+        let _restore = RestoreEnv(std::env::var_os("HZKCODE_CONFIG_DIR"));
+        let config_dir = root.join("config");
+        let workspace = root.join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::env::set_var("HZKCODE_CONFIG_DIR", &config_dir);
+        let encoded = crate::history::claude_encode_project_path(&workspace.to_string_lossy());
+        let project_dir = config_dir.join("projects").join(&encoded);
+        std::fs::create_dir_all(&project_dir).unwrap();
+        let write_metadata = |id: &str, mode: &str| {
+            let entry = serde_json::json!({
+                "type": "prompt-mode",
+                "sessionId": id,
+                "mode": mode,
+                "timestamp": "2026-10-26T00:00:00.000Z"
+            });
+            std::fs::write(
+                project_dir.join(format!("{id}.jsonl")),
+                format!("{}\n", entry),
+            )
+            .unwrap();
+        };
+        let db = crate::db::Db::open_at(&root.join("gui.db")).unwrap();
+        let workspace_text = workspace.to_str().unwrap();
+        let outcome = |target: &str| {
+            serde_json::json!({
+                "type": "result",
+                "targetSessionId": target,
+                "is_error": false,
+            })
+        };
+        let count = |id: &str| -> i64 {
+            db.0.lock()
+                .query_row(
+                    "SELECT COUNT(*) FROM sessions WHERE engine='claude' AND session_id=?1",
+                    rusqlite::params![id],
+                    |row| row.get(0),
+                )
+                .unwrap()
+        };
+
+        let current = "22222222-2222-4222-8222-222222222222";
+        let clone = "33333333-3333-4333-8333-333333333333";
+        write_metadata(current, "compact");
+        write_metadata(clone, "full");
+
+        // 只读操作不登记。
+        index_control_outcome(&db, workspace_text, &outcome(current), false).unwrap();
+        assert_eq!(count(current), 0);
+
+        // 克隆登记新目标；源会话不因克隆被登记。
+        let cloned = serde_json::json!({
+            "type": "result",
+            "targetSessionId": clone,
+            "cloned": true,
+            "is_error": false,
+        });
+        index_control_outcome(&db, workspace_text, &cloned, true).unwrap();
+        assert_eq!(count(clone), 1);
+        assert_eq!(count(current), 0);
+
+        // 当前会话的新建与原地修改都登记目标；重复登记只更新同一行。
+        index_control_outcome(&db, workspace_text, &outcome(current), true).unwrap();
+        assert_eq!(count(current), 1);
+        write_metadata(current, "full");
+        index_control_outcome(&db, workspace_text, &outcome(current), true).unwrap();
+        assert_eq!(count(current), 1);
+
+        // 失败的修改不登记。
+        let failed = serde_json::json!({
+            "type": "result",
+            "targetSessionId": current,
+            "is_error": true,
+            "error_code": "file_changed",
+        });
+        index_control_outcome(&db, workspace_text, &failed, true).unwrap();
+        assert_eq!(count(current), 1);
+
+        // 目标文件缺失时明确报错，同时说明引擎修改已保存。
+        let missing = serde_json::json!({
+            "type": "result",
+            "targetSessionId": "55555555-5555-4555-8555-555555555555",
+            "is_error": false,
+        });
+        assert!(index_control_outcome(&db, workspace_text, &missing, true).is_err());
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
     #[ignore = "需要 HZKCODE_TEST_CLI 指向实际 3.5.1 引擎"]
     fn real_session_control_roundtrip() {
         let _lock = crate::test_support::HOME_ENV_LOCK.lock();
@@ -862,10 +992,29 @@ mod tests {
             "description": "会话控制验证", "prompt": "仅用于隔离验证。", "tools": ["Read"], "model": "mid", "effort": "off"
         }}).to_string();
         let workspace = root.join("workspace");
+        let db = crate::db::Db::open_at(&root.join(".hzkcode/gui/history.db")).unwrap();
+        let indexed_count = |id: &str| -> i64 {
+            db.0.lock()
+                .query_row(
+                    "SELECT COUNT(*) FROM sessions WHERE engine='claude' AND session_id=?1",
+                    rusqlite::params![id],
+                    |row| row.get(0),
+                )
+                .unwrap()
+        };
         let invoke = |request: Value, id: Option<&str>| {
-            run("claude", workspace.to_str().unwrap(), &request,
-                request["operation"].as_str().unwrap(), id, None,
-                Some(&definitions), Some("mid"), Some("off"), Some("readonlyAutoContinue")).unwrap()
+            let operation = request["operation"].as_str().unwrap();
+            let outcome = run("claude", workspace.to_str().unwrap(), &request,
+                operation, id, None,
+                Some(&definitions), Some("mid"), Some("off"), Some("readonlyAutoContinue")).unwrap();
+            index_control_outcome(
+                &db,
+                workspace.to_str().unwrap(),
+                &outcome,
+                is_mutating(operation),
+            )
+            .unwrap();
+            outcome
         };
         let catalog = invoke(serde_json::json!({"operation": "catalog"}), None);
         assert_eq!(catalog["targetSessionId"], Value::Null);
@@ -876,15 +1025,23 @@ mod tests {
         assert_eq!(identity["is_error"], false);
         assert_eq!(identity["state"]["identity"]["base"], "gui-probe");
         assert_eq!(identity["state"]["hasConversation"], false);
+        // 纯元数据新会话在返回前已经登记，立即读取应得到空历史而非找不到会话。
+        assert_eq!(indexed_count(id), 1);
+        let indexed_path = crate::history::reader::session_file_path(&db, "claude", id).unwrap();
+        let history = crate::history::parse_session_file("claude", &indexed_path).unwrap();
+        assert!(history.messages.is_empty());
         let prompt = invoke(serde_json::json!({"operation": "prompt-mode", "value": "compact", "apply": "clone"}), Some(id));
         assert_eq!(prompt["targetSessionId"], id);
         assert_eq!(prompt["cloned"], false);
         assert_eq!(prompt["state"]["promptMode"]["effective"], "compact");
         let conflict = invoke(serde_json::json!({"operation": "identity", "value": "default", "apply": "current", "expectedRevision": identity["revision"]}), Some(id));
         assert_eq!(conflict["error_code"], "file_changed");
+        // 失败与只读操作都不新增或改写登记行。
+        assert_eq!(indexed_count(id), 1);
         let status = invoke(serde_json::json!({"operation": "status"}), Some(id));
         assert_eq!(status["state"]["identity"]["base"], "gui-probe");
         assert_eq!(status["state"]["promptMode"]["effective"], "compact");
+        assert_eq!(indexed_count(id), 1);
         let mode = invoke(serde_json::json!({"operation": "interaction-mode", "value": "lead"}), Some(id));
         assert_eq!(mode["is_error"], false);
         assert_eq!(mode["state"]["interactionMode"]["effective"], "lead");

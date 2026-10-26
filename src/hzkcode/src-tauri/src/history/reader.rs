@@ -171,7 +171,7 @@ pub fn remember_session_provider(
     Ok(())
 }
 
-pub(super) fn session_file_path(
+pub(crate) fn session_file_path(
     db: &crate::db::Db,
     engine: &str,
     session_id: &str,

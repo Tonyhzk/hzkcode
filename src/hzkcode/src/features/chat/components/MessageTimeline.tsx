@@ -28,6 +28,12 @@ import { PermissionRecord } from "./PermissionCard";
 import { MESSAGE_ANCHOR_RAIL_BAND_CLASS, MessageAnchorRail } from "./MessageAnchorRail";
 import { createAnchorRowsBuilder } from "./timeline-anchors";
 import { branchTargets, buildRows, collectToolKeys, rowKey, type TimelineRow } from "./timeline-rows";
+import {
+  isSessionActivityMessage,
+  mergeSessionActivities,
+  type SessionActivity,
+  type SessionActivityMessage,
+} from "../store/session-activity";
 import { formatDuration } from "./format-duration";
 import { ProcessDisclosure } from "./ProcessDisclosure";
 import { CollapsibleMessage } from "./CollapsibleMessage";
@@ -483,11 +489,127 @@ const NoticeRow = memo(function NoticeRow({ message }: { message: Message }) {
         : "text-text-tertiary";
   const Icon = level === "error" ? AlertCircle : level === "warning" ? AlertTriangle : Info;
   return (
-    <div className="flex items-start gap-1.5 text-body-2-regular">
+    <div className="flex min-w-0 items-start gap-1.5 text-body-2-regular">
       <Icon className={cx("mt-[3px] size-3.5 shrink-0", tone)} aria-hidden />
-      <span className={cx("whitespace-pre-wrap break-words", tone)} data-selectable>
+      <span className={cx("min-w-0 whitespace-pre-wrap break-words", tone)} data-selectable>
         {message.text}
       </span>
+    </div>
+  );
+});
+
+function sessionActivityActionLabel(
+  kind: SessionActivity["kind"],
+  t: (key: string) => string,
+): string {
+  switch (kind) {
+    case "identity":
+      return t("chat.sessionIdentity");
+    case "interaction-mode":
+      return t("chat.sessionInteractionMode");
+    case "prompt-mode":
+      return t("chat.sessionPromptMode");
+    case "api-mode":
+      return t("chat.sessionApiMode");
+    case "proxy":
+      return t("chat.sessionProxy");
+    case "second-brain":
+      return t("chat.secondBrain");
+    default:
+      return t("chat.sessionContextWindow");
+  }
+}
+
+function sessionActivityValueLabel(
+  activity: SessionActivity,
+  t: (key: string) => string,
+): string {
+  switch (activity.kind) {
+    case "identity":
+      return activity.value === "default"
+        ? t("chat.sessionIdentityDefault")
+        : activity.value;
+    case "interaction-mode":
+      return activity.value === "default"
+        ? t("chat.sessionInteractionModeReset")
+        : activity.value;
+    case "prompt-mode":
+      if (activity.value === "full") return t("chat.sessionPromptModeFull");
+      if (activity.value === "compact") return t("chat.sessionPromptModeCompact");
+      if (activity.value === "reset") return t("chat.sessionPromptModeReset");
+      return activity.value;
+    case "api-mode":
+      if (activity.value === "anthropic") return t("chat.sessionApiModeAnthropic");
+      if (activity.value === "responses") return t("chat.sessionApiModeResponses");
+      if (activity.value === "chat_completions") {
+        return t("chat.sessionApiModeChatCompletions");
+      }
+      if (activity.value === "reset") return t("chat.sessionApiModeReset");
+      return activity.value;
+    case "proxy":
+    case "second-brain":
+      if (activity.value === "on") return t("chat.sessionProxyOn");
+      if (activity.value === "off") return t("chat.sessionProxyOff");
+      return t("chat.sessionProxyFollow");
+    case "context":
+      return activity.value === "default"
+        ? t("chat.sessionContextWindowPlaceholder")
+        : activity.value;
+    default:
+      return activity.value;
+  }
+}
+
+function sessionActivityApplyLabel(
+  apply: NonNullable<SessionActivity["apply"]>,
+  t: (key: string) => string,
+): string {
+  if (apply === "append") return t("chat.sessionApplyAppend");
+  if (apply === "clone") return t("chat.sessionApplyClone");
+  return t("chat.sessionApplyCurrent");
+}
+
+/** 用户主动提交的会话操作：与真实消息同列展示，但不参与转录、分支与回退。 */
+const SessionActivityRow = memo(function SessionActivityRow({
+  message,
+}: {
+  message: SessionActivityMessage;
+}) {
+  const { t } = useTranslation();
+  const activity = message.sessionActivity;
+  const action = sessionActivityActionLabel(activity.kind, t);
+  const target = sessionActivityValueLabel(activity, t);
+  const value = activity.status === "success" && activity.effective !== undefined &&
+    activity.effective !== activity.value && activity.apply !== "append"
+    ? t("chat.sessionActivityEffective", {
+        target,
+        effective: sessionActivityValueLabel({ ...activity, value: activity.effective }, t),
+      })
+    : target;
+  const text =
+    activity.status === "error"
+      ? t("chat.sessionActivityFailed", {
+          action,
+          value,
+          error: activity.error ?? "",
+        })
+      : activity.apply
+        ? t("chat.sessionActivityDoneApplied", {
+            action,
+            value,
+            apply: sessionActivityApplyLabel(activity.apply, t),
+          })
+        : t("chat.sessionActivityDone", { action, value });
+  return (
+    <div
+      className="flex min-w-0 items-start gap-1.5 text-body-2-regular"
+      data-session-activity={activity.kind}
+      data-session-activity-status={activity.status}
+    >
+      <span className="mt-[1px] shrink-0 rounded-full bg-background-tertiary-default px-2 py-0.5 text-caption-1-medium text-text-secondary">
+        {t("chat.sessionActivityLabel")}
+      </span>
+      <NoticeRow message={{ ...message, text }} />
     </div>
   );
 });
@@ -535,6 +657,9 @@ export const MessageRow = memo(function MessageRow({
   // render as-is.
   const text = useThrottled(message.text, message.live ? streamParseInterval(message.text.length) : 0);
   const { t } = useTranslation();
+  if (isSessionActivityMessage(message)) {
+    return <SessionActivityRow message={message} />;
+  }
   if (message.role === "grant") {
     // Permission-denial card: actionable directory grant, not a chat bubble.
     return <GrantCard message={message} />;
@@ -625,6 +750,7 @@ export const MessageRow = memo(function MessageRow({
 
 export const MessageTimeline = memo(function MessageTimeline({
   session,
+  activities,
   streaming,
   onLoadEarlier,
   workspacePath,
@@ -635,6 +761,8 @@ export const MessageTimeline = memo(function MessageTimeline({
   onDelete,
 }: {
   session: SessionState;
+  /** 本会话的用户操作记录；只并入展示行，不写入 session.messages。 */
+  activities?: readonly SessionActivity[];
   streaming: boolean;
   onLoadEarlier: () => void;
   workspacePath: string;
@@ -664,7 +792,12 @@ export const MessageTimeline = memo(function MessageTimeline({
   const showThinking = useChatStore((s) => s.showThinking);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const items = session.messages;
-  const rows = useMemo(() => buildRows(items), [items]);
+  // 操作记录只生成展示副本；分页、尾随滚动与真实消息列表仍读原数组。
+  const displayItems = useMemo(
+    () => mergeSessionActivities(items, activities ?? [], session.nextBefore !== null),
+    [items, activities, session.nextBefore],
+  );
+  const rows = useMemo(() => buildRows(displayItems), [displayItems]);
   // Anchor rail: one dash per user message (reference: messageAnchors).
   const buildAnchorRows = useMemo(createAnchorRowsBuilder, []);
   const anchors = useMemo(() => buildAnchorRows(rows), [buildAnchorRows, rows]);

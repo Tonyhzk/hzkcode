@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatDuration } from "./format-duration";
 import { MessageRow } from "./MessageTimeline";
 import { branchTargets, buildRows, rowKey } from "./timeline-rows";
+import type { SessionActivity } from "../store/session-activity";
 import type { Message } from "@/lib/ipc";
 
 // React's act() environment flag — same setup as Markdown.test.tsx.
@@ -404,6 +405,86 @@ describe("CLI notice rows", () => {
       expect(second.message.role).toBe("notice");
       expect(second.turnFinal).toBe(false);
     }
+  });
+});
+
+describe("session activity rows", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  function activityMessage(
+    overrides: Partial<SessionActivity> = {},
+  ): Message & { sessionActivity: SessionActivity } {
+    const activity: SessionActivity = {
+      id: "activity-1",
+      kind: "identity",
+      status: "success",
+      value: "审查员",
+      effective: "审查员",
+      apply: "current",
+      at: Date.parse("2026-01-01T00:00:00.000Z"),
+      ...overrides,
+    };
+    return {
+      seq: -1,
+      role: "notice",
+      text: "",
+      level: activity.status === "error" ? "error" : "info",
+      ts: new Date(activity.at).toISOString(),
+      sessionActivity: activity,
+    };
+  }
+
+  it("renders a submitted action as its own notice row, not a user bubble", async () => {
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={activityMessage()}
+          workspacePath="/ws"
+          turnFinal={false}
+        />,
+      );
+    });
+
+    const row = container.querySelector("[data-session-activity='identity']");
+    expect(row).not.toBeNull();
+    expect(row!.getAttribute("data-session-activity-status")).toBe("success");
+    expect(container.querySelector(".bg-bubble-user")).toBeNull();
+    expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("marks a failed action as an error row", async () => {
+    await act(async () => {
+      root.render(
+        <MessageRow
+          message={activityMessage({
+            kind: "api-mode",
+            status: "error",
+            value: "responses",
+            error: "unsupported",
+            apply: undefined,
+          })}
+          workspacePath="/ws"
+          turnFinal={false}
+        />,
+      );
+    });
+
+    const row = container.querySelector("[data-session-activity='api-mode']");
+    expect(row).not.toBeNull();
+    expect(row!.getAttribute("data-session-activity-status")).toBe("error");
+    expect(row!.querySelector(".text-text-error-primary")).not.toBeNull();
   });
 });
 

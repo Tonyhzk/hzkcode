@@ -39,7 +39,8 @@ import type { EngineInfo, Workspace } from "@/lib/ipc";
 import { EmptyState } from "@/components/base/empty-state";
 import { parseUsage } from "../usage";
 import { rememberContextWindow, resolveContextMax } from "../context-window-memory";
-import { lastRowIndexByUuid, resolveSessionProvider } from "../store/stream";
+import { EMPTY_SESSION, lastRowIndexByUuid, resolveSessionProvider } from "../store/stream";
+import { useSessionActivities } from "../store/session-activity";
 import { useWorkspaceUIHooks, workspaceAllowedEngines } from "../workspace-ui-bridge";
 import { useFilesStore } from "@/features/files/store";
 
@@ -58,7 +59,9 @@ const SessionTimeline = memo(function SessionTimeline({
   workspacePath: string;
   onLoadEarlier: () => void;
 }) {
-  const session = useChatStore((s) => s.bySession[key]);
+  const session = useChatStore((s) => s.bySession[key]) ?? EMPTY_SESSION;
+  // 会话操作记录按会话 key 独立订阅；切换会话不会把上一会话的操作带过来。
+  const activities = useSessionActivities(key);
   // The retry icon repeats the last prompt (the terminal's `//`); the store
   // action already guards mid-turn sends and finds the last user message.
   const retryLastTurn = useChatStore((s) => s.retryLastTurn);
@@ -111,7 +114,6 @@ const SessionTimeline = memo(function SessionTimeline({
       if (mode === "both") setRewindAnchor(key, target.uuid);
     })();
   };
-  if (!session) return null;
   // Pending rewind (the 回退 action): show the conversation up to and
   // including the anchor's whole transcript entry — the next send writes the
   // same truncation into the transcript. One entry can produce several rows
@@ -133,6 +135,7 @@ const SessionTimeline = memo(function SessionTimeline({
       <MessageTimeline
         key={key}
         session={shown}
+        activities={activities}
         streaming={session.streaming}
         onLoadEarlier={onLoadEarlier}
         workspacePath={workspacePath}
@@ -375,7 +378,8 @@ export const ChatConversation = memo(function ChatConversation({
     const k = sessionKey(a.engine, a.sessionId, a.workspacePath);
     return resolveSessionProvider(a, s.bySession[k], s.providers[a.engine]) ?? null;
   });
-  const hasSession = useChatStore((s) => key in s.bySession);
+  const hasActivities = useSessionActivities(key).length > 0;
+  const hasSession = useChatStore((s) => key in s.bySession) || hasActivities;
   const draft = useChatStore((s) => s.drafts[key] ?? "");
   const sendShortcut = useChatStore((s) => s.sendShortcut);
   // Engine/effort/model prefs: low-frequency, grouped into one shallow watch.

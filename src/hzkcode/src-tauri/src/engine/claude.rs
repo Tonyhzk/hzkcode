@@ -249,6 +249,31 @@ impl Engine for ClaudeEngine {
                             text: text.to_string(),
                         });
                     }
+                } else if subtype == Some("local_command_output") {
+                    // SDK 声明形态，仅作兼容保留：当前无头构建会把命令输出
+                    // 映射为 synthetic assistant 快照，不走这里，因此不替代
+                    // 旧路径。content 是命令的原始输出。
+                    if value.get("isMeta").and_then(Value::as_bool) != Some(true) {
+                        if let Some((is_error, text)) = value
+                            .get("content")
+                            .and_then(local_command_output_text)
+                        {
+                            push_local_command_output(out, is_error, text);
+                        }
+                    }
+                } else if subtype == Some("local_command") {
+                    // 同一输出的转录形态，包在 `<local-command-stdout>` /
+                    // `-stderr` 中。该 subtype 也记录命令输入面包屑，输入框
+                    // 已经回显，非包装内容直接忽略。空包装返回 Some(None)：
+                    // 不追加行，也不回退显示 XML。
+                    if value.get("isMeta").and_then(Value::as_bool) != Some(true) {
+                        if let Some(Some((is_error, text))) = value
+                            .get("content")
+                            .and_then(wrapped_local_command_text)
+                        {
+                            push_local_command_output(out, is_error, text);
+                        }
+                    }
                 } else if subtype == Some("task_notification") {
                     // Background-task bookend (the SDK's task_notification):
                     // carried as structured fields — the client localizes the
@@ -306,15 +331,18 @@ impl Engine for ClaudeEngine {
                 }
             }
             "user" => {
-                // Local command confirmations ride plain-string user
-                // messages (`<local-command-stdout>…</local-command-stdout>`).
-                if let Some(text) = value
-                    .get("message")
-                    .and_then(|m| m.get("content"))
-                    .and_then(Value::as_str)
-                    .and_then(local_command_stdout_text)
-                {
-                    out.push(EngineEvent::CommandOutput(text));
+                // 命令确认以 user 消息承载，内容为
+                // `<local-command-stdout>…</local-command-stdout>`，可能是纯字符串
+                // 或单个文本块。isMeta 是仅模型可见的指导消息，tool_result
+                // 载荷不算命令输出。
+                if value.get("isMeta").and_then(Value::as_bool) != Some(true) {
+                    if let Some(Some((is_error, text))) = value
+                        .get("message")
+                        .and_then(|m| m.get("content"))
+                        .and_then(wrapped_local_command_text)
+                    {
+                        push_local_command_output(out, is_error, text);
+                    }
                 }
                 // tool_result blocks carry permission denials as is_error
                 // text (headless cannot prompt). Surface them so the UI can
@@ -680,15 +708,67 @@ fn assistant_text(value: &Value) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-/// Inner text of a `<local-command-stdout>…</local-command-stdout>` user
-/// message, when the content is exactly that wrapper.
-fn local_command_stdout_text(content: &str) -> Option<String> {
+/// 严格包装的本地命令载荷：`(是否 stderr, 文本)`，
+/// 包装为 `<local-command-stdout>…</local-command-stdout>` 或 `-stderr`。
+/// 外层 None 表示不是完整包装；Some(None) 表示空包装（隐藏，不回退原文），
+/// 避免空包装把 XML 泄漏成普通文本。
+fn local_command_wrapped_text(content: &str, tag: &str) -> Option<Option<(bool, String)>> {
+    let open = format!("<local-command-{tag}>");
+    let close = format!("</local-command-{tag}>");
     let inner = content
         .trim()
-        .strip_prefix("<local-command-stdout>")?
-        .strip_suffix("</local-command-stdout>")?
+        .strip_prefix(&open)?
+        .strip_suffix(&close)?
         .trim();
-    (!inner.is_empty()).then(|| inner.to_string())
+    Some((!inner.is_empty()).then(|| (tag == "stderr", inner.to_string())))
+}
+
+/// 从纯字符串或 text 块数组读取本地命令输出；tool_result、图片和
+/// 未包装的普通用户文本都不算命令输出。
+fn wrapped_local_command_text(content: &Value) -> Option<Option<(bool, String)>> {
+    let raw = match content {
+        Value::String(s) => s.clone(),
+        Value::Array(blocks) => {
+            let mut text = String::new();
+            for block in blocks {
+                if block.get("type").and_then(Value::as_str) != Some("text") {
+                    return None;
+                }
+                text.push_str(block.get("text").and_then(Value::as_str)?);
+            }
+            text
+        }
+        _ => return None,
+    };
+    local_command_wrapped_text(&raw, "stdout").or_else(|| local_command_wrapped_text(&raw, "stderr"))
+}
+
+/// `system/local_command_output` 的 content：SDK 的原始输出字符串；
+/// 仍带转录标签时先解包。
+fn local_command_output_text(content: &Value) -> Option<(bool, String)> {
+    let raw = content.as_str()?;
+    match local_command_wrapped_text(raw, "stdout")
+        .or_else(|| local_command_wrapped_text(raw, "stderr"))
+    {
+        Some(Some(payload)) => Some(payload),
+        // 有效空包装：隐藏，不能把原始 XML 当命令输出。
+        Some(None) => None,
+        None => {
+            let text = raw.trim();
+            (!text.is_empty()).then(|| (false, text.to_string()))
+        }
+    }
+}
+
+fn push_local_command_output(out: &mut Vec<EngineEvent>, is_error: bool, text: String) {
+    if is_error {
+        out.push(EngineEvent::Notice {
+            level: "error".to_string(),
+            text,
+        });
+    } else {
+        out.push(EngineEvent::CommandOutput(text));
+    }
 }
 
 /// Human-readable line for a `system/api_retry` event.
@@ -1025,6 +1105,233 @@ mod tests {
             |event| matches!(event, EngineEvent::CommandOutput(text)
                 if text == "Compacted Context: ~8 → ~52 tokens")
         ));
+    }
+
+    #[test]
+    fn system_local_command_output_emits_the_raw_content() {
+        let line = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command_output",
+            "content": "已启用会话代理：http://127.0.0.1:9090",
+            "uuid": "u-1",
+            "session_id": "s-1"
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(out.iter().any(
+            |event| matches!(event, EngineEvent::CommandOutput(text)
+                if text == "已启用会话代理：http://127.0.0.1:9090")
+        ));
+        assert!(!out.iter().any(|event| matches!(event, EngineEvent::Notice { .. })));
+    }
+
+    #[test]
+    fn system_local_command_stdout_becomes_command_output() {
+        let line = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command",
+            "content": "<local-command-stdout>已关闭当前会话代理，后续网络请求直连</local-command-stdout>",
+            "level": "info",
+            "uuid": "u-1",
+            "session_id": "s-1"
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        match out.last() {
+            Some(EngineEvent::CommandOutput(text)) => {
+                assert_eq!(text, "已关闭当前会话代理，后续网络请求直连");
+                assert!(!text.contains("local-command-stdout"));
+            }
+            other => panic!("expected command output, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn system_local_command_stderr_becomes_an_error_notice() {
+        let line = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command",
+            "content": "<local-command-stderr>命令执行失败</local-command-stderr>",
+            "level": "info",
+            "uuid": "u-1",
+            "session_id": "s-1"
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(!out.iter().any(|event| matches!(event, EngineEvent::CommandOutput(_))));
+        let text = out
+            .iter()
+            .find_map(|event| match event {
+                EngineEvent::Notice { level, text } => Some((level.as_str(), text.as_str())),
+                _ => None,
+            })
+            .expect("expected an error notice");
+        assert_eq!(text, ("error", "命令执行失败"));
+    }
+
+    #[test]
+    fn system_local_command_empty_wrapper_emits_nothing() {
+        for tag in ["stdout", "stderr"] {
+            let line = serde_json::json!({
+                "type": "system",
+                "subtype": "local_command",
+                "content": format!("<local-command-{tag}></local-command-{tag}>"),
+                "level": "info",
+                "uuid": "u-1"
+            })
+            .to_string();
+            let mut out = Vec::new();
+            ClaudeEngine::new().parse_line(&line, &mut out);
+            assert!(out.is_empty(), "{tag} 空包装必须隐藏: {out:?}");
+        }
+    }
+
+    #[test]
+    fn system_local_command_output_empty_wrapper_emits_nothing() {
+        for tag in ["stdout", "stderr"] {
+            let line = serde_json::json!({
+                "type": "system",
+                "subtype": "local_command_output",
+                "content": format!("<local-command-{tag}></local-command-{tag}>"),
+                "uuid": "u-1"
+            })
+            .to_string();
+            let mut out = Vec::new();
+            ClaudeEngine::new().parse_line(&line, &mut out);
+            assert!(out.is_empty(), "{tag} 空包装必须隐藏: {out:?}");
+        }
+    }
+
+    #[test]
+    fn meta_system_local_command_is_hidden() {
+        let output = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command_output",
+            "content": "模型可见的命令输出",
+            "isMeta": true,
+            "uuid": "u-1"
+        })
+        .to_string();
+        let transcript = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command",
+            "content": "<local-command-stdout>模型可见的命令输出</local-command-stdout>",
+            "isMeta": true,
+            "uuid": "u-2"
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&output, &mut out);
+        ClaudeEngine::new().parse_line(&transcript, &mut out);
+        assert!(out.is_empty(), "meta local commands must stay hidden: {out:?}");
+    }
+
+    #[test]
+    fn user_empty_local_command_wrapper_emits_nothing() {
+        for tag in ["stdout", "stderr"] {
+            let line = serde_json::json!({
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": format!("<local-command-{tag}></local-command-{tag}>")
+                }
+            })
+            .to_string();
+            let mut out = Vec::new();
+            ClaudeEngine::new().parse_line(&line, &mut out);
+            assert!(out.is_empty(), "{tag} 空包装必须隐藏: {out:?}");
+        }
+    }
+
+    #[test]
+    fn system_local_command_breadcrumb_is_not_output() {
+        let line = serde_json::json!({
+            "type": "system",
+            "subtype": "local_command",
+            "content": "<command-name>/maxtokens</command-name>\n            <command-message>maxtokens</command-message>\n            <command-args>900000</command-args>",
+            "level": "info",
+            "uuid": "u-1"
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(out.is_empty(), "breadcrumb must stay out of the timeline: {out:?}");
+    }
+
+    #[test]
+    fn user_local_command_text_blocks_emit_output() {
+        let line = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": "<local-command-stdout>会话上下文窗口已设为 900000 tokens。</local-command-stdout>"
+                }]
+            }
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        match &out[..] {
+            [EngineEvent::CommandOutput(text)] => {
+                assert_eq!(text, "会话上下文窗口已设为 900000 tokens。")
+            }
+            other => panic!("expected command output, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plain_user_text_blocks_are_not_command_output() {
+        let line = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{ "type": "text", "text": "帮我看下这个 bug" }]
+            }
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(!out.iter().any(|event| matches!(event, EngineEvent::CommandOutput(_))));
+    }
+
+    #[test]
+    fn tool_result_payloads_are_not_command_output() {
+        let line = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": "<local-command-stdout>看起来像命名的工具结果</local-command-stdout>"
+                }]
+            }
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(!out.iter().any(|event| matches!(event, EngineEvent::CommandOutput(_))));
+    }
+
+    #[test]
+    fn meta_user_messages_are_not_command_output() {
+        let line = serde_json::json!({
+            "type": "user",
+            "isMeta": true,
+            "message": {
+                "role": "user",
+                "content": "<local-command-stdout>模型可见的指导消息</local-command-stdout>"
+            }
+        })
+        .to_string();
+        let mut out = Vec::new();
+        ClaudeEngine::new().parse_line(&line, &mut out);
+        assert!(!out.iter().any(|event| matches!(event, EngineEvent::CommandOutput(_))));
     }
 
     #[test]

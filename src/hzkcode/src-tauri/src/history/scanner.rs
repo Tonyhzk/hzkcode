@@ -316,45 +316,51 @@ fn prepare_candidate(
     })
 }
 
+/// 写入一行会话索引；全量扫描与定向登记共用同一份 upsert 逻辑。
+fn upsert_row(tx: &rusqlite::Transaction<'_>, row: &PreparedUpsert) -> Result<(), String> {
+    // Engines whose jsonl has no per-line timestamps would otherwise land
+    // at updated_at=0 and fall off the sidebar's recent list. File mtime
+    // is the fallback for every engine, not a grok-only special case.
+    let created_at = row.summary.first_ts.or(Some(row.mtime_ms));
+    let updated_at = row.summary.last_ts.or(Some(row.mtime_ms));
+    tx.execute(
+        "INSERT INTO sessions(engine, session_id, workspace_path, file_path, file_size, file_mtime_ms, title, preview, created_at, updated_at, message_count)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+         ON CONFLICT(engine, session_id) DO UPDATE SET
+            workspace_path=excluded.workspace_path,
+            file_path=excluded.file_path,
+            file_size=excluded.file_size,
+            file_mtime_ms=excluded.file_mtime_ms,
+            title=excluded.title,
+            preview=excluded.preview,
+            created_at=COALESCE(sessions.created_at, excluded.created_at),
+            updated_at=excluded.updated_at,
+            message_count=excluded.message_count",
+        rusqlite::params![
+            row.engine,
+            row.session_id,
+            row.workspace_path,
+            row.path_str,
+            row.size,
+            row.mtime_ms,
+            row.summary.title,
+            row.summary.preview,
+            created_at,
+            updated_at,
+            row.summary.message_count,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Phase B (one lock, one transaction): upsert every prepared row, then
 /// record the signature that makes the next scan a short-circuit.
 fn upsert_rows(db: &crate::db::Db, rows: &[PreparedUpsert], tier1: &Tier1) -> Result<(), String> {
     let mut conn = db.0.lock();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     for row in rows {
-        // Engines whose jsonl has no per-line timestamps would otherwise land
-        // at updated_at=0 and fall off the sidebar's recent list. File mtime
-        // is the fallback for every engine, not a grok-only special case.
-        let created_at = row.summary.first_ts.or(Some(row.mtime_ms));
-        let updated_at = row.summary.last_ts.or(Some(row.mtime_ms));
-        tx.execute(
-            "INSERT INTO sessions(engine, session_id, workspace_path, file_path, file_size, file_mtime_ms, title, preview, created_at, updated_at, message_count)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
-             ON CONFLICT(engine, session_id) DO UPDATE SET
-                workspace_path=excluded.workspace_path,
-                file_path=excluded.file_path,
-                file_size=excluded.file_size,
-                file_mtime_ms=excluded.file_mtime_ms,
-                title=excluded.title,
-                preview=excluded.preview,
-                created_at=COALESCE(sessions.created_at, excluded.created_at),
-                updated_at=excluded.updated_at,
-                message_count=excluded.message_count",
-            rusqlite::params![
-                row.engine,
-                row.session_id,
-                row.workspace_path,
-                row.path_str,
-                row.size,
-                row.mtime_ms,
-                row.summary.title,
-                row.summary.preview,
-                created_at,
-                updated_at,
-                row.summary.message_count,
-            ],
-        )
-        .map_err(|e| e.to_string())?;
+        upsert_row(&tx, row)?;
     }
     tx.execute(
         "INSERT INTO meta(key, value) VALUES('stat_signature', ?1)
@@ -368,6 +374,40 @@ fn upsert_rows(db: &crate::db::Db, rows: &[PreparedUpsert], tier1: &Tier1) -> Re
         [TITLE_VERSION],
     )
     .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// 会话控制成功后的定向登记：只解析目标 workspace 的这一个会话文件并写单行，
+/// 不做全仓扫描，也不更新全局扫描签名；下次全量扫描按文件 stat 复用该行。
+/// 纯元数据会话（尚未产生聊天消息）同样登记，供历史读取立即定位。
+pub(crate) fn index_session_file(
+    db: &crate::db::Db,
+    workspace: &str,
+    session_id: &str,
+) -> Result<(), String> {
+    let workspace = Path::new(workspace);
+    let base = crate::engine::engine_home(Some("HZKCODE_CONFIG_DIR"), ".hzkcode").join("projects");
+    let file_path = claude_project_dirs(&base, workspace)
+        .into_iter()
+        .map(|dir| dir.join(format!("{session_id}.jsonl")))
+        .find(|path| path.is_file())
+        .ok_or_else(|| format!("会话文件不存在：{session_id}"))?;
+    let (size, mtime_ms) = session_stat_signature("claude", &file_path)
+        .ok_or_else(|| format!("无法读取会话文件：{session_id}"))?;
+    let summary = scan_summary_file("claude", &file_path)
+        .map_err(|error| format!("无法解析会话文件：{error}"))?;
+    let row = PreparedUpsert {
+        engine: "claude",
+        session_id: session_id.to_string(),
+        workspace_path: workspace.to_string_lossy().to_string(),
+        path_str: file_path.to_string_lossy().to_string(),
+        size,
+        mtime_ms,
+        summary,
+    };
+    let mut conn = db.0.lock();
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    upsert_row(&tx, &row)?;
     tx.commit().map_err(|e| e.to_string())
 }
 
@@ -508,6 +548,61 @@ mod tests {
         assert_eq!(strip_verbatim_prefix(r"\\?\C:\Users\zlt\proj"), r"C:\Users\zlt\proj");
         assert_eq!(strip_verbatim_prefix(r"C:\Users\zlt\proj"), r"C:\Users\zlt\proj");
         assert_eq!(strip_verbatim_prefix("/Users/demo/proj"), "/Users/demo/proj");
+    }
+
+    /// 纯元数据会话（尚无聊天消息）也必须写入索引行，控制修改后读取端
+    /// 才能立即定位文件。
+    #[test]
+    fn index_session_file_registers_a_metadata_only_session() {
+        let home = scratch_dir("index-metadata");
+        crate::test_support::guard_test_write(&home).unwrap();
+        let config_dir = home.join("claude-config");
+        let workspace = home.join("ws");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let encoded = super::super::claude_encode_project_path(&workspace.to_string_lossy());
+        let project_dir = config_dir.join("projects").join(&encoded);
+        std::fs::create_dir_all(&project_dir).unwrap();
+        let session_id = "22222222-2222-4222-8222-222222222222";
+        let path = project_dir.join(format!("{session_id}.jsonl"));
+        let metadata = serde_json::json!({
+            "type": "prompt-mode",
+            "sessionId": session_id,
+            "mode": "compact",
+            "timestamp": "2026-10-26T00:00:00.000Z"
+        });
+        std::fs::write(&path, format!("{}\n", metadata)).unwrap();
+
+        let db = crate::db::Db::open_at(&home.join("gui.db")).unwrap();
+        let _guard = HzkcodeConfigDirGuard::set(&config_dir);
+        index_session_file(&db, workspace.to_str().unwrap(), session_id).unwrap();
+
+        // 读取端原本报 “session not found” 的定位路径现在能解析到文件。
+        let resolved =
+            super::super::reader::session_file_path(&db, "claude", session_id).unwrap();
+        assert_eq!(resolved, path);
+
+        // 再次登记同一会话只更新已有行。
+        index_session_file(&db, workspace.to_str().unwrap(), session_id).unwrap();
+        let count: i64 = db
+            .0
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM sessions WHERE engine='claude' AND session_id=?1",
+                rusqlite::params![session_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // 目标文件缺失时返回错误，不能静默成功。
+        assert!(index_session_file(
+            &db,
+            workspace.to_str().unwrap(),
+            "33333333-3333-4333-8333-333333333333"
+        )
+        .is_err());
+
+        std::fs::remove_dir_all(&home).ok();
     }
 
     /// A workspace recorded with a trailing separator must still find the
