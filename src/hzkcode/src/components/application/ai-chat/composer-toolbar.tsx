@@ -31,14 +31,16 @@ export function ComposerToolbar({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-2 select-none">
-      {addMenu}
+    <div data-testid="composer-toolbar" className="@container/composer-toolbar flex min-w-0 items-center gap-2 select-none">
+      {addMenu && <div className="flex shrink-0 items-center">{addMenu}</div>}
 
-      {cliMenu}
+      <div className="flex min-w-0 flex-1 items-center">{cliMenu}</div>
 
-      {permissionMenu}
-
-      <div aria-hidden className="min-w-0 flex-1" />
+      {permissionMenu && (
+        <div data-testid="composer-work-mode" className="flex min-w-0 max-w-[55%] shrink-0 items-center justify-end">
+          {permissionMenu}
+        </div>
+      )}
 
       {streaming ? (
         <button

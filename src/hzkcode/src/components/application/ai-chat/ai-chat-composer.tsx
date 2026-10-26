@@ -565,7 +565,7 @@ export function StatusBar({
   );
   return (
     <div data-testid="composer-status-bar" className="flex h-[26px] w-full min-w-0 items-center gap-2 select-none">
-      <div className="flex min-w-0 max-w-[25%] items-center gap-3 overflow-hidden empty:hidden">
+      <div className="flex min-w-0 max-w-[25%] items-center gap-1.5 empty:hidden">
         {folders && folders.length > 0 && (
           <ProjectFolderMenu
             folders={folders}
@@ -582,12 +582,12 @@ export function StatusBar({
               onSelect={onBranchSelect}
             />
           ) : (
-            <span className="flex items-center gap-1">
+            <span className="flex min-w-0 items-center gap-1">
               <GitMerge
                 className="size-3.5 shrink-0 -scale-y-100 text-foreground-icon-tertiary"
                 aria-hidden
               />
-              <span className="text-caption-1-regular whitespace-nowrap text-text-tertiary">
+              <span className="truncate text-caption-1-regular text-text-tertiary">
                 {branch}
               </span>
             </span>
@@ -602,7 +602,7 @@ export function StatusBar({
           );
         })}
       </div>
-      <div data-testid="session-control-strip" className="session-control-strip flex h-6 min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+      <div data-testid="session-control-strip" className="flex h-6 min-w-0 flex-1 items-center">
         <SessionControls />
       </div>
       <div className="flex shrink-0 items-center gap-3">

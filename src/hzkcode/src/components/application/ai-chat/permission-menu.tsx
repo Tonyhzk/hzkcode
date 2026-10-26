@@ -264,7 +264,7 @@ export function PermissionMenu({
         aria-label={t("chat.permissionLabel", { label: currentLabel })}
         className={({ isHovered, isPressed, isFocusVisible }) =>
           cx(
-            "flex h-[30px] shrink-0 cursor-pointer items-center gap-1 rounded-full py-[5px] pr-2.5 pl-2 outline-none transition-colors duration-150 ease",
+            "flex h-[30px] min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-full py-[5px] pr-2.5 pl-2 outline-none transition-colors duration-150 ease",
             // Same surface as the model picker's hover: a step lighter than the
             // card in dark rather than darker.
             (isHovered || isPressed || isOpen) && "bg-background-primary-hover",
@@ -280,9 +280,7 @@ export function PermissionMenu({
           )}
           aria-hidden
         />
-        {/* Icon-only below md (aria-label on the trigger carries the mode);
-            keeps the composer toolbar within narrow widths. */}
-        <span className="text-body-medium whitespace-nowrap text-text-secondary max-md:hidden">
+        <span className="hidden min-w-0 truncate text-body-medium text-text-secondary @[600px]/composer-toolbar:block">
           {currentLabel}
         </span>
       </AriaButton>

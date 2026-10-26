@@ -20,6 +20,8 @@ above that. Completion bypasses the budget. These limits trade parser work
 against arrival latency; they do not guarantee a frame-time bound for very
 large Markdown documents.
 
+打开 `/tests/browser/composer-responsive.html` 可验证聊天输入区的响应式布局。页面使用真实工具栏、模型与工作模式菜单、底部状态栏，在 320～768px 聊天列、中英文、不同工作模式与发送/停止状态下自动测量按钮边界；宽浏览器内也会测试窄聊天列。会话操作空间不足时应收为一个菜单，工作模式紧邻发送按钮，按钮不重叠、不溢出。全部数据为隔离夹具，不读取聊天或调用模型。
+
 Open `/tests/browser/effort-layout.html` to verify the actual model menu keeps
 its trigger width and popover position while cycling all five reasoning levels.
 The fixture waits for fonts and the entrance animation before measuring; it

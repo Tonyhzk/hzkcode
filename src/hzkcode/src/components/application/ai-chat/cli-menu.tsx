@@ -84,8 +84,7 @@ function useLockedMinWidth(isOpen: boolean, triggerRef: Ref<HTMLButtonElement>) 
  *  "{model} · {effort}". The model part drops out when the engine has no
  *  model list at all — the engine name stands in. min-w-0 lets the trigger
  *  shrink instead of pushing the send button out of the composer on narrow
- *  widths; below md it collapses to icon + truncated model (aria-label
- *  carries the full selection). */
+ *  widths. aria-label carries the full selection. */
 function CliMenuTrigger({
   triggerRef,
   engine,
@@ -115,21 +114,21 @@ function CliMenuTrigger({
     <AriaButton
       ref={triggerRef}
       aria-label={`${selection} · ${t(EFFORT_LABEL_KEYS[effort])}`}
-      style={lockedMinWidth ? { minWidth: lockedMinWidth } : undefined}
-      className="group flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+      style={lockedMinWidth ? { minWidth: `min(${lockedMinWidth}px, 100%)` } : undefined}
+      className="group flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
     >
       <EngineIcon engine={engine} size={16} className="shrink-0 text-foreground-icon-secondary" />
       <span className="flex min-w-0 items-center gap-1 text-body-2-medium whitespace-nowrap text-text-secondary transition-colors duration-150 ease group-hover:text-text-primary">
         {model ? (
-          <span className="max-w-44 truncate max-md:max-w-28">{model.label}</span>
+          <span className="min-w-0 max-w-44 truncate">{model.label}</span>
         ) : (
-          <span className="shrink-0 max-md:hidden">{engineName}</span>
+          <span className="min-w-0 truncate">{engineName}</span>
         )}
-        <span aria-hidden className="shrink-0 text-text-tertiary max-md:hidden">
+        <span aria-hidden className="hidden shrink-0 text-text-tertiary @[500px]/composer-toolbar:inline">
           ·
         </span>
         {/* Reserve the widest localized level so the right-aligned popover stays put. */}
-        <span className="inline-grid shrink-0 max-md:hidden">
+        <span className="hidden shrink-0 @[500px]/composer-toolbar:inline-grid">
           {EFFORT_LEVELS.map(level => (
             <span key={level} aria-hidden={level !== effort} className={cx("col-start-1 row-start-1", level !== effort && "invisible")}>
               {t(EFFORT_LABEL_KEYS[level])}

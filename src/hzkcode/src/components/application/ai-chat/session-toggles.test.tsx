@@ -117,6 +117,71 @@ function result(
 let container: HTMLDivElement;
 let root: Root;
 
+// jsdom 没有 ResizeObserver，也没有真实布局：宽度由测试按容器与测量行分别给出。
+type ResizeCallback = (entries: unknown[]) => void;
+class ResizeObserverStub {
+  static instances: ResizeObserverStub[] = [];
+  targets: Element[] = [];
+  private callback: ResizeCallback;
+  constructor(callback: ResizeCallback) {
+    this.callback = callback;
+    ResizeObserverStub.instances.push(this);
+  }
+  observe(target: Element) {
+    this.targets.push(target);
+  }
+  unobserve() {}
+  disconnect() {
+    ResizeObserverStub.instances = ResizeObserverStub.instances.filter(
+      (instance) => instance !== this,
+    );
+  }
+  trigger() {
+    this.callback([]);
+  }
+}
+
+let availableWidth = 0;
+let naturalWidth = 0;
+const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+
+function rect(width: number): DOMRect {
+  return {
+    width,
+    height: 24,
+    top: 0,
+    left: 0,
+    right: width,
+    bottom: 24,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
+async function measureLayout(available: number, natural: number) {
+  availableWidth = available;
+  naturalWidth = natural;
+  const observer = ResizeObserverStub.instances.find((instance) =>
+    instance.targets.some((target) =>
+      target.hasAttribute("data-session-controls"),
+    ),
+  );
+  if (!observer) throw new Error("session controls ResizeObserver not found");
+  await act(async () => observer.trigger());
+  await flush();
+}
+
+const ENTRY_IDS = [
+  "identity",
+  "interaction",
+  "prompt",
+  "protocol",
+  "proxy",
+  "second-brain",
+  "context",
+];
+
 const originalActions = {
   setSessionProxy: useChatStore.getState().setSessionProxy,
   setSessionSecondBrain: useChatStore.getState().setSessionSecondBrain,
@@ -238,11 +303,24 @@ beforeEach(() => {
   root = createRoot(container);
   usePendingIdentityStore.setState({ request: null });
   useChatStore.setState({ actionError: null });
+  ResizeObserverStub.instances = [];
+  availableWidth = 0;
+  naturalWidth = 0;
+  vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+  Element.prototype.getBoundingClientRect = function () {
+    if (this.hasAttribute("data-session-controls")) return rect(availableWidth);
+    if (this.hasAttribute("data-session-controls-measure")) {
+      return rect(naturalWidth);
+    }
+    return originalGetBoundingClientRect.call(this);
+  };
 });
 
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+  vi.unstubAllGlobals();
   useChatStore.setState({
     ...originalActions,
     actionError: null,
@@ -793,5 +871,214 @@ describe("代理与第二大脑入口", () => {
     );
     expect(setBrain).toHaveBeenCalledWith(KEY, false);
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+describe("会话工具栏窄宽度菜单", () => {
+  it("collapses to one entry and expands by measured width", async () => {
+    useChatStore.setState({
+      refreshSessionControl: vi.fn(async () => result()),
+    });
+    setStore();
+    await renderControls();
+    expect(container.querySelectorAll("[data-session-control]")).toHaveLength(7);
+
+    await measureLayout(120, 420);
+    expect(container.querySelectorAll("[data-session-control]")).toHaveLength(1);
+    expect(entry("session-actions")).not.toBeNull();
+    for (const id of ENTRY_IDS) {
+      expect(entry(id)).toBeNull();
+    }
+
+    await measureLayout(600, 420);
+    expect(container.querySelectorAll("[data-session-control]")).toHaveLength(7);
+    expect(entry("session-actions")).toBeNull();
+  });
+
+  it("opens every existing panel from the compact menu and reads the state once", async () => {
+    const refresh = vi.fn(async () => result());
+    const apply = vi.fn(async () => true);
+    const setProxy = vi.fn();
+    useChatStore.setState({
+      refreshSessionControl: refresh,
+      applySessionControl: apply,
+      setSessionProxy: setProxy,
+    });
+    setStore();
+    await renderControls();
+    await measureLayout(120, 420);
+    await openPanel("session-actions");
+    expect(refresh).toHaveBeenCalledTimes(1);
+    for (const testId of [
+      "session-interaction-mode",
+      "session-prompt-mode",
+      "session-api-mode",
+      "session-proxy",
+      "session-second-brain",
+    ]) {
+      expect(document.querySelector(`[data-testid="${testId}"]`)).not.toBeNull();
+    }
+    expect(
+      document.querySelector('input[aria-label="chat.sessionContextWindow"]'),
+    ).not.toBeNull();
+
+    await click(
+      document.querySelector(
+        '[data-testid="session-api-mode"] [data-value="responses"]',
+      )!,
+    );
+    expect(apply).toHaveBeenCalledWith({
+      operation: "api-mode",
+      value: "responses",
+    });
+    await click(
+      document.querySelector(
+        '[data-testid="session-proxy"] [data-value="true"]',
+      )!,
+    );
+    expect(setProxy).toHaveBeenCalledWith(KEY, true);
+  });
+
+  it("opens the shared identity dialog from the compact row", async () => {
+    useChatStore.setState({
+      refreshSessionControl: vi.fn(async () => result()),
+    });
+    setStore();
+    await renderControls();
+    await measureLayout(120, 420);
+    await openPanel("session-actions");
+    const identity = document.querySelector(
+      '[data-session-control="identity"]',
+    ) as HTMLElement;
+    await activate(identity);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(usePendingIdentityStore.getState().request?.key).toBe(KEY);
+    expect(usePendingIdentityStore.getState().request?.identity.value).toBe(
+      "simple-internal",
+    );
+  });
+
+  it("closes an open entry when the row collapses", async () => {
+    useChatStore.setState({
+      refreshSessionControl: vi.fn(async () => result()),
+    });
+    setStore();
+    await renderControls();
+    await measureLayout(600, 420);
+    await openPanel("protocol");
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+
+    await measureLayout(120, 420);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.querySelectorAll("[data-session-control]")).toHaveLength(1);
+  });
+
+  it("closes the compact menu when the row expands", async () => {
+    useChatStore.setState({
+      refreshSessionControl: vi.fn(async () => result()),
+    });
+    setStore();
+    await renderControls();
+    await measureLayout(120, 420);
+    await openPanel("session-actions");
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+
+    await measureLayout(600, 420);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.querySelectorAll("[data-session-control]")).toHaveLength(7);
+  });
+
+  it("commits a valid context draft when the compact menu closes", async () => {
+    const save = vi.fn();
+    useChatStore.setState({
+      setSessionAutoCompactWindow: save,
+      refreshSessionControl: vi.fn(async () => result()),
+    });
+    setStore();
+    await renderControls();
+    await measureLayout(120, 420);
+    await openPanel("session-actions");
+    const input = document.querySelector<HTMLInputElement>(
+      'input[aria-label="chat.sessionContextWindow"]',
+    )!;
+    await act(async () => {
+      input.focus();
+      typeInto(input, "123456");
+    });
+    await act(async () => {
+      document.body.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true }),
+      );
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(KEY, 123456);
+  });
+
+  it("commits a valid context draft when the layout switches", async () => {
+    const save = vi.fn();
+    useChatStore.setState({
+      setSessionAutoCompactWindow: save,
+      refreshSessionControl: vi.fn(async () => result()),
+    });
+    setStore();
+    await renderControls();
+    await measureLayout(120, 420);
+    await openPanel("session-actions");
+    const input = document.querySelector<HTMLInputElement>(
+      'input[aria-label="chat.sessionContextWindow"]',
+    )!;
+    await act(async () => {
+      input.focus();
+      typeInto(input, "123456");
+    });
+
+    await measureLayout(600, 420);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(KEY, 123456);
+  });
+
+  it("does not carry a compact context draft into another session", async () => {
+    const save = vi.fn();
+    useChatStore.setState({
+      setSessionAutoCompactWindow: save,
+      refreshSessionControl: vi.fn(async () => result()),
+    });
+    setStore();
+    await renderControls();
+    await measureLayout(120, 420);
+    await openPanel("session-actions");
+    const input = document.querySelector<HTMLInputElement>(
+      'input[aria-label="chat.sessionContextWindow"]',
+    )!;
+    await act(async () => {
+      input.focus();
+      typeInto(input, "123456");
+    });
+    await act(async () => {
+      useChatStore.setState({
+        active: ACTIVE_2,
+        openTabs: [ACTIVE_2],
+        bySession: {
+          [KEY2]: {
+            ...EMPTY_SESSION,
+            sessionControl: result({
+              sourceSessionId: SID2,
+              targetSessionId: SID2,
+            }),
+          },
+        },
+      });
+    });
+
+    expect(save).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await measureLayout(120, 420);
+    await openPanel("session-actions");
+    const nextInput = document.querySelector<HTMLInputElement>(
+      'input[aria-label="chat.sessionContextWindow"]',
+    )!;
+    expect(nextInput.value).toBe("");
   });
 });

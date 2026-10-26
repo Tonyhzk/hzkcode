@@ -32,6 +32,7 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - 应用自带角色、自定义角色和引擎身份使用同一应用流程
 
 修复
+- 聊天区域变窄时，会话操作自动合为一个菜单；工作模式靠近发送按钮，不再重叠或挤出按钮
 - 修复渠道未开启长连接时，仍可能受终端设置影响而使用 WebSocket 的问题
 - 修复新对话先切换身份或行为模式后提示找不到会话的问题
 - 切换身份、行为模式和其他会话设置后，在聊天中显示操作结果；关闭详细显示仍可见
@@ -49,6 +50,7 @@ Features
 - App-bundled personas, custom personas, and engine identities share one application flow
 
 Fixes
+- Session actions collapse into one menu in narrow chat panes; the work mode stays next to Send without overlapping or pushing buttons outside the input box
 - Fixed terminal settings unexpectedly enabling WebSocket for channels that had not enabled persistent connections
 - Fixed a session-not-found error when changing identity or behavior before the first chat message
 - Identity, behavior, and other session-setting changes now show their results in chat, even with detailed display disabled

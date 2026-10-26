@@ -274,6 +274,7 @@ export const en: Messages = {
     sessionPromptModeApplyTitle: "Choose how to apply",
     sessionPromptModeCurrent: "Apply in place",
     sessionPromptModeClone: "Clone and apply",
+    sessionActions: "Session",
     sessionIdentity: "Identity",
     sessionIdentityTitle: "Apply identity",
     sessionIdentityDefault: "Default identity",

@@ -1,5 +1,7 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -68,6 +70,16 @@ const SESSION_POPOVER_CLASSES = cx(
 
 const ENTRY_BUTTON_CLASSES =
   "flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 outline-none transition-colors duration-150 ease";
+
+const SESSION_CONTROLS_CLASSES =
+  "relative flex w-full min-w-0 items-center gap-0.5";
+
+const SESSION_CONTROLS_MEASURE_VIEWPORT_CLASSES =
+  "pointer-events-none invisible absolute left-0 top-0 h-0 w-full overflow-hidden";
+
+const SESSION_CONTROLS_MEASURE_CLASSES = "flex w-max gap-0.5";
+
+const CompactMenuContext = createContext<{ close: () => void } | null>(null);
 
 /**
  * 输入框外侧状态栏的七个会话入口：身份直接打开共用对话框，其余各自只展开
@@ -164,6 +176,28 @@ function SessionControlsInner({ sessionKeyValue }: { sessionKeyValue: string }) 
     };
   }, []);
 
+  // 七个入口的自然宽度由一份不可交互的测量行给出；容器放不下时收成一个
+  // 菜单。零宽（尚未布局或 jsdom）不切换，避免初始化瞬间闪动。
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const container = containerRef.current;
+    const measure = measureRef.current;
+    if (!container || !measure || typeof ResizeObserver === "undefined") return;
+    const update = () => {
+      const available = container.getBoundingClientRect().width;
+      const natural = measure.getBoundingClientRect().width;
+      if (available <= 0 || natural <= 0) return;
+      setCompact(natural > available);
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(container);
+    observer.observe(measure);
+    update();
+    return () => observer.disconnect();
+  }, []);
+
   // 会话激活/恢复时读取一次权威状态，让协议入口无需先点开菜单就有值。
   // 已有缓存、读取失败或组件留在同一会话时都不重复发起。
   const reload = useCallback(() => {
@@ -249,6 +283,24 @@ function SessionControlsInner({ sessionKeyValue }: { sessionKeyValue: string }) 
     },
     [autoCompactWindow, sessionKeyValue, setSessionAutoCompactWindow],
   );
+
+  // 紧凑菜单是六类面板共用的外层：打开只读取一次会话状态，关闭时按
+  // 同一个打开/关闭周期结算上下文草稿。
+  const handleCompactOpenChange = useCallback(
+    (open: boolean) => {
+      handleContextOpenChange(open);
+      reloadOnOpen(open);
+    },
+    [handleContextOpenChange, reloadOnOpen],
+  );
+
+  // 尺寸跨过阈值会替换整组入口，旧弹层随之卸载；上下文草稿仍在关闭时结算。
+  const previousCompactRef = useRef(compact);
+  useEffect(() => {
+    if (previousCompactRef.current === compact) return;
+    previousCompactRef.current = compact;
+    handleContextOpenChange(false);
+  }, [compact, handleContextOpenChange]);
 
   // A stored change made by this panel (or another window) re-syncs the draft
   // while the panel is open.
@@ -394,7 +446,7 @@ function SessionControlsInner({ sessionKeyValue }: { sessionKeyValue: string }) 
       ? t("chat.sessionContextWindowPlaceholder")
       : String(autoCompactWindow);
 
-  return (
+  const controls = (
     <>
       <SessionActionButton
         id="identity"
@@ -737,6 +789,62 @@ function SessionControlsInner({ sessionKeyValue }: { sessionKeyValue: string }) 
       </SessionMenuButton>
     </>
   );
+
+  const measureLabels = [
+    t("chat.sessionIdentity"),
+    t("chat.sessionEntryBehavior"),
+    t("chat.sessionEntryPrompt"),
+    protocolTriggerLabel,
+    t("chat.sessionEntryProxy"),
+    t("chat.secondBrain"),
+    t("chat.sessionEntryContext"),
+  ];
+
+  return (
+    <div
+      ref={containerRef}
+      data-session-controls=""
+      className={cx(SESSION_CONTROLS_CLASSES, compact && "justify-end")}
+    >
+      <div
+        aria-hidden
+        data-session-controls-measure-viewport=""
+        className={SESSION_CONTROLS_MEASURE_VIEWPORT_CLASSES}
+      >
+        <div
+          ref={measureRef}
+          data-session-controls-measure=""
+          className={SESSION_CONTROLS_MEASURE_CLASSES}
+        >
+          {measureLabels.map((label, index) => (
+            <span key={index} className={ENTRY_BUTTON_CLASSES}>
+              <span className="whitespace-nowrap text-caption-1-medium">
+                {label}
+              </span>
+            </span>
+          ))}
+        </div>
+      </div>
+      {compact ? (
+        <SessionMenuButton
+          id="session-actions"
+          label={t("chat.sessionActions")}
+          panelLabel={t("chat.sessionActions")}
+          onOpenChange={handleCompactOpenChange}
+        >
+          {(close) => (
+            <CompactMenuContext.Provider value={{ close }}>
+              <div className="flex w-full min-w-0 flex-col gap-1">
+                {controls}
+              </div>
+            </CompactMenuContext.Provider>
+          )}
+        </SessionMenuButton>
+      ) : (
+        controls
+      )}
+    </div>
+  );
 }
 
 interface ControlOption {
@@ -799,6 +907,29 @@ function SessionActionButton({
   tone?: EntryTone;
   onPress: () => void;
 }) {
+  const compactMenu = useContext(CompactMenuContext);
+  if (compactMenu) {
+    return (
+      <AriaButton
+        aria-label={ariaLabel ?? label}
+        data-session-control={id}
+        onPress={() => {
+          compactMenu.close();
+          onPress();
+        }}
+        className={cx(
+          "flex w-full cursor-pointer items-center rounded-[14px] px-2 py-1.5 text-left outline-none transition-colors hover:bg-background-primary-hover focus-visible:bg-background-primary-hover",
+          active
+            ? "text-notification-success-foreground"
+            : tone === "muted"
+              ? "text-foreground-icon-tertiary"
+              : "text-text-secondary",
+        )}
+      >
+        <span className="truncate text-body-medium">{label}</span>
+      </AriaButton>
+    );
+  }
   return (
     <AriaButton
       aria-label={ariaLabel ?? label}
@@ -811,19 +942,7 @@ function SessionActionButton({
   );
 }
 
-/** 一个入口只承载一个功能面板；各入口的开关状态互不共享。 */
-function SessionMenuButton({
-  id,
-  label,
-  ariaLabel,
-  panelLabel,
-  active = false,
-  tone = "default",
-  onOpenChange,
-  dataProtocolState,
-  dataApiMode,
-  children,
-}: {
+interface SessionMenuButtonProps {
   id: string;
   label: string;
   ariaLabel?: string;
@@ -834,7 +953,36 @@ function SessionMenuButton({
   dataProtocolState?: string;
   dataApiMode?: string;
   children: (close: () => void) => ReactNode;
-}) {
+}
+
+/** 一个入口只承载一个功能面板；各入口的开关状态互不共享。 */
+function SessionMenuButton(props: SessionMenuButtonProps) {
+  const compactMenu = useContext(CompactMenuContext);
+  if (compactMenu) {
+    return (
+      <section
+        data-session-section={props.id}
+        className="flex flex-col gap-1 border-t border-border-primary-default pt-1 [&>div]:w-full"
+      >
+        {props.children(compactMenu.close)}
+      </section>
+    );
+  }
+  return <SessionMenuButtonPopover {...props} />;
+}
+
+function SessionMenuButtonPopover({
+  id,
+  label,
+  ariaLabel,
+  panelLabel,
+  active = false,
+  tone = "default",
+  onOpenChange,
+  dataProtocolState,
+  dataApiMode,
+  children,
+}: SessionMenuButtonProps) {
   const {
     isOpen,
     triggerRef,
@@ -869,9 +1017,9 @@ function SessionMenuButton({
         ref={popoverRef}
         isNonModal
         shouldCloseOnInteractOutside={shouldCloseOnInteractOutside}
-        placement="top start"
+        placement={id === "session-actions" ? "top end" : "top start"}
         offset={8}
-        className={SESSION_POPOVER_CLASSES}
+        className={cx(SESSION_POPOVER_CLASSES, id === "session-actions" && "w-[334px]")}
       >
         <AriaDialog
           aria-label={panelLabel}

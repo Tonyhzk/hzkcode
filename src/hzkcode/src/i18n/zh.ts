@@ -260,6 +260,7 @@ export const zh = {
     sessionPromptModeApplyTitle: "选择应用方式",
     sessionPromptModeCurrent: "原地应用",
     sessionPromptModeClone: "克隆后应用",
+    sessionActions: "会话",
     sessionIdentity: "身份",
     sessionIdentityTitle: "应用身份",
     sessionIdentityDefault: "默认身份",
