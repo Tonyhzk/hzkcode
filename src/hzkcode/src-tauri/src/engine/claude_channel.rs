@@ -36,6 +36,7 @@ const ROUTING_KEYS: &[&str] = &[
     "HZKCODE_PROVIDER",
     "HZKCODE_AUTH_MODE",
     "HZKCODE_API_MODE",
+    "HZKCODE_RESPONSES_WEBSOCKET",
 ];
 
 pub(super) fn resolve_model(
@@ -312,6 +313,25 @@ mod tests {
         assert_eq!(staged["env"]["HZKCODE_DEFAULT_LOW_MODEL_API_MODE"], "");
         assert_eq!(staged["env"]["HZKCODE_DEFAULT_MID_MODEL_EFFORT_LEVEL"], "");
         assert_eq!(staged["env"]["HZKCODE_DEFAULT_HIGH_MODEL_RESPONSES_WEBSOCKET"], "");
+    }
+
+    #[test]
+    fn channel_websocket_masks_native_settings_and_keeps_explicit_overrides() {
+        let directory = std::env::temp_dir().join(format!("hzkcode-websocket-{}", uuid::Uuid::new_v4()));
+        for (configured, expected) in [(None, ""), (Some("0"), "0"), (Some("1"), "1")] {
+            let mut provider = serde_json::json!({"env": {}});
+            if let Some(value) = configured {
+                provider["env"]["HZKCODE_RESPONSES_WEBSOCKET"] = Value::String(value.into());
+            }
+            let env = crate::provider_files::channel_env("claude", &provider).unwrap();
+            let mut command = built();
+            stage(&mut command, &provider, &env, Some("mid"), None, &directory).unwrap();
+            let staged: Value = serde_json::from_slice(
+                &std::fs::read(&command.cleanup_files[0]).unwrap(),
+            ).unwrap();
+            assert_eq!(staged["env"]["HZKCODE_RESPONSES_WEBSOCKET"], expected);
+        }
+        std::fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]

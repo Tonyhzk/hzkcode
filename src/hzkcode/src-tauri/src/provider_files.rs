@@ -471,6 +471,7 @@ pub(crate) fn is_provider_env_key(key: &str) -> bool {
             | "HZKCODE_PROVIDER_MANAGED_BY_HOST"
             | "HZKCODE_AUTH_MODE"
             | "HZKCODE_API_MODE"
+            | "HZKCODE_RESPONSES_WEBSOCKET"
             | "HZKCODE_DISABLE_IMAGE_INPUT"
             // Provider selection and the skip-auth switches are provider
             // config; the rest of the USE_/SKIP_ families are behaviour flags.
@@ -856,6 +857,7 @@ mod tests {
         for key in [
             "HZKCODE_BASE_URL",
             "HZKCODE_API_KEY",
+            "HZKCODE_RESPONSES_WEBSOCKET",
             "HZKCODE_MODEL",
             "HZKCODE_DEFAULT_HIGH_MODEL",
             "HZKCODE_ANTHROPIC_BETAS",
