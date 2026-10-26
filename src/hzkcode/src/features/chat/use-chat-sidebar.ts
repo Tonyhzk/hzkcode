@@ -107,7 +107,7 @@ export function useChatSidebar({
             return [
               {
                 id: `${s.engine}/${s.sessionId}`,
-                label: s.customTitle || s.title || s.sessionId.slice(0, 8),
+                label: s.customTitle || s.title || t("chat.newChat"),
                 engine: s.engine,
                 time: relativeTime(s.updatedAt),
                 pinned: s.pinned,
