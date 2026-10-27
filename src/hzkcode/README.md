@@ -29,9 +29,10 @@ The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on mac
 - Per-tab **model and effort overrides**: different tabs in the same window can run different models or thinking levels. Effort has seven levels — off, none, low, medium, high, xhigh, max; `off` means the effort field is not sent, not that thinking is disabled.
 - Session history survives restarts; the history scanner reads the CLI's native session files and keeps titles in sync.
 
-### What's new in 3.5.1
+### Current version guide
 
-- Bundles the **3.5.1 engine** in desktop version **3.5.1-1**.
+- Bundles the **3.5.3 engine** in desktop version **3.5.3-1**.
+- **Connect MCP on demand**: ordinary external services no longer connect automatically at chat startup. Supply process arguments or an HTTP address to `LoadMCP`, then call tools with `UseMCP`; connection IDs do not survive across chat turns. Both tools are available in the identity editor without changing existing selections.
 - **Control a conversation from Session switches**: change full or compact prompts, identity, persistent interaction mode, or API format without sending a chat message.
 - **Choose how to apply an identity**: switch in the current conversation, clone it, or append an identity to an existing conversation. Empty conversations switch in place; the default identity cannot be appended. App-bundled personas, custom personas, and engine identities remain available.
 - **Resume with saved session settings**: in-place changes preserve history and clones leave the source intact. Appending preserves the base identity, model, and permissions. Failed operations retain the current session and selection for retry.

@@ -39,8 +39,8 @@
 ## 内置 CLI 与数据互通
 
 - 应用内置 CLI 二进制：源码槽位 `src/hzkcode/src-tauri/binaries/`，打包后位于 `HZK CODE.app/Contents/Resources/binaries/`（Windows 为安装目录下的 `binaries\`）；文件名 `hzkcode`（Windows `hzkcode.exe`），也可放上游构建产物 `claude`，两者都在时优先 `hzkcode`。
-- 当前内置 CLI 版本：**3.5.1**（版本 commit `bff56ad4`，功能 commit `dcc97b8c`；macOS arm64 正式构建，sha256 前缀 `baea5100`，未创建发布标签）；替换槽位二进制时必须同步更新本行，版本号变更遵循「版本记录与发布」。
-- 当前源码快照：外层 `0_Reference/hzk-code-agent-3.5.1-bff56ad4`（由对应版本提交导出，不进 Git）；3.5.0 与更早快照保留作历史参考。
+- 当前内置 CLI 版本：**3.5.3**（版本 commit `b4e110ea`；macOS arm64 正式构建，sha256 前缀 `a1b9839e`，未创建发布标签）；替换槽位二进制时必须同步更新本行，版本号变更遵循「版本记录与发布」。
+- 当前源码快照：外层 `0_Reference/hzk-code-agent-3.5.3-b4e110ea`（由对应版本提交导出，不进 Git）；3.5.1 与更早快照保留作历史参考。
 - 对齐与核对基准：GUI 与内置 CLI 的功能盘点、差距核对、规划与开发一律以上述快照（当前内置版本的源码）和内置二进制实测为准；其他版本或其他仓库的代码不作为依据。
 - 渠道分档配置（3.5.0）：High / Mid / Low 各有 `HZKCODE_DEFAULT_*_MODEL_API_MODE` 与 `HZKCODE_DEFAULT_*_MODEL_EFFORT_LEVEL`；GUI 启动时保留档位别名，不提前替换为绑定模型，由引擎决定分档协议与思考默认值。三档协议/思考/WebSocket 变量均纳入渠道路由掩码，未配置时遮盖原生设置；WebSocket 仍不提供独立控件。接入点 `HZKCODE_BASE_URL_ENDPOINT` 未配置时显式采用 `v1`（Gemini 为 `v1beta`），显式空串表示不追加版本段，渠道注入保留该空串语义。
 - 会话启动参数：推理强度七档（off / none / low / medium / high / xhigh / max）通过 `--effort` 表达；off 表示不向模型接口发送思考等级，none 是独立的无思考偏好，由引擎按协议能力处理，不使用 `HZKCODE_MAX_THINKING_TOKENS` 伪造预算。GUI 身份定义经 `--agents` 同时提供给控制请求与真实发送，含非空 description/prompt 及可选 tools/model/effort/context（context 未限定时显式声明全量三件套，保留角色预设的完整上下文）。身份应用由控制接口保存，恢复时不再重复传 `--agent` 或身份派生 `--tools`，防止清空追加范围；模型、思考和权限没有新选择时省略旧 flag，明确新选择仍优先并随成功发送结算。`components/agent-block.ts` 仅保留旧历史的剥离显示。所有派生进程把 `HZKCODE_DEV_CALLER_CWD` 固定在会话工作区，避免会话存储到启动目录。
@@ -80,7 +80,7 @@
 
 - 版本号四处保持一致：外层 `VERSION`、`src/hzkcode/package.json`、`src/hzkcode/src-tauri/Cargo.toml`、`src/hzkcode/src-tauri/tauri.conf.json`。
 - 版本号采用四段语义：前三段跟随内置 CLI 版本、第四段为本程序在该 CLI 版本下的自增序号，统一写作 `3.0.0-1`（第四段放 semver 的 pre-release 段；Cargo/npm/Tauri 都拒绝四段点分写法），视觉与存储一致、不出现四段点分；CLI 升版时前三段跟随、第四段从 1 重新计数。插件侧的宿主版本比较（前端 `ipcBackend.appVersion`、Rust `manifest.rs` 的 `minAppVersion` 校验）剥离 pre-release 段后按三段比较。注意 semver 里 `3.0.0-1` 低于同三段正式版（`3.0.0-1 < 3.0.0`），发布时必须实测 Tauri updater 对 `latest.json` 中该写法的比较与更新判断，避免新版本被判为更旧或触发稳定性过滤。
-- 版本号只按用户明确要求变更：修复、二进制重构建（含内置 CLI 更新为含新提交的构建）一律保持当前版本号，不递增第四段、不改动产物命名；CLI 源码仓库侧的构建同样保持其当前版本号（用当前号构建、不因修复升版）。
+- 内置 CLI 版本号发生变化时，必须按上述四段规则同步桌面端版本号，无需用户另行要求。只有内置 CLI 版本号未变化的修复或二进制重构建才保持桌面端当前版本号，不自行递增第四段、不改动产物命名；此时仅按用户明确要求调整桌面端版本号。CLI 源码仓库侧的构建保持其当前版本号，不因修复自行升版。
 - 外层 `CHANGELOG.md` 是真实完整的记录，包含内部改动与源码级细节；bug 修复的完整描述写在这里。
 - 应用内 `src/hzkcode/src/version/changelog.ts` 的 `CHANGELOG_DATA`（设置 → 社区与反馈 → 版本记录）面向用户，只写功能与修复等用户可感知的变化，不出现源码相关内容。
 - 发布手动维护（CI 自动发布 workflow 已移除）：本地构建 → 创建 `v<版本号>` 标签与 GitHub Release → 上传安装包与 updater 产物（`latest.json`、`.app.tar.gz` 及其 `.sig`）。

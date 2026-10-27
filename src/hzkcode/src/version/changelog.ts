@@ -18,11 +18,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
-    version: "3.5.1-1",
-    date: "2026-10-26",
+    version: "3.5.3-1",
+    date: "2026-10-27",
     content: {
       zh: `引擎更新
-- 内置引擎升级到 3.5.1
+- 内置引擎升级到 3.5.3，桌面端版本同步为 3.5.3-1
+- MCP 服务按需加载与调用，身份编辑器补齐对应工具选项，已有选择保持不变
 
 新功能
 - 新增密码加密的配置导出与导入，可迁移应用设置、渠道密钥、自定义智能体、全局提示词和界面偏好；恢复前可预览，并自动备份原配置
@@ -41,7 +42,8 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - 恢复会话时保留已保存的身份和设置，不再被旧的界面默认值覆盖
 - 切换身份不再在下一次发送时自动克隆；操作失败保留当前对话与选择`,
       en: `Engine update
-- Bundled engine upgraded to 3.5.1
+- Bundled engine upgraded to 3.5.3; the desktop version is now 3.5.3-1
+- MCP servers are loaded and called on demand; the identity editor includes both tools without changing existing selections
 
 Features
 - Password-encrypted configuration export and import transfers app settings, provider credentials, custom agents, global prompts and interface preferences, with a preview and automatic backup before restore
