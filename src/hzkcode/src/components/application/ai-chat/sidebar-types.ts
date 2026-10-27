@@ -32,6 +32,7 @@ export interface AiChatRepo {
   labelSuffix?: string;
   /** Expanded on first render (folder-open icon + visible threads). */
   defaultOpen?: boolean;
+  fixed?: boolean;
 }
 /** A workspace group section (工作区二级分类): named groups render with a
  *  collapsible header; the single `id: null` section is ungrouped repos

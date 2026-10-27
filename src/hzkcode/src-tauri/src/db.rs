@@ -6,6 +6,8 @@ use rusqlite::{Connection, OptionalExtension};
 /// summary hide rewind-abandoned chain branches — same files, new results.)
 pub const CACHE_VERSION: &str = "4";
 
+pub const DEFAULT_WORKSPACE_ID: &str = "hzkcode-default-workspace";
+
 pub struct Db(pub Mutex<Connection>);
 
 impl Db {
@@ -32,6 +34,24 @@ impl Db {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         migrate(&conn)?;
         Ok(Self(Mutex::new(conn)))
+    }
+
+    pub fn ensure_default_workspace(&self) -> Result<(), String> {
+        let path = crate::paths::default_workspace_dir();
+        #[cfg(test)]
+        crate::test_support::guard_test_write(&path)?;
+        std::fs::create_dir_all(&path)
+            .map_err(|e| format!("create default workspace {}: {e}", path.display()))?;
+        let conn = self.0.lock();
+        conn.execute(
+            "INSERT INTO workspaces(id, path, name, sort_order)
+             VALUES(?1, ?2, 'hzkcode-default-workspace', -1)
+             ON CONFLICT(path) DO UPDATE SET id=excluded.id, name=excluded.name,
+                sort_order=-1, group_id=NULL, meta=NULL",
+            rusqlite::params![DEFAULT_WORKSPACE_ID, path.to_string_lossy()],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// All registered workspace roots (session attribution + path confinement).
@@ -618,6 +638,80 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    struct HomeGuard {
+        _lock: parking_lot::MutexGuard<'static, ()>,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl HomeGuard {
+        fn set(home: &std::path::Path) -> Self {
+            let lock = crate::test_support::HOME_ENV_LOCK.lock();
+            let previous = std::env::var_os("HOME");
+            std::env::set_var("HOME", home);
+            Self { _lock: lock, previous }
+        }
+    }
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(home) => std::env::set_var("HOME", home),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+    }
+
+    #[test]
+    fn default_workspace_is_registered_once_without_seeding_files() {
+        let scratch = Scratch::new();
+        let _home = HomeGuard::set(&scratch.0);
+        let db = Db::open_at(&scratch.path("app.db")).unwrap();
+        let path = scratch.path("hzkcode-default-workspace");
+        assert!(!path.exists());
+        db.ensure_default_workspace().unwrap();
+        db.ensure_default_workspace().unwrap();
+        assert!(path.is_dir());
+        assert_eq!(std::fs::read_dir(&path).unwrap().count(), 0);
+        assert_eq!(db.workspace_paths().unwrap(), vec![path.to_string_lossy().into_owned()]);
+        assert_eq!(list(&db), vec![(DEFAULT_WORKSPACE_ID.to_string(), path.to_string_lossy().into_owned(), Some(-1))]);
+        std::fs::write(path.join("notes.txt"), "keep").unwrap();
+        db.ensure_default_workspace().unwrap();
+        assert_eq!(std::fs::read_to_string(path.join("notes.txt")).unwrap(), "keep");
+    }
+
+    #[test]
+    fn default_workspace_adopts_an_existing_registration_and_stays_ungrouped() {
+        let scratch = Scratch::new();
+        let _home = HomeGuard::set(&scratch.0);
+        let db = Db::open_at(&scratch.path("app.db")).unwrap();
+        let path = scratch.path("hzkcode-default-workspace");
+        db.0.lock().execute(
+            "INSERT INTO workspaces(id, path, name, sort_order, group_id, meta)
+             VALUES('old-id', ?1, 'old-name', 12, 'g1', '{\"remote\":true}')",
+            [path.to_string_lossy().as_ref()],
+        ).unwrap();
+        db.ensure_default_workspace().unwrap();
+        let row: (String, Option<String>, Option<String>) = db.0.lock().query_row(
+            "SELECT id, group_id, meta FROM workspaces WHERE path=?1",
+            [path.to_string_lossy().as_ref()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        ).unwrap();
+        assert_eq!(row, (DEFAULT_WORKSPACE_ID.to_string(), None, None));
+        assert_eq!(db.workspace_paths().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn default_workspace_refuses_a_file_at_the_directory_path() {
+        let scratch = Scratch::new();
+        let _home = HomeGuard::set(&scratch.0);
+        let db = Db::open_at(&scratch.path("app.db")).unwrap();
+        let path = scratch.path("hzkcode-default-workspace");
+        std::fs::write(&path, "keep").unwrap();
+        assert!(db.ensure_default_workspace().is_err());
+        assert!(db.workspace_paths().unwrap().is_empty());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "keep");
     }
 
     #[test]

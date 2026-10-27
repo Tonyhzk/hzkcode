@@ -18,6 +18,7 @@ import { pruneSlashCommands } from "@/components/application/ai-chat/slash-comma
 import { stripAgentBlock } from "./components/agent-block";
 import { listenEngineEvents, listenSessionsChanged } from "@/lib/events";
 import { errorText } from "@/lib/errors";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/default-workspace";
 import { readStoredJson, writeStored } from "@/lib/storage";
 import { windowContext } from "@/lib/window-context";
 import { newId } from "@/lib/id";
@@ -1518,8 +1519,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
       set((s) => ({
         workspaces: [...s.workspaces].sort(
           (a, b) =>
+            Number(b.id === DEFAULT_WORKSPACE_ID) - Number(a.id === DEFAULT_WORKSPACE_ID) ||
             (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
-            (order.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+              (order.get(b.id) ?? Number.MAX_SAFE_INTEGER),
         ),
       }));
       try {
@@ -1530,6 +1532,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     },
 
     removeWorkspace: async (id) => {
+      if (id === DEFAULT_WORKSPACE_ID) return;
       try {
         const removedPath = get().workspaces.find((w) => w.id === id)?.path;
         await ipc.removeWorkspace(id);
@@ -2047,6 +2050,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       );
     },
     assignWorkspaceGroup: async (workspaceId, groupId) => {
+      if (workspaceId === DEFAULT_WORKSPACE_ID) return;
       const valid =
         groupId && get().workspaceGroups.some((g) => g.id === groupId);
       const resolved = valid ? groupId : null;
@@ -2064,6 +2068,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       }
     },
     setWorkspaceAlias: async (workspaceId, alias) => {
+      if (workspaceId === DEFAULT_WORKSPACE_ID) return;
       // An alias equal to the folder name is no alias at all — same rule the
       // sidebar display applies — so it clears the entry instead of storing.
       const name = get().workspaces.find((w) => w.id === workspaceId)?.name;
@@ -2081,6 +2086,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       });
     },
     setWorkspaceArchived: async (workspaceId, archived) => {
+      if (workspaceId === DEFAULT_WORKSPACE_ID) return;
       const current = get().archivedWorkspaces;
       const archivedWorkspaces = archived
         ? current.includes(workspaceId)

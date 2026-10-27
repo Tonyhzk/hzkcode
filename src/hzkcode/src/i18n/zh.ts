@@ -30,6 +30,7 @@ export const zh = {
     hideFileEditor: "收起文件编辑区",
     openInNewWindow: "在新窗口打开",
     workspaces: "工作区",
+    defaultWorkspace: "默认",
     expandWorkspace: "展开会话列表",
     collapseWorkspace: "收起会话列表",
     noProjectSelected: "未选择项目",

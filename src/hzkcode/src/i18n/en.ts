@@ -34,6 +34,7 @@ export const en: Messages = {
     hideFileEditor: "Hide file editor",
     openInNewWindow: "Open in new window",
     workspaces: "Workspaces",
+    defaultWorkspace: "Default",
     expandWorkspace: "Expand session list",
     collapseWorkspace: "Collapse session list",
     noProjectSelected: "No project selected",

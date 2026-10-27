@@ -21,6 +21,8 @@ vi.mock("@/lib/events", () => ({
 }));
 
 import { useChatStore } from "./store";
+import { ipc } from "@/lib/ipc";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/default-workspace";
 
 /** Keys written by store/persistence.ts (OPEN_TABS_KEY / active-session key). */
 const OPEN_TABS_KEY = "hzkcode.openTabs:v1";
@@ -32,6 +34,21 @@ const ACTIVE_SESSION_KEY = "hzkcode.activeSession:v1";
 describe("persisted tab restore filters removed engines", () => {
   beforeEach(() => {
     localStorage.clear();
+    useChatStore.setState({ initialized: false, active: null, openTabs: [], workspaces: [], sessions: [] });
+  });
+
+  it("恢复已注册默认工作区中的会话草稿", async () => {
+    const workspacePath = "/home/test/hzkcode-default-workspace";
+    vi.mocked(ipc.listWorkspaces).mockResolvedValueOnce([{
+      id: DEFAULT_WORKSPACE_ID, path: workspacePath, name: "hzkcode-default-workspace",
+      lastOpenedAt: null, sortOrder: -1, groupId: null,
+    }]);
+    const tab = { engine: "claude", sessionId: null, workspacePath };
+    localStorage.setItem(OPEN_TABS_KEY, JSON.stringify([tab]));
+    localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(tab));
+    await useChatStore.getState().init();
+    expect(useChatStore.getState().openTabs).toEqual([tab]);
+    expect(useChatStore.getState().active).toMatchObject(tab);
   });
 
   it("drops tabs of removed engines, keeps claude tabs and re-targets the active tab", async () => {

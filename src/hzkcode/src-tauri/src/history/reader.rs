@@ -1478,7 +1478,7 @@ pub struct Workspace {
 
 #[tauri::command]
 pub fn list_workspaces(state: tauri::State<'_, crate::AppState>) -> Result<Vec<Workspace>, String> {
-    query_rows(
+    let mut workspaces = query_rows(
         &state,
         "SELECT id, path, name, last_opened_at, sort_order, group_id, meta FROM workspaces
          ORDER BY sort_order IS NULL, sort_order, COALESCE(last_opened_at, 0) DESC",
@@ -1494,7 +1494,9 @@ pub fn list_workspaces(state: tauri::State<'_, crate::AppState>) -> Result<Vec<W
                 meta: meta_json.and_then(|s| serde_json::from_str(&s).ok()),
             })
         },
-    )
+    )?;
+    workspaces.sort_by_key(|w| w.id != crate::db::DEFAULT_WORKSPACE_ID);
+    Ok(workspaces)
 }
 
 #[tauri::command]
@@ -1529,6 +1531,9 @@ pub(crate) fn add_workspace_inner(
     if trimmed.is_empty() {
         return Err("empty path".to_string());
     }
+    if meta.is_some() && std::path::Path::new(trimmed) == crate::paths::default_workspace_dir() {
+        return Err("默认工作区不支持远程元数据".to_string());
+    }
     // Host-capability callers (plugin workspaces.add) may register paths that
     // do not exist on this machine (remote host / WSL distro) — meta presence
     // is the opt-in that skips the local is_dir check.
@@ -1553,7 +1558,12 @@ pub(crate) fn add_workspace_inner(
             "" => trimmed.to_string(),
             rest => rest.to_string(),
         });
-    let id = uuid::Uuid::new_v4().to_string();
+    let is_default = std::path::Path::new(trimmed) == crate::paths::default_workspace_dir();
+    let id = if is_default {
+        crate::db::DEFAULT_WORKSPACE_ID.to_string()
+    } else {
+        uuid::Uuid::new_v4().to_string()
+    };
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -1575,7 +1585,7 @@ pub(crate) fn add_workspace_inner(
         path: trimmed.to_string(),
         name,
         last_opened_at: Some(now),
-        sort_order: None,
+        sort_order: if is_default { Some(-1) } else { None },
         group_id: None,
         meta,
     })
@@ -1588,6 +1598,9 @@ pub fn set_workspace_group(
     id: String,
     group_id: Option<String>,
 ) -> Result<(), String> {
+    if id == crate::db::DEFAULT_WORKSPACE_ID {
+        return Err("默认工作区不可分组".to_string());
+    }
     if let Some(gid) = group_id.as_deref() {
         let exists = crate::settings::read_settings()?
             .workspace_groups
@@ -1612,7 +1625,7 @@ pub fn reorder_workspaces(
     ids: Vec<String>,
 ) -> Result<(), String> {
     let conn = state.db.0.lock();
-    for (index, id) in ids.iter().enumerate() {
+    for (index, id) in ids.iter().filter(|id| id.as_str() != crate::db::DEFAULT_WORKSPACE_ID).enumerate() {
         conn.execute(
             "UPDATE workspaces SET sort_order=?2 WHERE id=?1",
             rusqlite::params![id, index as i64],
@@ -1627,6 +1640,9 @@ pub fn remove_workspace(
     state: tauri::State<'_, crate::AppState>,
     id: String,
 ) -> Result<(), String> {
+    if id == crate::db::DEFAULT_WORKSPACE_ID {
+        return Err("默认工作区不可移除".to_string());
+    }
     let conn = state.db.0.lock();
     let path: Option<String> = conn
         .query_row(

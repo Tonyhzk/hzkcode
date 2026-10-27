@@ -84,6 +84,7 @@ pub fn run() {
                 // redo them in Settings → 工作区.
                 eprintln!("[settings] legacy group import failed: {error}");
             }
+            db.ensure_default_workspace().map_err(std::io::Error::other)?;
 
             if let Err(error) = agents::import_legacy_agents_once(&db) {
                 // Same non-fatal rule: the `#` picker simply starts empty.

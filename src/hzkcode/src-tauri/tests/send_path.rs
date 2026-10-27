@@ -101,6 +101,51 @@ fn build_app(
     (app, events)
 }
 
+#[test]
+fn default_workspace_is_registered_and_protected() {
+    let _env_guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("default-workspace");
+    let (app, _) = build_app(&home);
+    let state = app.state::<AppState>();
+    state.db.ensure_default_workspace().unwrap();
+    let workspace = home.join("hzkcode-default-workspace");
+    app.manage(Arc::clone(&state.db));
+    assert!(hzkcode_lib::files::list_dir(
+        app.state(),
+        workspace.to_string_lossy().into_owned(),
+    )
+    .unwrap()
+    .is_empty());
+    assert!(hzkcode_lib::files::list_dir(
+        app.state(),
+        home.to_string_lossy().into_owned(),
+    )
+    .is_err());
+    let workspaces = hzkcode_lib::history::reader::list_workspaces(app.state()).unwrap();
+    assert_eq!(workspaces.len(), 1);
+    assert_eq!(workspaces[0].id, hzkcode_lib::db::DEFAULT_WORKSPACE_ID);
+    assert_eq!(workspaces[0].path, workspace.to_string_lossy());
+    assert!(hzkcode_lib::history::reader::remove_workspace(
+        app.state(),
+        hzkcode_lib::db::DEFAULT_WORKSPACE_ID.to_string(),
+    )
+    .is_err());
+    assert!(hzkcode_lib::history::reader::set_workspace_group(
+        app.state(),
+        hzkcode_lib::db::DEFAULT_WORKSPACE_ID.to_string(),
+        None,
+    )
+    .is_err());
+    hzkcode_lib::history::reader::reorder_workspaces(
+        app.state(),
+        vec![hzkcode_lib::db::DEFAULT_WORKSPACE_ID.to_string()],
+    )
+    .unwrap();
+    assert_eq!(state.db.workspace_paths().unwrap(), vec![workspace.to_string_lossy().into_owned()]);
+    let persisted = hzkcode_lib::history::reader::list_workspaces(app.state()).unwrap();
+    assert_eq!(persisted[0].sort_order, Some(-1));
+}
+
 #[tokio::test]
 #[allow(clippy::await_holding_lock)]
 async fn send_message_streams_events_end_to_end() {
@@ -112,11 +157,11 @@ async fn send_message_streams_events_end_to_end() {
     write_bin_override(&home, &bin_dir.join("claude"));
     std::env::set_var("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()));
 
-    let workspace = home.join("ws");
-    std::fs::create_dir_all(&workspace).unwrap();
+    let workspace = home.join("hzkcode-default-workspace");
 
     let (app, events) = build_app(&home);
     let state = app.state::<AppState>();
+    state.db.ensure_default_workspace().unwrap();
 
     let result = engine::send_message(
         state,

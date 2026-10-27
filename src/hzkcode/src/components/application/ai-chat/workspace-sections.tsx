@@ -174,6 +174,8 @@ export function WorkspaceSection({
   onDropWorkspaceToSection?: (workspaceId: string, targetSectionId: string | null) => void;
 }) {
   const { t } = useTranslation();
+  const fixedRepos = filteredRepos.filter((repo) => repo.fixed);
+  const movableRepos = filteredRepos.filter((repo) => !repo.fixed);
   const hasGroups = Boolean(sections?.some((section) => section.id !== null));
 
   const renderRepoList = (repos: AiChatRepo[], sectionId: string | null) =>
@@ -226,6 +228,20 @@ export function WorkspaceSection({
 
   return (
     <div className="flex w-full flex-col gap-2.5">
+      {fixedRepos.map((repo) => (
+        <RepoItem
+          key={repo.id}
+          repo={repo}
+          open={isRepoExpanded(repo)}
+          onToggleOpen={() => onToggleRepo(repo)}
+          forceOpen={searching}
+          activeThreadId={activeThreadId}
+          onThreadSelect={onThreadSelect}
+          onThreadAction={onThreadAction}
+          onThreadContextMenu={onThreadContextMenu}
+          onNewSession={onNewSessionInWorkspace}
+        />
+      ))}
       <div
         {...{ [WORKSPACE_DROP_TARGET_ATTR]: "" }}
         className="flex w-full items-center justify-between rounded-2lg transition-colors duration-150 data-[drop-hover=true]:bg-background-secondary-hover data-[drop-hover=true]:ring-1 data-[drop-hover=true]:ring-border-button-active"
@@ -243,7 +259,7 @@ export function WorkspaceSection({
           <FolderPlus className="size-4" aria-hidden />
         </button>
       </div>
-      {!hasGroups && renderRepoList(filteredRepos, null)}
+      {!hasGroups && renderRepoList(movableRepos, null)}
       {hasGroups &&
         sections!.map((section) =>
           section.id === null ? (

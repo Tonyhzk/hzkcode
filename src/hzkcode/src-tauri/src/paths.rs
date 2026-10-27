@@ -29,6 +29,10 @@ pub fn app_home() -> PathBuf {
     home_dir().join(".hzkcode").join("gui")
 }
 
+pub fn default_workspace_dir() -> PathBuf {
+    home_dir().join("hzkcode-default-workspace")
+}
+
 pub fn legacy_home() -> PathBuf {
     home_dir().join(".ccgui")
 }

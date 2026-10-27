@@ -3,7 +3,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/lib/i18n";
 import type { AiChatRepo } from "@/components/application/ai-chat/ai-chat-sidebar";
-import type { SessionMeta, Workspace } from "@/lib/ipc";
+import { ipc, type SessionMeta, type Workspace } from "@/lib/ipc";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/default-workspace";
+import { pickDirectory } from "@/lib/platform";
 import { useChatStore } from "./store";
 import { useChatSidebar } from "./use-chat-sidebar";
 
@@ -11,6 +13,9 @@ vi.mock("@/lib/ipc", () => ({
   ipc: {
     getAppSettings: vi.fn(async () => ({})),
     updateAppSettings: vi.fn(async () => {}),
+    removeWorkspace: vi.fn(async () => {}),
+    setWorkspaceGroup: vi.fn(async () => {}),
+    reorderWorkspaces: vi.fn(async () => {}),
   },
 }));
 vi.mock("@/lib/events", () => ({
@@ -50,22 +55,36 @@ const SESSION: SessionMeta = {
 let container: HTMLDivElement;
 let root: Root;
 let captured: AiChatRepo[];
+let sidebar: ReturnType<typeof useChatSidebar>;
+
+const DEFAULT_WS: Workspace = {
+  ...WS,
+  id: DEFAULT_WORKSPACE_ID,
+  path: "/home/test/hzkcode-default-workspace",
+  name: "hzkcode-default-workspace",
+  sortOrder: -1,
+};
 
 function Harness() {
-  const { repos } = useChatSidebar({
+  const result = useChatSidebar({
     sessionById: new Map(),
     threadStreaming: [false],
     collapseSidebarOnMobile: () => {},
     composerInputRef: { current: null },
     setDialog: () => {},
   });
-  captured = repos;
+  captured = result.repos;
+  sidebar = result;
   return null;
 }
 
 describe("useChatSidebar repo mapping", () => {
   beforeEach(async () => {
+    vi.clearAllMocks();
     useChatStore.setState({
+      active: null,
+      activeEngine: "claude",
+      bySession: {},
       workspaces: [WS],
       sessions: [SESSION],
       openTabs: [],
@@ -89,6 +108,75 @@ describe("useChatSidebar repo mapping", () => {
       root.unmount();
     });
     container.remove();
+  });
+
+  it("没有项目时直接在默认工作区新建，不弹目录选择", async () => {
+    await act(async () => {
+      useChatStore.setState({ workspaces: [DEFAULT_WS], sessions: [] });
+    });
+    await act(async () => sidebar.handleNewSession());
+    expect(useChatStore.getState().active).toMatchObject({
+      engine: "claude", sessionId: null, workspacePath: DEFAULT_WS.path,
+    });
+    expect(pickDirectory).not.toHaveBeenCalled();
+  });
+
+  it("默认分组置顶且不受归档、别名或用户分组影响", async () => {
+    await act(async () => useChatStore.setState({
+      workspaces: [WS, { ...DEFAULT_WS, groupId: "g1" }],
+      sessions: [],
+      archivedWorkspaces: [DEFAULT_WORKSPACE_ID],
+      workspaceAliases: { [DEFAULT_WORKSPACE_ID]: "ignored" },
+      workspaceGroups: [{ id: "g1", name: "group" }],
+    }));
+    expect(captured.map((repo) => repo.id)).toEqual([DEFAULT_WORKSPACE_ID, WS.id]);
+    expect(captured[0]).toMatchObject({ fixed: true, threads: [] });
+    expect(sidebar.archivedRepos).toEqual([]);
+    expect(sidebar.sections?.flatMap((section) => section.repos.map((repo) => repo.id)))
+      .toEqual([WS.id]);
+  });
+
+  it("新建保留当前项目选择，所有项目归档后使用默认目录", async () => {
+    await act(async () => useChatStore.setState({
+      workspaces: [DEFAULT_WS, WS],
+      active: { engine: "claude", sessionId: null, workspacePath: WS.path },
+    }));
+    await act(async () => sidebar.handleNewSession());
+    expect(useChatStore.getState().active?.workspacePath).toBe(WS.path);
+    await act(async () => useChatStore.setState({ archivedWorkspaces: [WS.id] }));
+    await act(async () => sidebar.handleNewSession());
+    expect(useChatStore.getState().active?.workspacePath).toBe(DEFAULT_WS.path);
+    expect(pickDirectory).not.toHaveBeenCalled();
+  });
+
+  it("默认分组的新建入口不受当前项目影响", async () => {
+    await act(async () => useChatStore.setState({
+      workspaces: [DEFAULT_WS, WS],
+      active: { engine: "claude", sessionId: null, workspacePath: WS.path },
+    }));
+    await act(async () => sidebar.handleNewSessionInWorkspace(DEFAULT_WORKSPACE_ID));
+    expect(useChatStore.getState().active?.workspacePath).toBe(DEFAULT_WS.path);
+  });
+
+  it("状态层拒绝删除、归档、改名和移动默认工作区", async () => {
+    await act(async () => useChatStore.setState({ workspaces: [DEFAULT_WS] }));
+    const state = useChatStore.getState();
+    await state.removeWorkspace(DEFAULT_WORKSPACE_ID);
+    await state.setWorkspaceArchived(DEFAULT_WORKSPACE_ID, true);
+    await state.setWorkspaceAlias(DEFAULT_WORKSPACE_ID, "ignored");
+    await state.assignWorkspaceGroup(DEFAULT_WORKSPACE_ID, "g1");
+    expect(ipc.removeWorkspace).not.toHaveBeenCalled();
+    expect(ipc.setWorkspaceGroup).not.toHaveBeenCalled();
+    expect(ipc.updateAppSettings).not.toHaveBeenCalled();
+    expect(useChatStore.getState().workspaces).toEqual([DEFAULT_WS]);
+    expect(useChatStore.getState().archivedWorkspaces).toEqual([]);
+  });
+
+  it("重新排序其他项目时默认工作区仍然在首位", async () => {
+    await act(async () => useChatStore.setState({ workspaces: [DEFAULT_WS, WS] }));
+    await act(async () => useChatStore.getState().reorderWorkspaces([WS.id, DEFAULT_WORKSPACE_ID]));
+    expect(useChatStore.getState().workspaces.map((workspace) => workspace.id))
+      .toEqual([DEFAULT_WORKSPACE_ID, WS.id]);
   });
 
   it("threadLimit 透传到 repo(分页折叠依赖它,删了设置就失效)", () => {

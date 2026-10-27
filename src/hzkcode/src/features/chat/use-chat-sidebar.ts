@@ -5,6 +5,7 @@ import type { ComposerInputHandle } from "@/components/application/ai-chat/ai-ch
 import type { AiChatRepo, AiChatRepoSection, ThreadAction } from "@/components/application/ai-chat/ai-chat-sidebar";
 import { ARCHIVED_SECTION_ID } from "@/components/application/ai-chat/use-sidebar-state";
 import type { SessionMeta } from "@/lib/ipc";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/default-workspace";
 import { pickDirectory } from "@/lib/platform";
 import { openChatWindow } from "@/lib/window-actions";
 import { parseDraftSessionKey, sessionKey, useChatStore, sortedWorkspaceGroups } from "./store";
@@ -60,11 +61,16 @@ export function useChatSidebar({
 
   // Archived workspaces hide from the main tree; everything else (group
   // bucketing, ordering, aliases) works on the visible subset.
-  const archivedIds = useMemo(() => new Set(archivedWorkspaces), [archivedWorkspaces]);
+  const archivedIds = useMemo(
+    () => new Set(archivedWorkspaces.filter((id) => id !== DEFAULT_WORKSPACE_ID)),
+    [archivedWorkspaces],
+  );
   // 订阅插件桥:插件 activate/热重载换 hooks 后,侧栏徽标随之重算。
   const uiHooks = useWorkspaceUIHooks();
   const visibleWorkspaces = useMemo(
-    () => workspaces.filter((w) => !archivedIds.has(w.id)),
+    () => workspaces.filter((w) => !archivedIds.has(w.id)).sort(
+      (a, b) => Number(b.id === DEFAULT_WORKSPACE_ID) - Number(a.id === DEFAULT_WORKSPACE_ID),
+    ),
     [workspaces, archivedIds],
   );
 
@@ -80,13 +86,15 @@ export function useChatSidebar({
     return visibleWorkspaces.map((w, index) => {
       // Sidebar alias: a user-set name replaces the folder name in the
       // sidebar only; the original stays on the row tooltip.
-      const alias = workspaceAliases[w.id]?.trim();
+      const fixed = w.id === DEFAULT_WORKSPACE_ID;
+      const alias = fixed ? undefined : workspaceAliases[w.id]?.trim();
       const suffix = workspaceLabelSuffix(w.path);
       return {
         id: w.id,
-        label: alias || w.name,
-        originalLabel: alias ? w.name : undefined,
+        label: fixed ? t("chat.defaultWorkspace") : alias || w.name,
+        originalLabel: fixed ? w.path : alias ? w.name : undefined,
         labelSuffix: suffix ?? undefined,
+        fixed,
         defaultOpen: index === 0,
         threadLimit,
         threads: [
@@ -131,6 +139,7 @@ export function useChatSidebar({
     const ungrouped: AiChatRepo[] = [];
     const byGroup = new Map<string, AiChatRepo[]>();
     visibleWorkspaces.forEach((w, index) => {
+      if (w.id === DEFAULT_WORKSPACE_ID) return;
       const repo = repos[index];
       if (!repo) return;
       const groupId = w.groupId;
@@ -248,21 +257,16 @@ export function useChatSidebar({
     [setWorkspaceArchived],
   );
 
-  // Sidebar 新建会话 nav entry: new chat in the active workspace (fallback:
-  // first visible workspace; archived ones never pick up new chats, and no
-  // workspace yet → add one first).
   const handleNewSession = useCallback(() => {
     const workspace =
       workspaces.find((w) => w.path === active?.workspacePath && !archivedIds.has(w.id)) ??
+      visibleWorkspaces.find((w) => w.id !== DEFAULT_WORKSPACE_ID) ??
       visibleWorkspaces[0];
-    if (!workspace) {
-      handleAddWorkspace();
-      return;
-    }
+    if (!workspace) return;
     startNewChat(workspace.path);
     composerInputRef.current?.focus();
     collapseSidebarOnMobile();
-  }, [workspaces, visibleWorkspaces, archivedIds, active?.workspacePath, startNewChat, handleAddWorkspace, collapseSidebarOnMobile, composerInputRef]);
+  }, [workspaces, visibleWorkspaces, archivedIds, active?.workspacePath, startNewChat, collapseSidebarOnMobile, composerInputRef]);
 
   // Workspace row + button: start (or re-focus) the pending new chat in that
   // workspace.

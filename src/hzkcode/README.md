@@ -84,7 +84,7 @@ Grab the installer from the [Releases page](https://github.com/Tonyhzk/hzkcode/r
 
 The macOS bundle is unsigned (the project has no Apple Developer certificate yet) — on first launch, right-click → Open.
 
-After installing, open Settings, configure a provider channel for Claude Code (or sign in), add a project folder, and start chatting.
+After installing, configure a provider channel in Settings (or sign in) and start a session without adding a workspace. With no project available, sessions use the automatically created `~/hzkcode-default-workspace`, shown in the fixed Default section at the top of the sidebar. This section cannot be removed, archived, or moved into another group. The directory is not initialized as a Git repository and no project instructions are created; use the existing Finder action in the title bar to open it. Add a project folder when you want to work in an existing project.
 
 ---
 

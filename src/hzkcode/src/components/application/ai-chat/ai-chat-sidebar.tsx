@@ -102,7 +102,7 @@ export function AiChatSidebar({
   } = useSidebarSearch();
   const { collapsedGroups, toggleGroup } = useCollapsedGroups();
   const allRepos = useMemo(
-    () => (sections ? sections.flatMap((section) => section.repos) : repos),
+    () => (sections ? [...repos.filter((repo) => repo.fixed), ...sections.flatMap((section) => section.repos)] : repos),
     [sections, repos],
   );
   const { isRepoExpanded, toggleRepoExpanded } = useExpandedWorkspaces(allRepos, activeThreadId);

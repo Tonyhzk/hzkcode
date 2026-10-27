@@ -11,6 +11,7 @@ import { WorkspaceSortableList } from "@/components/application/ai-chat/workspac
 import { Button } from "@/components/base/buttons/button";
 import { ConfirmDialog } from "@/components/dialogs";
 import type { WorkspaceGroup } from "@/lib/ipc";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/default-workspace";
 import { useChatStore, sortedWorkspaceGroups } from "@/features/chat/store";
 import { ROW } from "./CliChannelRow";
 import { GrantedRootsCard } from "./GrantedRootsCard";
@@ -181,7 +182,7 @@ export function WorkspacesSection() {
       </div>
 
       <WorkspaceProjectsCard
-        workspaces={workspaces}
+        workspaces={workspaces.filter((w) => w.id !== DEFAULT_WORKSPACE_ID)}
         groups={orderedGroups}
         onAssign={handleAssign}
       />

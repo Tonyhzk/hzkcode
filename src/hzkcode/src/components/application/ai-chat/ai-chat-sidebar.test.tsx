@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { sessionMenuRegistry } from "@hzkcode/plugin-sdk";
 import { AiChatSidebar } from "./ai-chat-sidebar";
 import type { AiChatRepo } from "./ai-chat-sidebar";
+import { WORKSPACE_DROP_TARGET_ATTR } from "./workspace-sortable-list";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -44,6 +45,35 @@ async function render(repos: AiChatRepo[]) {
     root.render(<AiChatSidebar repos={repos} />);
   });
 }
+
+it("固定默认分组显示在项目之前且没有移除、归档或拖动入口", async () => {
+  const fixed = { ...repo("default", true), fixed: true };
+  const onRemoveWorkspace = vi.fn();
+  const onNewSessionInWorkspace = vi.fn();
+  await act(async () => root.render(
+    <AiChatSidebar
+      repos={[fixed, repo("project")]}
+      sections={[{ id: "g1", name: "group", repos: [repo("project")] }]}
+      onRemoveWorkspace={onRemoveWorkspace}
+      onWorkspaceAlias={vi.fn()}
+      onSetWorkspaceArchived={vi.fn()}
+      onReorderWorkspaces={vi.fn()}
+      onNewSessionInWorkspace={onNewSessionInWorkspace}
+    />,
+  ));
+  const fixedRow = rowFor("default").parentElement!;
+  expect(fixedRow.closest(`[${WORKSPACE_DROP_TARGET_ATTR}]`)).toBeNull();
+  expect(fixedRow.querySelector('[aria-label="chat.removeWorkspace"]')).toBeNull();
+  expect(fixedRow.querySelector('[title="chat.dragToReorder"]')).toBeNull();
+  expect([...node.querySelectorAll("button[aria-expanded]")].indexOf(rowFor("default")))
+    .toBeLessThan([...node.querySelectorAll("button[aria-expanded]")].indexOf(rowFor("project")));
+  await rightClick(fixedRow);
+  expect(document.body.querySelector('[role="menu"]')).toBeNull();
+  const add = fixedRow.querySelector<HTMLButtonElement>('[aria-label="chat.newSession"]')!;
+  await act(async () => add.click());
+  expect(onNewSessionInWorkspace).toHaveBeenCalledWith("default");
+  expect(onRemoveWorkspace).not.toHaveBeenCalled();
+});
 
 it("remembers which workspaces the user expanded", async () => {
   // The bug: expansion lived in component state, so every restart reopened
