@@ -3,10 +3,10 @@
  *
  * 名称必须与内置 CLI 的工具名完全一致：引擎会静默忽略未知名称，而在白名单
  *（`--tools`）下，未列出的内置工具都会被自动拒绝——拼错一个名字就会静默
- * 去掉错误的工具。已对照 hzk-code-agent 3.5.0 的 `getAllBaseTools()`
+ * 去掉错误的工具。已对照 hzk-code-agent 3.5.3 的 `getAllBaseTools()`
  *（src/tools.ts）与 `packages/builtin-tools/src/tools/*` 下的 NAME 常量，
- * 仅保留内置构建实际能暴露的工具。3.1.3 之后新增的是 TeamSpawn、BuiltinDocs
- * 与 RespondToAgentRequest；AskParentQuestion 不进入主会话白名单，因为引擎
+ * 仅保留内置构建实际能暴露的工具，包含 LoadMCP 与 UseMCP。
+ * AskParentQuestion 不进入主会话白名单，因为引擎
  * 将它固定分配给子代理与团队成员。标签是本地化数据（智能体目录使用相同的
  * 按语言组织方式），不是 i18n key——这份列表是内容，不是界面装饰。
  */
@@ -135,6 +135,8 @@ export const TOOL_CATALOG: readonly ToolCatalogGroup[] = [
       { name: "CronDelete", label: { zh: "删除定时任务", en: "Delete scheduled tasks" } },
       { name: "CronList", label: { zh: "列出定时任务", en: "List scheduled tasks" } },
       { name: "GoalTool", label: { zh: "目标管理", en: "Goal tracking" } },
+      { name: "LoadMCP", label: { zh: "加载 MCP 服务", en: "Load MCP servers" } },
+      { name: "UseMCP", label: { zh: "调用 MCP 工具", en: "Call MCP tools" } },
       {
         name: "ListMcpResourcesTool",
         label: { zh: "列出 MCP 资源", en: "List MCP resources" },

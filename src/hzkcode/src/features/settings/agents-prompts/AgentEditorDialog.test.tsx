@@ -62,6 +62,21 @@ describe("AgentEditorDialog tool whitelist", () => {
     expect(onSubmit.mock.calls[0]?.[0]?.tools).toEqual([...TOOL_CATALOG_NAMES]);
   });
 
+  it.each(["LoadMCP", "UseMCP"])("允许单独取消选择 %s", (toolName) => {
+    const onSubmit = render({ id: "mcp", name: "工具助手", prompt: "按需使用工具。" });
+    expect(TOOL_CATALOG_NAMES).toContain(toolName);
+    const label = Array.from(document.querySelectorAll("label")).find(
+      (entry) => entry.textContent?.endsWith(toolName),
+    );
+    const checkbox = label?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(checkbox?.checked).toBe(true);
+    act(() => checkbox?.click());
+    submit();
+    expect(onSubmit.mock.calls[0]?.[0]?.tools).toEqual(
+      TOOL_CATALOG_NAMES.filter((name) => name !== toolName),
+    );
+  });
+
   it("saves an empty list when every tool is cleared", () => {
     const onSubmit = render({ id: "a1", name: "审查员", prompt: "严格审查。" });
     const clearButton = Array.from(document.querySelectorAll("button")).find(
