@@ -8,7 +8,7 @@ appends, coalescing and unmount. It needs no model, account or saved conversatio
 The visible update count depends on browser scheduling; it is not a model-speed
 or frame-rate benchmark.
 
-Run the deterministic timing, grapheme, Markdown and store regressions with:
+在项目的 `src/hzkcode/` 目录执行确定性计时、字素、Markdown 与状态回归测试：
 
 ```sh
 node --experimental-strip-types --test tests/*.test.ts

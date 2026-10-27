@@ -2,7 +2,7 @@
 
 # HZK CODE
 
-<img width="120" alt="hzkcode 图标" src="./public/app-icon.png" />
+<img width="120" alt="hzkcode 图标" src="./src/hzkcode/public/app-icon.png" />
 
 [English](./README.md) · **简体中文**
 
@@ -63,7 +63,7 @@
 
 - 自研 **插件 SDK**（`@hzkcode/plugin-sdk`），配套应用内运行时、管理界面与信任边界。
 - **声明式插件**无需编写前端代码即可新增设置区块与配置驱动的界面；应用内建界面（包括设置页本身）也走同一套扩展点注册。
-- 完整开发指南见 [docs/plugin-development-guide.zh-CN.md](./docs/plugin-development-guide.zh-CN.md)。
+- 完整开发指南见 [0_Doc/plugin-development-guide.zh-CN.md](./0_Doc/plugin-development-guide.zh-CN.md)。
 
 ### 设置、网络与更新
 
@@ -112,11 +112,11 @@ macOS 安装包未签名（项目暂无 Apple 开发者证书），首次打开�
 
 ```bash
 git clone https://github.com/Tonyhzk/hzkcode.git
-cd hzkcode
+cd hzkcode/src/hzkcode
 pnpm install
 ```
 
-注意：这是一个 **pnpm workspace**（插件 SDK 在 `packages/plugin-sdk`），锁定文件是 `pnpm-lock.yaml`。
+注意：这是一个 **pnpm workspace**（插件 SDK 在 `src/hzkcode/packages/plugin-sdk`），锁定文件是 `src/hzkcode/pnpm-lock.yaml`。以下开发、测试和构建命令均在 `src/hzkcode/` 中执行，不在外层主目录执行。
 
 ### 第三步：启动
 
@@ -127,7 +127,7 @@ pnpm dev
 几个小提示：
 
 - **第一次启动要编译整个 Rust 后端，可能等上几分钟**，去倒杯水。之后是增量编译，很快。
-- 前端开发服务器跑在 `1420` 端口。
+- 前端开发服务器跑在 `14210` 端口。
 
 ### 打安装包
 
@@ -154,20 +154,23 @@ pnpm build:mac   # macOS 构建（scripts/build-macos.sh）
 
 ```text
 hzkcode/
-├── src/                    # 前端代码
-│   ├── features/           # ★ 功能模块：chat / files / git / terminal /
-│   │                       #   settings / plugins / commands / update / open-app
-│   ├── components/         # 跨功能共享的通用 UI 组件（含引擎品牌图标）
-│   ├── i18n/               # zh + en 两套 locale bundle
-│   ├── styles/             # 全局样式
-│   └── lib/ utils/         # 工具函数
-├── src-tauri/              # Rust 后端
-│   └── src/                # engine/（CLI 引擎适配）、history/、plugins/、
-│                           # git.rs、terminal.rs、web.rs（局域网桥接）……
-├── packages/plugin-sdk/    # @hzkcode/plugin-sdk —— 插件开发套件
-├── tests/                  # 前端集成向测试（Vitest）
-├── scripts/                # 构建与打包脚本
-└── docs/                   # 插件开发指南
+├── CLAUDE.md               # 项目开发约定
+├── README.md               # 英文项目说明
+├── README.zh-CN.md         # 中文项目说明
+├── CHANGELOG.md            # 应用完整版本记录
+├── VERSION                 # 应用版本号
+├── 0_Doc/                  # 开发、插件与测试文档
+├── 0_Backup/               # 本地备份
+├── 0_Reference/            # 参考资料
+├── 0_Release/              # 发布产物
+├── 1_Script/               # 维护脚本
+├── assets/                 # 项目素材
+└── src/hzkcode/            # 源码工作区，开发命令在此执行
+    ├── src/                # 前端功能、组件、国际化与工具函数
+    ├── src-tauri/          # Rust 后端与应用资源
+    ├── packages/plugin-sdk/ # @hzkcode/plugin-sdk
+    ├── tests/              # 回归测试与浏览器测试页面
+    └── scripts/            # 构建与打包脚本
 ```
 
 ### 改一个功能的套路
@@ -241,7 +244,11 @@ perf(chat): reveal streamed text per frame without reparsing markdown
 
 ### 想深入了解项目内部？
 
-- [插件开发指南](docs/plugin-development-guide.zh-CN.md) — SDK、manifest、权限模型与信任边界。
+- [插件开发指南](0_Doc/plugin-development-guide.zh-CN.md) — SDK、manifest、权限模型与信任边界。
+- [插件 SDK 版本记录](0_Doc/plugin-sdk-changelog.md)。
+- [内置引擎说明](0_Doc/bundled-engine.md)。
+- [浏览器回归测试说明](0_Doc/browser-tests.md)。
+- [v1.0.3 版本说明](0_Doc/RELEASE_NOTES_v1.0.3.md)。
 
 ---
 

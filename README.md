@@ -1,20 +1,296 @@
-# 个人 GitHub 项目模板
+<div align="center">
 
-个人自建项目的通用模板，包含基础目录结构和配置文件。
+# HZK CODE
 
-## 项目结构
+<img width="120" alt="hzkcode icon" src="./src/hzkcode/public/app-icon.png" />
 
-- `src/` — 源代码目录，所有业务代码在此开发
-- `1_Script/` — 辅助脚本
-- `assets/` — 静态资源（图片、图标等）
-- `0_Doc/` — 项目文档
-- `0_Backup/` — 备份文件
-- `0_Reference/` — 参考资料
-- `0_Release/` — 发布产物
+**English** · [简体中文](./README.zh-CN.md)
 
-## 配置说明
+<a href="https://atomgit.com/Tonyhzk/hzkcode" target="_blank"><img src="https://atomgit.com/Tonyhzk/hzkcode/star/new_badge.svg" alt="AtomGit G-Star" width="250" height="54"/></a>
 
-- `.gitignore` — 通用忽略规则
-- `CLAUDE.md` — Claude Code 项目配置
-- `VERSION` — 当前版本号
-- `CHANGELOG.md` — 更新日志
+![][github-contributors-shield] ![][github-forks-shield] ![][github-stars-shield] ![][github-issues-shield]
+
+</div>
+
+**HZK CODE** is an open-source AI coding desktop client. In plain words: it brings the **Claude Code** command-line AI coding runtime into one graphical interface.
+
+No more staring at a black terminal. Open HZK CODE, pick a project, and chat with AI to write code, fix bugs, and commit to Git. Streaming output, thinking traces, and tool calls are visible as they happen; token usage appears when the engine reports it.
+
+The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on macOS, Windows, and Linux. Settings and state are persisted locally. Content sent to an AI provider follows the boundary of the channel you configured for that CLI.
+
+---
+
+## What can HZK CODE do?
+
+### One client, Claude Code inside
+
+- Registers the **Claude Code** runtime adapter — pick it from the composer's engine picker.
+- **Provider channels are stored by the app and injected at session start**: channel settings live in the app's own settings and reach the engine as environment variables, without rewriting the CLI's native config files. Curated presets cover GLM, Kimi, DeepSeek, MiniMax, MiMo, LongCat, OpenCode Go, OpenRouter, and more. Each model tier (high, mid, low) can set its own protocol and effort default; empty follows the global setting.
+- Per-tab **model and effort overrides**: different tabs in the same window can run different models or thinking levels. Effort has seven levels — off, none, low, medium, high, xhigh, max; `off` means the effort field is not sent, not that thinking is disabled.
+- Session history survives restarts; the history scanner reads the CLI's native session files and keeps titles in sync.
+
+### Current version guide
+
+- Bundles the **3.5.3 engine** in desktop version **3.5.3-1**.
+- **Connect MCP on demand**: ordinary external services no longer connect automatically at chat startup. Supply process arguments or an HTTP address to `LoadMCP`, then call tools with `UseMCP`; connection IDs do not survive across chat turns. Both tools are available in the identity editor without changing existing selections.
+- **Control a conversation from Session switches**: change full or compact prompts, identity, persistent interaction mode, or API format without sending a chat message.
+- **Choose how to apply an identity**: switch in the current conversation, clone it, or append an identity to an existing conversation. Empty conversations switch in place; the default identity cannot be appended. App-bundled personas, custom personas, and engine identities remain available.
+- **Resume with saved session settings**: in-place changes preserve history and clones leave the source intact. Appending preserves the base identity, model, and permissions. Failed operations retain the current session and selection for retry.
+- **Work modes separate boundaries from switches**: default, read-only, and plan are boundaries; auto review, auto continue, and auto accept edits are switches. Switches stay bounded by the active boundary, and menu edits apply on confirmation.
+- **Tools are discovered on demand by default**: turning this off provides every tool description up front.
+- **Compaction has its own settings**: the summary model, channel, thinking level, and streaming can differ from the main conversation.
+- **Prompt mode and file locations are selectable**: built-in guidance can be full or compact; temporary files and plans can live under the project or the system temp directory, while deletes go to the system trash or the project `.delete/` directory.
+- **Thinking visibility is a GUI switch**: it only changes what the app displays, not what the engine sends.
+
+### A chat box designed for coding
+
+- Streaming replies are revealed per animation frame with cached syntax highlighting — long outputs stay smooth instead of re-parsing markdown on every token.
+- **Thinking streams** merge with the reply text, auto-fold when they settle, and expand to full text on demand.
+- Tool calls show as live rows with expandable parameters and results, including beautified **Git Diff** and **Bash** viewers and per-run completion metadata.
+- A **Run Status Strip** mirrors the engine's live progress (including todo snapshots), and a message **anchor rail** lets you jump between user messages.
+- Pasted images become attachments; file mentions are backed by a `.gitignore`-aware project file index; file links in replies handle URL-encoded paths and have a right-click menu.
+- Permission denials can be resolved inline by granting the engine extra directories; prompt history lives in the composer.
+
+### Not just chat — a full set of dev panels
+
+- **File tree**: virtualized, with Git status colors, nested-repository badges, context menus, and drag-and-drop — plus a built-in CodeMirror editor pane with Markdown preview.
+- **Built-in terminal**: a real PTY-backed terminal dock (xterm + WebGL), no need to switch windows.
+- **Git panel**: stage, commit, search branches, inspect diffs and history.
+- **Command palette**: one keyboard-driven box for the app's commands.
+
+### Plugin system
+
+- First-party **plugin SDK** (`@hzkcode/plugin-sdk`) plus an in-app runtime, manager UI, and trust boundary.
+- **Declarative plugins** can add settings sections and config-driven UI without shipping frontend code; builtin app surfaces (including the settings page itself) are registered through the same extension points.
+- See [0_Doc/plugin-development-guide.zh-CN.md](./0_Doc/plugin-development-guide.zh-CN.md) for the full authoring guide.
+
+### Settings, network, and updates
+
+- **Proxy settings** for the app and engine traffic.
+- **LAN web access**: serve the UI to other devices on your network over a token-authenticated WebSocket bridge, with a QR-code entry in Settings.
+- **Workspace management**: group projects and switch between them.
+- In-app **auto-update** (Tauri updater against GitHub Releases), a changelog dialog, and macOS builds.
+- Bilingual UI: **Chinese and English**.
+
+---
+
+## Download
+
+Grab the installer from the [Releases page](https://github.com/Tonyhzk/hzkcode/releases):
+
+| Platform | Installer |
+| --- | --- |
+| macOS (Apple Silicon) | `aarch64.dmg` |
+
+The macOS bundle is unsigned (the project has no Apple Developer certificate yet) — on first launch, right-click → Open.
+
+After installing, configure a provider channel in Settings (or sign in) and start a session without adding a workspace. With no project available, sessions use the automatically created `~/hzkcode-default-workspace`, shown in the fixed Default section at the top of the sidebar. This section cannot be removed, archived, or moved into another group. The directory is not initialized as a Git repository and no project instructions are created; use the existing Finder action in the title bar to open it. Add a project folder when you want to work in an existing project.
+
+---
+
+## Getting it running (setup guide)
+
+Want to build it yourself or contribute? Three steps.
+
+### Step 1: Prepare your environment
+
+| Tool | Version | What for |
+| --- | --- | --- |
+| [Node.js](https://nodejs.org/) | 20 or newer | Runs the frontend toolchain |
+| [pnpm](https://pnpm.io/) | 10 (pinned via `packageManager`) | Installs dependencies |
+| [Rust](https://rustup.rs/) | stable (install via rustup) | Compiles the backend |
+
+Each OS also needs the standard Tauri prerequisites — see the [official Tauri guide](https://v2.tauri.app/start/prerequisites/):
+
+- **macOS**: `xcode-select --install`.
+- **Windows**: Microsoft C++ Build Tools and WebView2 (Windows 11 ships with WebView2).
+- **Linux**: `webkit2gtk` and friends — copy the commands from the Tauri docs.
+
+### Step 2: Install dependencies
+
+```bash
+git clone https://github.com/Tonyhzk/hzkcode.git
+cd hzkcode/src/hzkcode
+pnpm install
+```
+
+Note: this is a **pnpm workspace** (the plugin SDK lives in `src/hzkcode/packages/plugin-sdk`); the lockfile is `src/hzkcode/pnpm-lock.yaml`. Run the development, test and build commands below from `src/hzkcode/`, not the outer project root.
+
+### Step 3: Start it
+
+```bash
+pnpm dev
+```
+
+A few tips:
+
+- **The first launch compiles the entire Rust backend and can take a few minutes** — go grab a coffee. Later launches use incremental builds and are fast.
+- The frontend dev server runs on port `14210`.
+
+### Building installers
+
+```bash
+pnpm build:mac   # macOS build (scripts/build-macos.sh)
+```
+
+Releases are built locally and manually — there is no CI pipeline.
+
+---
+
+## How to work on the code (development guide)
+
+### Tech stack at a glance
+
+| Part | Technology |
+| --- | --- |
+| UI | React 18 + TypeScript + Tailwind CSS 4 + zustand |
+| Build | Vite 6 |
+| Desktop shell | Tauri 2 (Rust backend: git2, rusqlite, portable-pty, axum) |
+| Tests | Vitest (frontend) + cargo test (Rust) |
+
+### Directory layout
+
+```text
+hzkcode/
+├── CLAUDE.md               # Project-specific development conventions
+├── README.md              # English project guide
+├── README.zh-CN.md         # Chinese project guide
+├── CHANGELOG.md            # Complete application changelog
+├── VERSION                 # Application version
+├── 0_Doc/                  # Development, plugin and testing documentation
+├── 0_Backup/               # Local backups
+├── 0_Reference/            # Reference materials
+├── 0_Release/              # Release artifacts
+├── 1_Script/               # Maintenance scripts
+├── assets/                 # Project artwork
+└── src/hzkcode/             # Source workspace; run development commands here
+    ├── src/                # Frontend features, components, i18n and utilities
+    ├── src-tauri/          # Rust backend and application resources
+    ├── packages/plugin-sdk/ # @hzkcode/plugin-sdk
+    ├── tests/              # Regression tests and browser fixtures
+    └── scripts/            # Build and packaging scripts
+```
+
+### The typical workflow for changing a feature
+
+1. **UI-only change**: find the matching module under `src/features/` and edit there. New components live inside that feature's own folder.
+2. **Needs backend support**: add a `#[tauri::command]` in the matching `src-tauri/src/` module and call it from the frontend via the Tauri API.
+3. **Changed any UI text**: route it through i18n and keep both bundles (`src/i18n/zh.ts`, `src/i18n/en.ts`) synchronized — hardcoded UI text is not allowed.
+
+### Everyday commands
+
+| Command | What it does |
+| --- | --- |
+| `pnpm dev` | Start the full app (Tauri dev mode) |
+| `pnpm build` | TypeScript check + frontend production build |
+| `pnpm test` | Run the Vitest suite |
+| `pnpm preview` | Preview the production frontend build |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | Run Rust tests |
+
+### Writing tests
+
+- Frontend tests use [Vitest](https://vitest.dev/) — colocated `xxx.test.ts(x)` files next to the source, plus heavier suites under `tests/`.
+- Rust tests live in their modules as usual and run with `cargo test --manifest-path src-tauri/Cargo.toml`.
+
+---
+
+## Coding rules
+
+Not many rules, but each exists for a reason:
+
+1. **Run the big three before opening a PR**: `pnpm build` (typecheck) and `pnpm test` green locally, plus `cargo test` if you touched Rust.
+2. **UI text must go through i18n**: every user-visible string comes from `src/i18n/`, and both shipped locale bundles must stay synchronized.
+3. **Keep components close to home**: new components start inside their own feature folder; promote to `src/components/` only once they're genuinely reused across features.
+4. **TypeScript strict**: don't paper over things with `any`; write real types.
+5. **Extend through the plugin SDK where possible**: new settings sections and surfaces should register through the same extension points the builtin ones use.
+6. **Never commit secrets**: API keys and tokens must never appear in code or commit history.
+
+### Writing commit messages
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) with a Chinese action phrase by default: `type(scope): 中文动宾短句`.
+
+| type | When to use |
+| --- | --- |
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `refactor` | Refactoring (no behavior change) |
+| `docs` | Documentation |
+| `test` | Adding/updating tests |
+| `chore` | Housekeeping (version bumps, deps, scripts) |
+| `perf` / `style` / `ci` | Performance / formatting / CI |
+
+Real examples from this repo:
+
+```text
+feat(chat): 支持工具调用参数与结果展开、Git Diff/Bash美化及完成元数据展示
+fix(chat): message file links failed to resolve in nested projects
+perf(chat): reveal streamed text per frame without reparsing markdown
+```
+
+No emoji in commit messages, and no AI-generated signatures.
+
+---
+
+## Submitting your code (contribution flow)
+
+1. **Fork** the repo and clone it locally.
+2. Branch off `main`, named like `feat/xxx` or `fix/xxx`.
+3. Make your changes and get `pnpm build` + `pnpm test` green locally.
+4. Open a PR against this repo's **`main` branch**. Title in commit format; in the description, explain what changed, why, and how you verified it.
+
+Not sure where to start? Browse the [Issues](https://github.com/Tonyhzk/hzkcode/issues) and pick one that interests you. Found a bug or have an idea? Open an issue and let's talk.
+
+### Want to dig deeper?
+
+- [Plugin development guide (中文)](0_Doc/plugin-development-guide.zh-CN.md) — SDK, manifest, permissions, and the trust boundary.
+- [Plugin SDK changelog](0_Doc/plugin-sdk-changelog.md).
+- [Bundled engine](0_Doc/bundled-engine.md).
+- [Browser regression tests](0_Doc/browser-tests.md).
+- [v1.0.3 release notes](0_Doc/RELEASE_NOTES_v1.0.3.md).
+
+---
+
+## License
+
+[MIT](https://github.com/Tonyhzk/hzkcode?tab=MIT-1-ov-file)
+
+---
+
+## Friendship Link
+
+Thanks for the support and feedback from the friends at [LINUX DO](https://linux.do/).
+
+[AtomGit](https://atomgit.com/Tonyhzk/hzkcode): hosts this project in China, helping users in mainland China access the project and download Releases faster.
+
+Thank you for [AtomGit](https://atomgit.com/Tonyhzk/hzkcode) platform G-Star certification
+
+---
+
+## Contributors
+
+Thanks to all the contributors who help make HZK CODE better.
+
+<a href="https://github.com/Tonyhzk/hzkcode/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Tonyhzk/hzkcode" alt="Contributors" />
+</a>
+
+---
+
+## Acknowledgements
+
+This project originally started from [CodexMonitor](https://github.com/Dimillian/CodexMonitor). Since v1.0.0 the codebase has been rewritten from scratch — no CodexMonitor code remains, but the original inspiration is gratefully acknowledged.
+
+---
+
+## Star History
+
+[![Star History Chart](https://star-history.dera.page/svg?repos=Tonyhzk/hzkcode&type=date&legend=top-left)](https://star-history.dera.page/#Tonyhzk/hzkcode&type=date&legend=top-left)
+
+<!-- LINK GROUP -->
+
+[github-contributors-shield]: https://img.shields.io/github/contributors/Tonyhzk/hzkcode?color=c4f042&labelColor=black&style=flat-square
+[github-forks-shield]: https://img.shields.io/github/forks/Tonyhzk/hzkcode?color=8ae8ff&labelColor=black&style=flat-square
+[github-issues-link]: https://github.com/Tonyhzk/hzkcode/issues
+[github-issues-shield]: https://img.shields.io/github/issues/Tonyhzk/hzkcode?color=ff80eb&labelColor=black&style=flat-square
+[github-license-link]: https://github.com/Tonyhzk/hzkcode/blob/main/LICENSE
+[github-stars-shield]: https://img.shields.io/github/stars/Tonyhzk/hzkcode?color=ffcb47&labelColor=black&style=flat-square

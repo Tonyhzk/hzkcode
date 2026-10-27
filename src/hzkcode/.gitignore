@@ -7,9 +7,8 @@ src-tauri/target
 src-tauri/gen
 
 # Bundled CLI binaries (bundle.resources copies them into the app package);
-# 100MB+ each, never committed — the slot README stays tracked.
+# 二进制体积超过 100MB，不提交。
 src-tauri/binaries/*
-!src-tauri/binaries/README.md
 
 # Secrets — never commit
 .env
